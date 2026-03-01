@@ -20,6 +20,7 @@ class BiSheGo2FlatEnvCfg(BiSheGo2RoughEnvCfg):
         self.scene.terrain.terrain_generator = None
         self.scene.height_scanner = None
         self.observations.policy.height_scan = None
+        self.curriculum.staged_terrain = None
         self.curriculum.terrain_levels = None
 
 

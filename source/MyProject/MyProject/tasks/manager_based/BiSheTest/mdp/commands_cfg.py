@@ -28,6 +28,24 @@ class AdvancedPose2dCommandCfg(UniformPose2dCommandCfg):
     goal_height_offset: float = 0.0
     """Extra world-z offset for command position."""
 
+    use_valid_target_patches: bool = True
+    """If True, sample targets from terrain flat patches when available."""
+
+    target_patch_name: str = "target"
+    """Name of the flat-patch key used for valid target sampling."""
+
+    max_target_height_offset: float = 0.20
+    """Allowed |target_z - env_origin_z| in meters.
+
+    This filters out deep pit bottoms and high obstacle tops.
+    """
+
+    fallback_to_polar_sampling: bool = True
+    """Fallback to polar sampling if no valid patch is found for an environment."""
+
+    log_patch_fallback: bool = True
+    """Whether to log warnings when patch sampling falls back to polar sampling."""
+
     @configclass
     class Ranges(UniformPose2dCommandCfg.Ranges):
         # Kept for compatibility with parent class; x/y are not used directly.

@@ -24,10 +24,10 @@ from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG
 
 import MyProject.tasks.manager_based.BiSheTest.mdp as mdp
+from MyProject.tasks.manager_based.BiSheTest.config.terrain import make_advanced_skills_terrains_cfg
 
 
 @configclass
@@ -37,7 +37,7 @@ class MySceneCfg(InteractiveSceneCfg):
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
-        terrain_generator=ROUGH_TERRAINS_CFG,
+        terrain_generator=make_advanced_skills_terrains_cfg(),
         max_init_terrain_level=5,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
@@ -86,6 +86,11 @@ class CommandsCfg:
         debug_vis=True,
         radius_range=(1.0, 5.0),
         goal_height_offset=0.0,
+        use_valid_target_patches=True,
+        target_patch_name="target",
+        max_target_height_offset=0.20,
+        fallback_to_polar_sampling=True,
+        log_patch_fallback=True,
         ranges=mdp.AdvancedPose2dCommandCfg.Ranges(
             heading=(-math.pi, math.pi),
         ),
@@ -263,6 +268,10 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Terrain curriculum based on final target error."""
 
+    staged_terrain = CurrTerm(
+        func=mdp.stage_terrain_curriculum,
+        params={"mode": "auto", "command_name": "target_pose"},
+    )
     terrain_levels = CurrTerm(
         func=mdp.terrain_levels_position,
         params={"command_name": "target_pose", "success_threshold": 0.5, "fail_threshold": 2.0},
@@ -281,6 +290,7 @@ class BiSheGo2RoughEnvCfg(ManagerBasedRLEnvCfg):
     terminations: TerminationsCfg = TerminationsCfg()
     events: EventCfg = EventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
+    terrain_stage_mode: str = "auto"
 
     def __post_init__(self):
         self.decimation = 4
@@ -297,6 +307,8 @@ class BiSheGo2RoughEnvCfg(ManagerBasedRLEnvCfg):
         self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
         self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
         self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
+        self.scene.terrain.max_init_terrain_level = 2
+        self.curriculum.staged_terrain.params["mode"] = self.terrain_stage_mode
 
         if self.scene.height_scanner is not None:
             self.scene.height_scanner.update_period = self.decimation * self.sim.dt
@@ -328,3 +340,38 @@ class BiSheGo2RoughEnvCfg_Play(BiSheGo2RoughEnvCfg):
         self.observations.policy.enable_corruption = False
         self.events.base_external_force_torque = None
         self.events.push_robot = None
+
+
+@configclass
+class BiSheGo2RoughPhase0EnvCfg(BiSheGo2RoughEnvCfg):
+    """Static stage 0: walk + basic rough terrain."""
+
+    terrain_stage_mode = "phase0_walk"
+
+
+@configclass
+class BiSheGo2RoughPhase1EnvCfg(BiSheGo2RoughEnvCfg):
+    """Static stage 1: harder base rough terrain."""
+
+    terrain_stage_mode = "phase1_base"
+
+
+@configclass
+class BiSheGo2RoughPhase2EnvCfg(BiSheGo2RoughEnvCfg):
+    """Static stage 2: add gap terrains."""
+
+    terrain_stage_mode = "phase2_gap"
+
+
+@configclass
+class BiSheGo2RoughPhase3EnvCfg(BiSheGo2RoughEnvCfg):
+    """Static stage 3: add pit terrains."""
+
+    terrain_stage_mode = "phase3_pit"
+
+
+@configclass
+class BiSheGo2RoughPhase4EnvCfg(BiSheGo2RoughEnvCfg):
+    """Static stage 4: include obstacle terrains."""
+
+    terrain_stage_mode = "phase4_obstacle"
