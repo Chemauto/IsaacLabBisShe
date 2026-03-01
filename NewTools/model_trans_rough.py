@@ -42,8 +42,8 @@ from MyProject.tasks.manager_based.WalkTest.agents.rsl_rl_ppo_cfg import Go2Walk
 TASK_NAME = "Template-Velocity-Go2-Walk-Rough-v0"
 #这个也得修改任务
 # TASK_NAME = "Template-Naviation-Test-Unitree-Go2-v0"
-CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/New/WalkRoughNew.pt"
-OUTPUT_TS_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/New/WalkRoughNewTransfer.pt"
+CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/WalkPolicy/WalkRoughNew.pt"
+OUTPUT_TS_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt"
 
 # =========================
 # 4. 构建 env 和 agent cfg

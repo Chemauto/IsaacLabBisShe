@@ -346,7 +346,7 @@ class VelocityGo2WalkRoughEnvCfg(ManagerBasedRLEnvCfg):
         else:
             if self.scene.terrain.terrain_generator is not None:
                 self.scene.terrain.terrain_generator.curriculum = False
-
+        self.terminations.base_contact.params["sensor_cfg"].body_names = "base"
 
 @configclass
 class VelocityGo2WalkRoughEnvCfg_Play(VelocityGo2WalkRoughEnvCfg):
