@@ -85,7 +85,7 @@ class CommandsCfg:
         resampling_time_range=(6.0, 6.0),
         debug_vis=True,
         radius_range=(1.0, 5.0),
-        goal_height_offset=0.0,
+        goal_height_offset=0.5,
         use_valid_target_patches=True,
         target_patch_name="target",
         max_target_height_offset=0.20,
@@ -295,6 +295,7 @@ class BiSheGo2RoughEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         self.decimation = 4
         self.episode_length_s = 6.0
+        self.is_finite_horizon = True
 
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
@@ -329,12 +330,14 @@ class BiSheGo2RoughEnvCfg_Play(BiSheGo2RoughEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        self.terrain_stage_mode = "phase4_obstacle"
+        self.curriculum.staged_terrain.params["mode"] = self.terrain_stage_mode
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
         self.scene.terrain.max_init_terrain_level = None
         if self.scene.terrain.terrain_generator is not None:
-            self.scene.terrain.terrain_generator.num_rows = 5
-            self.scene.terrain.terrain_generator.num_cols = 5
+            self.scene.terrain.terrain_generator.num_rows = 8
+            self.scene.terrain.terrain_generator.num_cols = 12
             self.scene.terrain.terrain_generator.curriculum = False
 
         self.observations.policy.enable_corruption = False

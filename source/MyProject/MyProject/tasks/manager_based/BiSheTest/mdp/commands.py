@@ -35,7 +35,8 @@ class AdvancedPose2dCommand(UniformPose2dCommand):
 
         self.terrain: TerrainImporter | None = None
         self.valid_targets: torch.Tensor | None = None
-        self._last_fallback_log_step = -1
+        self._last_fallback_log_step = -200
+        self._fallback_log_interval = 200
 
         if self.cfg.use_valid_target_patches:
             try:
@@ -112,7 +113,11 @@ class AdvancedPose2dCommand(UniformPose2dCommand):
             missing_count = int((~has_valid).sum().item())
             if missing_count > 0 and not self.cfg.fallback_to_polar_sampling:
                 sampled_targets[~has_valid] = self._env.scene.env_origins[env_ids_t][~has_valid]
-            if missing_count > 0 and self.cfg.log_patch_fallback and self._env.common_step_counter != self._last_fallback_log_step:
+            if (
+                missing_count > 0
+                and self.cfg.log_patch_fallback
+                and (self._env.common_step_counter - self._last_fallback_log_step) >= self._fallback_log_interval
+            ):
                 logger.warning(
                     "[BiSheTest] Target patch filtering fallback for %d envs at step %d.",
                     missing_count,

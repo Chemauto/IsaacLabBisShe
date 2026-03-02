@@ -103,6 +103,24 @@ def stage_terrain_curriculum(
     if hasattr(cmd_term.cfg, "radius_range"):
         cmd_term.cfg.radius_range = tuple(stage_cfg["radius_range"])
 
+    # Increase joint-position action amplitude in advanced stages.
+    if "joint_pos" in env.action_manager.active_terms:
+        joint_pos_term = env.action_manager.get_term("joint_pos")
+        action_scale = float(stage_cfg.get("action_scale", 0.25))
+        if hasattr(joint_pos_term, "_scale"):
+            if isinstance(joint_pos_term._scale, torch.Tensor):
+                joint_pos_term._scale[:] = action_scale
+            else:
+                joint_pos_term._scale = action_scale
+        if hasattr(joint_pos_term, "cfg"):
+            joint_pos_term.cfg.scale = action_scale
+
+    # Gradually remove exploration bias to avoid constraining late-stage behaviors.
+    if "exploration_bias" in env.reward_manager.active_terms:
+        bias_cfg = env.reward_manager.get_term_cfg("exploration_bias")
+        bias_cfg.weight = float(stage_cfg.get("exploration_bias_weight", bias_cfg.weight))
+        env.reward_manager.set_term_cfg("exploration_bias", bias_cfg)
+
     # Restrict terrain columns to stage-specific sub-terrain keys.
     col_map = _compute_column_map(terrain.cfg.terrain_generator)
     allowed_cols = []

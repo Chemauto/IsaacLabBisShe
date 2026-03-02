@@ -18,33 +18,44 @@ PIT_TERRAIN_KEYS = ("pit_easy", "pit_hard")
 OBS_TERRAIN_KEYS = ("obstacle_low", "obstacle_high")
 
 # Step thresholds for automatic stage switching (global env steps).
-AUTO_STAGE_STEPS = (0, 25_000, 70_000, 130_000, 200_000)
+# With 48 rollout steps/iteration, these thresholds ensure all phases are visited in ~3000 iters.
+AUTO_STAGE_STEPS = (0, 12_000, 36_000, 72_000, 108_000)
 
 STAGE_PRESETS = {
     "phase0_walk": {
         "keys": BASE_TERRAIN_KEYS,
         "radius_range": (1.0, 2.0),
         "max_level_ratio": 0.25,
+        "action_scale": 0.25,
+        "exploration_bias_weight": 0.30,
     },
     "phase1_base": {
         "keys": BASE_TERRAIN_KEYS,
         "radius_range": (1.0, 3.0),
         "max_level_ratio": 0.45,
+        "action_scale": 0.30,
+        "exploration_bias_weight": 0.20,
     },
     "phase2_gap": {
         "keys": BASE_TERRAIN_KEYS + GAP_TERRAIN_KEYS,
         "radius_range": (1.0, 4.0),
         "max_level_ratio": 0.65,
+        "action_scale": 0.45,
+        "exploration_bias_weight": 0.10,
     },
     "phase3_pit": {
         "keys": BASE_TERRAIN_KEYS + GAP_TERRAIN_KEYS + PIT_TERRAIN_KEYS,
         "radius_range": (1.0, 5.0),
         "max_level_ratio": 0.85,
+        "action_scale": 0.60,
+        "exploration_bias_weight": 0.00,
     },
     "phase4_obstacle": {
         "keys": BASE_TERRAIN_KEYS + GAP_TERRAIN_KEYS + PIT_TERRAIN_KEYS + OBS_TERRAIN_KEYS,
         "radius_range": (1.0, 5.0),
         "max_level_ratio": 1.0,
+        "action_scale": 0.60,
+        "exploration_bias_weight": 0.00,
     },
 }
 
