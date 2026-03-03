@@ -74,6 +74,28 @@ class AdvancedPose2dCommand(UniformPose2dCommand):
         terrain_types = self.terrain.terrain_types[env_ids_t]
         return self.valid_targets[terrain_levels, terrain_types]
 
+    def _sample_from_valid_patches(
+        self,
+        local_centers: torch.Tensor,
+        local_candidates: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Sample directly from valid patch targets satisfying radius/height constraints."""
+        distances = torch.norm(local_candidates[:, :, :2] - local_centers[:, None, :2], dim=-1)
+        valid_mask = (distances >= self.cfg.radius_range[0]) & (distances <= self.cfg.radius_range[1])
+        if self.cfg.max_target_height_offset is not None:
+            height_delta = torch.abs(local_candidates[:, :, 2] - local_centers[:, None, 2])
+            valid_mask &= height_delta <= self.cfg.max_target_height_offset
+
+        has_valid = valid_mask.any(dim=1)
+        selected = torch.zeros(local_centers.shape[0], 3, device=self.device)
+        valid_rows = torch.nonzero(has_valid, as_tuple=False).squeeze(-1)
+        for row_id in valid_rows.tolist():
+            patch_ids = torch.nonzero(valid_mask[row_id], as_tuple=False).squeeze(-1)
+            sampled_idx = patch_ids[torch.randint(0, patch_ids.numel(), (1,), device=self.device)[0]]
+            selected[row_id] = local_candidates[row_id, sampled_idx]
+
+        return selected, has_valid
+
     def _resample_command(self, env_ids: Sequence[int]):
         env_ids_t = self._to_env_ids_tensor(env_ids)
         if env_ids_t.numel() == 0:
@@ -113,6 +135,17 @@ class AdvancedPose2dCommand(UniformPose2dCommand):
             unresolved = unresolved[~is_valid]
 
         if unresolved.numel() > 0:
+            # Paper-style re-sampling until valid: if polar retries miss, sample directly from valid patches.
+            if candidate_targets is not None:
+                local_centers = centers[unresolved]
+                local_candidates = candidate_targets[unresolved]
+                direct_samples, has_valid = self._sample_from_valid_patches(local_centers, local_candidates)
+                if has_valid.any():
+                    valid_local = unresolved[has_valid]
+                    sampled_targets[valid_local] = direct_samples[has_valid]
+                unresolved = unresolved[~has_valid]
+
+        if unresolved.numel() > 0:
             missing_count = int(unresolved.numel())
             if self.cfg.fallback_to_polar_sampling:
                 local_centers = centers[unresolved]
@@ -131,8 +164,8 @@ class AdvancedPose2dCommand(UniformPose2dCommand):
             else:
                 raise RuntimeError(
                     "[BiSheTest] Failed to sample valid targets for "
-                    f"{missing_count} envs after {self.cfg.max_sampling_attempts} attempts. "
-                    "Adjust terrain size/patch settings for radius_range=(1,5)."
+                    f"{missing_count} envs after polar+patch retries. "
+                    "Adjust terrain and patch coverage for radius_range=(1,5)."
                 )
 
         sampled_targets[:, 2] += self.cfg.goal_height_offset

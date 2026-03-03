@@ -288,7 +288,7 @@ class CurriculumCfg:
 class BiSheGo2RoughEnvCfg(ManagerBasedRLEnvCfg):
     """Advanced-skills locomotion task on rough terrain."""
 
-    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+    scene: MySceneCfg = MySceneCfg(num_envs=2048, env_spacing=2.5)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     commands: CommandsCfg = CommandsCfg()
@@ -306,7 +306,10 @@ class BiSheGo2RoughEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
         self.sim.physics_material = self.scene.terrain.physics_material
-        self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
+        # Increase GPU contact buffers for large-scale (4096 envs) rough-terrain training.
+        self.sim.physx.gpu_max_rigid_patch_count = 2**20
+        self.sim.physx.gpu_found_lost_pairs_capacity = 2**22
+        self.sim.physx.gpu_total_aggregate_pairs_capacity = 2**22
 
         self.commands.target_pose.resampling_time_range = (self.episode_length_s, self.episode_length_s)
 

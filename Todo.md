@@ -112,4 +112,5 @@ python play.py --task Template-BiShe-Go2-Rough-Phase4-Obstacle-v0 --num_envs 50 
 
 - `--checkpoint` 只填文件名（如 `model_300.pt`），不要填绝对路径。
 - `--load_run` 填 run 文件夹名（不是完整路径）。
-- 如果显存不足，把 `--num_envs` 从 `2048` 改成 `1024` 或 `512`。
+- 如果显存不足（例如 `CUBLAS_STATUS_ALLOC_FAILED`），把 `--num_envs` 从 `4096` 改成 `2048`，仍不足再降到 `1024` 或 `512`。
+- 如果出现 `Patch buffer overflow`，已在当前代码中增大 PhysX 缓冲；若仍偶发，可继续降低 `--num_envs`。
