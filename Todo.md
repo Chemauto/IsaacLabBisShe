@@ -1,16 +1,22 @@
 # BiShe 高级技能复现 Todo（中文）
 
-## 0. 进入项目目录
+## 重要说明
+
+- 当前代码已按论文关键机制改动（目标采样/有效性过滤/末端奖励/rbias移除条件）。
+- 旧模型（改动前训练出的 checkpoint）与新任务分布不一致，不建议继续续训。
+- 建议从头训练，或至少从较早稳定 checkpoint 小步重训。
+
+## 0. 进入训练脚本目录（必须）
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe
+cd /home/xcj/work/IsaacLab/IsaacLabBisShe/scripts/rsl_rl
 ```
 
 ## 1. 找到最近一次训练目录和 checkpoint
 
 ```bash
 # 最近一次 run 目录
-RUN_DIR=$(ls -dt scripts/rsl_rl/logs/rsl_rl/go2_bishe_advanced_rough/* | head -n1)
+RUN_DIR=$(ls -dt logs/rsl_rl/go2_bishe_advanced_rough/* | head -n1)
 echo "RUN_DIR=$RUN_DIR"
 
 # 看有哪些模型
@@ -23,10 +29,21 @@ ls -lh "$RUN_DIR"/model_*.pt | tail
 CKPT=model_3300.pt
 ```
 
+## 1.1 从零重训（推荐，论文对齐改动后）
+
+```bash
+python train.py \
+  --task Template-BiShe-Go2-Rough-v0 \
+  --headless \
+  --num_envs 4096 \
+  --max_iterations 2000 \
+  --run_name paper_full_retrain
+```
+
 ## 2. 先做 Gap 专项续训（关键）
 
 ```bash
-python scripts/rsl_rl/train.py \
+python train.py \
   --task Template-BiShe-Go2-Rough-Phase2-Gap-v0 \
   --headless \
   --num_envs 2048 \
@@ -41,11 +58,11 @@ python scripts/rsl_rl/train.py \
 
 ```bash
 # 自动取 gap 续训后的最新 run
-RUN_DIR=$(ls -dt scripts/rsl_rl/logs/rsl_rl/go2_bishe_advanced_rough/*ft_phase2_gap* | head -n1)
+RUN_DIR=$(ls -dt logs/rsl_rl/go2_bishe_advanced_rough/*ft_phase2_gap* | head -n1)
 CKPT=$(ls "$RUN_DIR"/model_*.pt | sort -V | tail -n1 | xargs basename)
 echo "RUN_DIR=$RUN_DIR, CKPT=$CKPT"
 
-python scripts/rsl_rl/train.py \
+python train.py \
   --task Template-BiShe-Go2-Rough-Phase3-Pit-v0 \
   --headless \
   --num_envs 2048 \
@@ -60,11 +77,11 @@ python scripts/rsl_rl/train.py \
 
 ```bash
 # 自动取 pit 续训后的最新 run
-RUN_DIR=$(ls -dt scripts/rsl_rl/logs/rsl_rl/go2_bishe_advanced_rough/*ft_phase3_pit* | head -n1)
+RUN_DIR=$(ls -dt logs/rsl_rl/go2_bishe_advanced_rough/*ft_phase3_pit* | head -n1)
 CKPT=$(ls "$RUN_DIR"/model_*.pt | sort -V | tail -n1 | xargs basename)
 echo "RUN_DIR=$RUN_DIR, CKPT=$CKPT"
 
-python scripts/rsl_rl/train.py \
+python train.py \
   --task Template-BiShe-Go2-Rough-Phase4-Obstacle-v0 \
   --headless \
   --num_envs 2048 \
@@ -78,7 +95,10 @@ python scripts/rsl_rl/train.py \
 ## 5. 回放验证（看是否还会“静止不动”）
 
 ```bash
-python scripts/rsl_rl/play.py --task Template-BiShe-Go2-Rough-Play-v0
+# 建议回放与当前阶段一致的任务，而不是统一用 Rough-Play
+python play.py --task Template-BiShe-Go2-Rough-Phase2-Gap-v0 --num_envs 50 --checkpoint <phase2_model.pt>
+python play.py --task Template-BiShe-Go2-Rough-Phase3-Pit-v0 --num_envs 50 --checkpoint <phase3_model.pt>
+python play.py --task Template-BiShe-Go2-Rough-Phase4-Obstacle-v0 --num_envs 50 --checkpoint <phase4_model.pt>
 ```
 
 ## 6. 训练时重点观察指标
@@ -92,4 +112,5 @@ python scripts/rsl_rl/play.py --task Template-BiShe-Go2-Rough-Play-v0
 
 - `--checkpoint` 只填文件名（如 `model_300.pt`），不要填绝对路径。
 - `--load_run` 填 run 文件夹名（不是完整路径）。
-- 如果显存不足，把 `--num_envs` 从 `2048` 改成 `1024` 或 `512`。
+- 如果显存不足（例如 `CUBLAS_STATUS_ALLOC_FAILED`），把 `--num_envs` 从 `4096` 改成 `2048`，仍不足再降到 `1024` 或 `512`。
+- 如果出现 `Patch buffer overflow`，已在当前代码中增大 PhysX 缓冲；若仍偶发，可继续降低 `--num_envs`。

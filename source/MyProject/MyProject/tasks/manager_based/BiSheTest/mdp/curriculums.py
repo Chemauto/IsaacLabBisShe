@@ -103,24 +103,6 @@ def stage_terrain_curriculum(
     if hasattr(cmd_term.cfg, "radius_range"):
         cmd_term.cfg.radius_range = tuple(stage_cfg["radius_range"])
 
-    # Increase joint-position action amplitude in advanced stages.
-    if "joint_pos" in env.action_manager.active_terms:
-        joint_pos_term = env.action_manager.get_term("joint_pos")
-        action_scale = float(stage_cfg.get("action_scale", 0.25))
-        if hasattr(joint_pos_term, "_scale"):
-            if isinstance(joint_pos_term._scale, torch.Tensor):
-                joint_pos_term._scale[:] = action_scale
-            else:
-                joint_pos_term._scale = action_scale
-        if hasattr(joint_pos_term, "cfg"):
-            joint_pos_term.cfg.scale = action_scale
-
-    # Gradually remove exploration bias to avoid constraining late-stage behaviors.
-    if "exploration_bias" in env.reward_manager.active_terms:
-        bias_cfg = env.reward_manager.get_term_cfg("exploration_bias")
-        bias_cfg.weight = float(stage_cfg.get("exploration_bias_weight", bias_cfg.weight))
-        env.reward_manager.set_term_cfg("exploration_bias", bias_cfg)
-
     # Restrict terrain columns to stage-specific sub-terrain keys.
     col_map = _compute_column_map(terrain.cfg.terrain_generator)
     allowed_cols = []
@@ -166,8 +148,12 @@ def terrain_levels_position(
     command = env.command_manager.get_command(command_name)
     distance_to_target = torch.norm(command[:, :2], dim=1)
 
-    move_up = distance_to_target[env_ids_t] < success_threshold
-    move_down = distance_to_target[env_ids_t] > fail_threshold
+    if hasattr(env, "reset_terminated") and hasattr(env, "reset_time_outs"):
+        crashed = env.reset_terminated[env_ids_t] & (~env.reset_time_outs[env_ids_t])
+    else:
+        crashed = torch.zeros(env_ids_t.numel(), dtype=torch.bool, device=env.device)
+    move_up = (distance_to_target[env_ids_t] < success_threshold) & (~crashed)
+    move_down = (distance_to_target[env_ids_t] > fail_threshold) | crashed
     move_down = move_down & (~move_up)
 
     terrain.update_env_origins(env_ids_t, move_up, move_down)

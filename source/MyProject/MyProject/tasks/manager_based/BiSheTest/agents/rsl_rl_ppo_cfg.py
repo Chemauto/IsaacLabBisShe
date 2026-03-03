@@ -13,7 +13,7 @@ class BiSheRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     """PPO config for rough advanced-skills task."""
 
     num_steps_per_env = 48
-    max_iterations = 3000
+    max_iterations = 2000
     save_interval = 100
     experiment_name = "go2_bishe_advanced_rough"
     policy = RslRlPpoActorCriticCfg(

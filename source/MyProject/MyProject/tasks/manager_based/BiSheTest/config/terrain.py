@@ -24,48 +24,38 @@ AUTO_STAGE_STEPS = (0, 12_000, 36_000, 72_000, 108_000)
 STAGE_PRESETS = {
     "phase0_walk": {
         "keys": BASE_TERRAIN_KEYS,
-        "radius_range": (1.0, 2.0),
+        "radius_range": (1.0, 5.0),
         "max_level_ratio": 0.25,
-        "action_scale": 0.25,
-        "exploration_bias_weight": 0.30,
     },
     "phase1_base": {
         "keys": BASE_TERRAIN_KEYS,
-        "radius_range": (1.0, 3.0),
+        "radius_range": (1.0, 5.0),
         "max_level_ratio": 0.45,
-        "action_scale": 0.30,
-        "exploration_bias_weight": 0.20,
     },
     "phase2_gap": {
         "keys": BASE_TERRAIN_KEYS + GAP_TERRAIN_KEYS,
-        "radius_range": (1.0, 4.0),
+        "radius_range": (1.0, 5.0),
         "max_level_ratio": 0.65,
-        "action_scale": 0.45,
-        "exploration_bias_weight": 0.10,
     },
     "phase3_pit": {
         "keys": BASE_TERRAIN_KEYS + GAP_TERRAIN_KEYS + PIT_TERRAIN_KEYS,
         "radius_range": (1.0, 5.0),
         "max_level_ratio": 0.85,
-        "action_scale": 0.60,
-        "exploration_bias_weight": 0.00,
     },
     "phase4_obstacle": {
         "keys": BASE_TERRAIN_KEYS + GAP_TERRAIN_KEYS + PIT_TERRAIN_KEYS + OBS_TERRAIN_KEYS,
         "radius_range": (1.0, 5.0),
         "max_level_ratio": 1.0,
-        "action_scale": 0.60,
-        "exploration_bias_weight": 0.00,
     },
 }
 
 def _target_patch_sampling() -> dict[str, FlatPatchSamplingCfg]:
     return {
         "target": FlatPatchSamplingCfg(
-            num_patches=32,
+            num_patches=64,
             patch_radius=[0.20, 0.14],
-            x_range=(-3.5, 3.5),
-            y_range=(-3.5, 3.5),
+            x_range=(-5.5, 5.5),
+            y_range=(-5.5, 5.5),
             z_range=(-1.2, 1.2),
             max_height_diff=0.05,
         )
@@ -75,7 +65,7 @@ def _target_patch_sampling() -> dict[str, FlatPatchSamplingCfg]:
 def make_advanced_skills_terrains_cfg() -> TerrainGeneratorCfg:
     """Build rough terrain config with dedicated gap / pit / obstacle sub-terrains."""
     return TerrainGeneratorCfg(
-        size=(8.0, 8.0),
+        size=(12.0, 12.0),
         border_width=20.0,
         num_rows=10,
         num_cols=24,

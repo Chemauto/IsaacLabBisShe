@@ -34,17 +34,23 @@ class AdvancedPose2dCommandCfg(UniformPose2dCommandCfg):
     target_patch_name: str = "target"
     """Name of the flat-patch key used for valid target sampling."""
 
-    max_target_height_offset: float = 0.20
+    max_target_height_offset: float | None = 0.6
     """Allowed |target_z - env_origin_z| in meters.
 
     This filters out deep pit bottoms and high obstacle tops.
     """
 
-    fallback_to_polar_sampling: bool = True
+    fallback_to_polar_sampling: bool = False
     """Fallback to polar sampling if no valid patch is found for an environment."""
 
     log_patch_fallback: bool = True
     """Whether to log warnings when patch sampling falls back to polar sampling."""
+
+    max_sampling_attempts: int = 50
+    """Maximum attempts to sample a valid target for each environment."""
+
+    patch_match_tolerance: float = 0.5
+    """Max XY distance (m) from a sampled polar point to a valid terrain patch."""
 
     @configclass
     class Ranges(UniformPose2dCommandCfg.Ranges):
