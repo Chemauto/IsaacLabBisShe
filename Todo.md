@@ -1,16 +1,16 @@
 # BiShe 高级技能复现 Todo（中文）
 
-## 0. 进入项目目录
+## 0. 进入训练脚本目录（必须）
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe
+cd /home/xcj/work/IsaacLab/IsaacLabBisShe/scripts/rsl_rl
 ```
 
 ## 1. 找到最近一次训练目录和 checkpoint
 
 ```bash
 # 最近一次 run 目录
-RUN_DIR=$(ls -dt scripts/rsl_rl/logs/rsl_rl/go2_bishe_advanced_rough/* | head -n1)
+RUN_DIR=$(ls -dt logs/rsl_rl/go2_bishe_advanced_rough/* | head -n1)
 echo "RUN_DIR=$RUN_DIR"
 
 # 看有哪些模型
@@ -26,7 +26,7 @@ CKPT=model_3300.pt
 ## 2. 先做 Gap 专项续训（关键）
 
 ```bash
-python scripts/rsl_rl/train.py \
+python train.py \
   --task Template-BiShe-Go2-Rough-Phase2-Gap-v0 \
   --headless \
   --num_envs 2048 \
@@ -41,11 +41,11 @@ python scripts/rsl_rl/train.py \
 
 ```bash
 # 自动取 gap 续训后的最新 run
-RUN_DIR=$(ls -dt scripts/rsl_rl/logs/rsl_rl/go2_bishe_advanced_rough/*ft_phase2_gap* | head -n1)
+RUN_DIR=$(ls -dt logs/rsl_rl/go2_bishe_advanced_rough/*ft_phase2_gap* | head -n1)
 CKPT=$(ls "$RUN_DIR"/model_*.pt | sort -V | tail -n1 | xargs basename)
 echo "RUN_DIR=$RUN_DIR, CKPT=$CKPT"
 
-python scripts/rsl_rl/train.py \
+python train.py \
   --task Template-BiShe-Go2-Rough-Phase3-Pit-v0 \
   --headless \
   --num_envs 2048 \
@@ -60,11 +60,11 @@ python scripts/rsl_rl/train.py \
 
 ```bash
 # 自动取 pit 续训后的最新 run
-RUN_DIR=$(ls -dt scripts/rsl_rl/logs/rsl_rl/go2_bishe_advanced_rough/*ft_phase3_pit* | head -n1)
+RUN_DIR=$(ls -dt logs/rsl_rl/go2_bishe_advanced_rough/*ft_phase3_pit* | head -n1)
 CKPT=$(ls "$RUN_DIR"/model_*.pt | sort -V | tail -n1 | xargs basename)
 echo "RUN_DIR=$RUN_DIR, CKPT=$CKPT"
 
-python scripts/rsl_rl/train.py \
+python train.py \
   --task Template-BiShe-Go2-Rough-Phase4-Obstacle-v0 \
   --headless \
   --num_envs 2048 \
@@ -78,7 +78,7 @@ python scripts/rsl_rl/train.py \
 ## 5. 回放验证（看是否还会“静止不动”）
 
 ```bash
-python scripts/rsl_rl/play.py --task Template-BiShe-Go2-Rough-Play-v0
+python play.py --task Template-BiShe-Go2-Rough-Play-v0
 ```
 
 ## 6. 训练时重点观察指标
