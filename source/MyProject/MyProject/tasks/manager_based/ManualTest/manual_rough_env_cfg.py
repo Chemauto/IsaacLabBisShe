@@ -49,7 +49,7 @@ from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import (
     MySceneCfg as WalkMySceneCfg,
 )
 from MyProject.tasks.manager_based.ManualTest.config.terrain import (
-    STAIR_TERRAINS_CFG,
+
     MIXED_PIT_TERRAINS_CFG,
 )
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughEnvCfg()
@@ -62,11 +62,11 @@ class MySceneCfg(WalkMySceneCfg):
     """扩展低层环境的场景配置，使用混合坑洞地形，支持课程学习"""
 
     # 覆盖地形配置为混合坑洞（含三种难度：30%简单 + 50%中等 + 20%困难）
-    terrain = WalkMySceneCfg.terrain.__class__(
+    terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
         terrain_generator=MIXED_PIT_TERRAINS_CFG,
-        max_init_terrain_level=5,  # 
+        max_init_terrain_level=5,  #
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -109,7 +109,7 @@ class ActionsCfg:
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True)
     pre_trained_policy_action: mdp.PreTrainedPolicyActionCfg = mdp.PreTrainedPolicyActionCfg(
         asset_name="robot",
-        policy_path="/home/robot/work/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt",
+        policy_path="/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt",
         # policy_path=f"{ISAACLAB_NUCLEUS_DIR}/Policies/ANYmal-C/Blind/policy.pt",
         #This
         # policy_path=f"{ISAACLAB_NUCLEUS_DIR}/Policies/ANYmal-C/Blind/policy.pt",
