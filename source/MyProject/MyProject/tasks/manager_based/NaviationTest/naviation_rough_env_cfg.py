@@ -32,13 +32,20 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
+# Custom terrain configuration for stair climbing
+# 专门用于爬楼梯训练的地形配置
+# from isaaclab.terrains import TerrainGeneratorCfg
+# import isaaclab.terrains.config.terrain_gen as terrain_gen
+
+
+
 ##
 # Scene definition
 ##
 
 import MyProject.tasks.manager_based.NaviationTest.mdp as mdp
 from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo2WalkRoughEnvCfg
-
+from MyProject.tasks.manager_based.NaviationTest.config.terrain import STAIR_TERRAINS_CFG
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughEnvCfg()
 #分层的强化学习的方式，低层的强化学习为之前已经训练好的在平地上行走的策略
 #如果需要训练好的话，这个层次的策略也应该训练好一点
@@ -133,7 +140,7 @@ class ActionsCfg:
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True)
     pre_trained_policy_action: mdp.PreTrainedPolicyActionCfg = mdp.PreTrainedPolicyActionCfg(
         asset_name="robot",
-        policy_path="/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt",
+        policy_path="/home/robot/work/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt",
         # policy_path=f"{ISAACLAB_NUCLEUS_DIR}/Policies/ANYmal-C/Blind/policy.pt",
         #This
         # policy_path=f"{ISAACLAB_NUCLEUS_DIR}/Policies/ANYmal-C/Blind/policy.pt",
@@ -256,6 +263,58 @@ class LocomotionNaviationRoughEnvCfg(ManagerBasedRLEnvCfg):
 
 
 class LocomotionNaviationRoughEnvCfg_Play(LocomotionNaviationRoughEnvCfg):
+    def __post_init__(self) -> None:
+        # post init of parent
+        super().__post_init__()
+
+        # make a smaller scene for play
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 4
+        # disable randomization for play
+        self.observations.policy.enable_corruption = False
+
+
+
+@configclass
+class StairClimbingRewardsCfg(RewardsCfg):
+    """Extended rewards for stair climbing tasks."""
+    # 额外的爬楼梯进展奖励
+    climb_progress = RewTerm(
+        func=mdp.climb_progress_reward,
+        weight=1.0,
+        params={"command_name": "pose_command", "max_forward_distance": 2.0, "sigma": 0.25},
+    )
+    # 保持平稳姿态的惩罚(增加权重)
+    flat_orientation = RewTerm(
+        func=mdp.flat_orientation_l2,
+        weight=-5.0,  # 从默认的 -2.5 增加到 -5.0,爬楼梯时姿态更重要
+        params={"asset_cfg": SceneEntityCfg("robot")},
+    )
+
+
+@configclass
+class LocomotionNaviationClimbEnvCfg(LocomotionNaviationRoughEnvCfg):
+    """
+    Configuration for the navigation environment specialized for stair climbing.
+    专门用来爬楼梯的动作训练导航,只使用正向和反向楼梯地形
+    """
+
+    def __post_init__(self):
+        """Post initialization to override terrain configuration."""
+        # Call parent post init first
+        super().__post_init__()
+
+        # Override terrain to use only stairs
+        # 覆盖地形配置,只使用楼梯
+        self.scene.terrain.terrain_generator = STAIR_TERRAINS_CFG
+        # 使用爬楼梯专用奖励配置
+        self.rewards = StairClimbingRewardsCfg()
+
+
+@configclass
+class LocomotionNaviationClimbEnvCfg_Play(LocomotionNaviationClimbEnvCfg):
+    """Play configuration for stair climbing environment."""
+
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()

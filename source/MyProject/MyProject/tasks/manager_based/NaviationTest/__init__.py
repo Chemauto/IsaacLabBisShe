@@ -60,3 +60,28 @@ gym.register(
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_nav_flat_ppo_cfg.yaml",
     },
 )
+
+####################################楼梯地形的设置#####################################
+
+gym.register(
+    id="Template-Naviation-Climb-Go2-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.naviation_rough_env_cfg:LocomotionNaviationClimbEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:NaviationRoughPPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_nav_rough_ppo_cfg.yaml",
+    },
+)
+
+
+gym.register(
+    id="Template-Naviation-Climb-Go2-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.naviation_rough_env_cfg:LocomotionNaviationClimbEnvCfg_Play",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:NaviationRoughPPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_nav_rough_ppo_cfg.yaml",
+    },
+)
