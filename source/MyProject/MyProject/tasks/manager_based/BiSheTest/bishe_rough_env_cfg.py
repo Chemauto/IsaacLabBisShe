@@ -88,8 +88,8 @@ class CommandsCfg:
         goal_height_offset=0.5,
         use_valid_target_patches=True,
         target_patch_name="target",
-        max_target_height_offset=0.20,
-        fallback_to_polar_sampling=True,
+        max_target_height_offset=0.6,
+        fallback_to_polar_sampling=False,
         log_patch_fallback=True,
         ranges=mdp.AdvancedPose2dCommandCfg.Ranges(
             heading=(-math.pi, math.pi),
@@ -223,7 +223,13 @@ class RewardsCfg:
     exploration_bias = RewTerm(
         func=mdp.velocity_towards_target_bias,
         weight=0.3,
-        params={"command_name": "target_pose", "disable_after_steps": 1_000_000},
+        params={
+            "command_name": "target_pose",
+            "activate_s": 1.0,
+            "distance_scale": 4.0,
+            "remove_threshold": 0.5,
+            "ema_alpha": 0.995,
+        },
     )
     stalling = RewTerm(
         func=mdp.stalling_penalty,
@@ -330,8 +336,6 @@ class BiSheGo2RoughEnvCfg_Play(BiSheGo2RoughEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        self.terrain_stage_mode = "phase4_obstacle"
-        self.curriculum.staged_terrain.params["mode"] = self.terrain_stage_mode
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
         self.scene.terrain.max_init_terrain_level = None

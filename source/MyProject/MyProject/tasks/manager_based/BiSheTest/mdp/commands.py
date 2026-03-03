@@ -42,14 +42,13 @@ class AdvancedPose2dCommand(UniformPose2dCommand):
             try:
                 self.terrain = env.scene["terrain"]
                 self.valid_targets = self.terrain.flat_patches.get(self.cfg.target_patch_name)
-                if self.valid_targets is None:
-                    logger.warning(
-                        "[BiSheTest] No flat patches found for key '%s'. Falling back to polar target sampling.",
-                        self.cfg.target_patch_name,
-                    )
-            except Exception:
-                logger.warning(
-                    "[BiSheTest] Terrain asset is unavailable in command term. Falling back to polar target sampling."
+            except Exception as exc:
+                raise RuntimeError(
+                    "[BiSheTest] Terrain asset is unavailable for target validity filtering."
+                ) from exc
+            if self.valid_targets is None:
+                raise RuntimeError(
+                    f"[BiSheTest] No flat patches found for key '{self.cfg.target_patch_name}'."
                 )
 
     def _to_env_ids_tensor(self, env_ids: Sequence[int]) -> torch.Tensor:
@@ -57,10 +56,10 @@ class AdvancedPose2dCommand(UniformPose2dCommand):
             return env_ids.to(device=self.device, dtype=torch.long)
         return torch.as_tensor(list(env_ids), device=self.device, dtype=torch.long)
 
-    def _sample_polar_targets(self, env_ids_t: torch.Tensor) -> torch.Tensor:
-        num_envs = env_ids_t.numel()
+    def _sample_polar_targets(self, centers: torch.Tensor) -> torch.Tensor:
+        num_envs = centers.shape[0]
         targets = torch.zeros(num_envs, 3, device=self.device)
-        targets[:, :] = self._env.scene.env_origins[env_ids_t]
+        targets[:, :] = centers
 
         angles = torch.empty(num_envs, device=self.device).uniform_(0.0, 2.0 * torch.pi)
         radii = torch.empty(num_envs, device=self.device).uniform_(*self.cfg.radius_range)
@@ -68,64 +67,74 @@ class AdvancedPose2dCommand(UniformPose2dCommand):
         targets[:, 1] += radii * torch.sin(angles)
         return targets
 
-    def _sample_patch_targets(self, env_ids_t: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        num_envs = env_ids_t.numel()
-        targets = torch.zeros(num_envs, 3, device=self.device)
-        has_valid = torch.zeros(num_envs, dtype=torch.bool, device=self.device)
+    def _get_candidate_targets(self, env_ids_t: torch.Tensor) -> torch.Tensor | None:
         if self.valid_targets is None or self.terrain is None:
-            return targets, has_valid
-
+            return None
         terrain_levels = self.terrain.terrain_levels[env_ids_t]
         terrain_types = self.terrain.terrain_types[env_ids_t]
-        env_origins = self._env.scene.env_origins[env_ids_t]
-        candidate_targets = self.valid_targets[terrain_levels, terrain_types]
-
-        distances = torch.norm(candidate_targets[:, :, :2] - env_origins[:, None, :2], dim=-1)
-        valid_mask = (distances >= self.cfg.radius_range[0]) & (distances <= self.cfg.radius_range[1])
-        if self.cfg.max_target_height_offset is not None:
-            height_delta = torch.abs(candidate_targets[:, :, 2] - env_origins[:, None, 2])
-            valid_mask &= height_delta <= self.cfg.max_target_height_offset
-
-        valid_counts = valid_mask.sum(dim=1)
-        has_valid = valid_counts > 0
-
-        valid_env_local_ids = torch.nonzero(has_valid, as_tuple=False).squeeze(-1)
-        for local_id in valid_env_local_ids.tolist():
-            patch_ids = torch.nonzero(valid_mask[local_id], as_tuple=False).squeeze(-1)
-            sampled_idx = patch_ids[torch.randint(0, patch_ids.numel(), (1,), device=self.device)[0]]
-            targets[local_id] = candidate_targets[local_id, sampled_idx]
-
-        return targets, has_valid
+        return self.valid_targets[terrain_levels, terrain_types]
 
     def _resample_command(self, env_ids: Sequence[int]):
         env_ids_t = self._to_env_ids_tensor(env_ids)
         if env_ids_t.numel() == 0:
             return
 
-        polar_targets = self._sample_polar_targets(env_ids_t)
-        sampled_targets = polar_targets
+        # Paper: sample in polar coordinates around initial robot position.
+        centers = self.robot.data.root_pos_w[env_ids_t].clone()
+        sampled_targets = torch.zeros(env_ids_t.numel(), 3, device=self.device)
+        unresolved = torch.arange(env_ids_t.numel(), device=self.device, dtype=torch.long)
+        candidate_targets = self._get_candidate_targets(env_ids_t) if self.cfg.use_valid_target_patches else None
 
-        if self.cfg.use_valid_target_patches:
-            patch_targets, has_valid = self._sample_patch_targets(env_ids_t)
-            if has_valid.any():
-                sampled_targets[has_valid] = patch_targets[has_valid]
+        attempts = 0
+        while unresolved.numel() > 0 and attempts < self.cfg.max_sampling_attempts:
+            attempts += 1
+            local_centers = centers[unresolved]
+            local_samples = self._sample_polar_targets(local_centers)
 
-            missing_count = int((~has_valid).sum().item())
-            if missing_count > 0 and not self.cfg.fallback_to_polar_sampling:
-                sampled_targets[~has_valid] = self._env.scene.env_origins[env_ids_t][~has_valid]
-            if (
-                missing_count > 0
-                and self.cfg.log_patch_fallback
-                and (self._env.common_step_counter - self._last_fallback_log_step) >= self._fallback_log_interval
-            ):
-                logger.warning(
-                    "[BiSheTest] Target patch filtering fallback for %d envs at step %d.",
-                    missing_count,
-                    int(self._env.common_step_counter),
+            if candidate_targets is None:
+                sampled_targets[unresolved] = local_samples
+                unresolved = unresolved[:0]
+                break
+
+            local_candidates = candidate_targets[unresolved]
+            dist_xy = torch.norm(local_candidates[:, :, :2] - local_samples[:, None, :2], dim=-1)
+            min_dist, min_ids = torch.min(dist_xy, dim=1)
+            nearest_z = local_candidates[torch.arange(local_candidates.shape[0], device=self.device), min_ids, 2]
+
+            is_valid = min_dist <= self.cfg.patch_match_tolerance
+            if self.cfg.max_target_height_offset is not None:
+                is_valid &= torch.abs(nearest_z - local_centers[:, 2]) <= self.cfg.max_target_height_offset
+
+            if is_valid.any():
+                valid_local = unresolved[is_valid]
+                sampled_targets[valid_local, :2] = local_samples[is_valid, :2]
+                sampled_targets[valid_local, 2] = nearest_z[is_valid]
+
+            unresolved = unresolved[~is_valid]
+
+        if unresolved.numel() > 0:
+            missing_count = int(unresolved.numel())
+            if self.cfg.fallback_to_polar_sampling:
+                local_centers = centers[unresolved]
+                local_samples = self._sample_polar_targets(local_centers)
+                sampled_targets[unresolved] = local_samples
+                if (
+                    self.cfg.log_patch_fallback
+                    and (self._env.common_step_counter - self._last_fallback_log_step) >= self._fallback_log_interval
+                ):
+                    logger.warning(
+                        "[BiSheTest] Target patch filtering fallback for %d envs at step %d.",
+                        missing_count,
+                        int(self._env.common_step_counter),
+                    )
+                    self._last_fallback_log_step = int(self._env.common_step_counter)
+            else:
+                raise RuntimeError(
+                    "[BiSheTest] Failed to sample valid targets for "
+                    f"{missing_count} envs after {self.cfg.max_sampling_attempts} attempts. "
+                    "Adjust terrain size/patch settings for radius_range=(1,5)."
                 )
-                self._last_fallback_log_step = int(self._env.common_step_counter)
 
-        sampled_targets[:, 2] += self.robot.data.default_root_state[env_ids_t, 2]
         sampled_targets[:, 2] += self.cfg.goal_height_offset
         self.pos_command_w[env_ids_t] = sampled_targets
 

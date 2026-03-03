@@ -1,5 +1,11 @@
 # BiShe 高级技能复现 Todo（中文）
 
+## 重要说明
+
+- 当前代码已按论文关键机制改动（目标采样/有效性过滤/末端奖励/rbias移除条件）。
+- 旧模型（改动前训练出的 checkpoint）与新任务分布不一致，不建议继续续训。
+- 建议从头训练，或至少从较早稳定 checkpoint 小步重训。
+
 ## 0. 进入训练脚本目录（必须）
 
 ```bash
@@ -21,6 +27,17 @@ ls -lh "$RUN_DIR"/model_*.pt | tail
 
 ```bash
 CKPT=model_3300.pt
+```
+
+## 1.1 从零重训（推荐，论文对齐改动后）
+
+```bash
+python train.py \
+  --task Template-BiShe-Go2-Rough-v0 \
+  --headless \
+  --num_envs 4096 \
+  --max_iterations 2000 \
+  --run_name paper_full_retrain
 ```
 
 ## 2. 先做 Gap 专项续训（关键）
@@ -78,7 +95,10 @@ python train.py \
 ## 5. 回放验证（看是否还会“静止不动”）
 
 ```bash
-python play.py --task Template-BiShe-Go2-Rough-Play-v0
+# 建议回放与当前阶段一致的任务，而不是统一用 Rough-Play
+python play.py --task Template-BiShe-Go2-Rough-Phase2-Gap-v0 --num_envs 50 --checkpoint <phase2_model.pt>
+python play.py --task Template-BiShe-Go2-Rough-Phase3-Pit-v0 --num_envs 50 --checkpoint <phase3_model.pt>
+python play.py --task Template-BiShe-Go2-Rough-Phase4-Obstacle-v0 --num_envs 50 --checkpoint <phase4_model.pt>
 ```
 
 ## 6. 训练时重点观察指标

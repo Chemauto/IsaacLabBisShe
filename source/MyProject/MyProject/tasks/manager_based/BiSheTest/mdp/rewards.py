@@ -15,6 +15,20 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+def _final_position_task_reward_raw(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    activate_s: float,
+    distance_scale: float,
+) -> torch.Tensor:
+    command = env.command_manager.get_command(command_name)
+    distance = torch.norm(command[:, :2], dim=1)
+    remaining_time_s = (env.max_episode_length - env.episode_length_buf).float() * env.step_dt
+    active = remaining_time_s <= activate_s
+    # Paper Eq.(1): (1 / Tr) * 1 / (1 + k * ||x_b - x_b*||^2), active only in final Tr seconds.
+    return (1.0 / activate_s) * (1.0 / (1.0 + distance_scale * torch.square(distance))) * active.float()
+
+
 def final_position_reward(
     env: ManagerBasedRLEnv,
     command_name: str,
@@ -22,22 +36,33 @@ def final_position_reward(
     distance_scale: float = 4.0,
 ) -> torch.Tensor:
     """Reward only near episode end, based on target distance in base frame."""
-    command = env.command_manager.get_command(command_name)
-    distance = torch.norm(command[:, :2], dim=1)
-    remaining_time_s = (env.max_episode_length - env.episode_length_buf).float() * env.step_dt
-    active = remaining_time_s <= activate_s
-    reward = 1.0 / (1.0 + distance_scale * torch.square(distance))
-    return reward * active.float()
+    return _final_position_task_reward_raw(env, command_name, activate_s, distance_scale)
 
 
 def velocity_towards_target_bias(
     env: ManagerBasedRLEnv,
     command_name: str,
-    disable_after_steps: int = 1_000_000,
+    activate_s: float = 1.0,
+    distance_scale: float = 4.0,
+    remove_threshold: float = 0.5,
+    ema_alpha: float = 0.995,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """Early-stage exploration reward: velocity projection towards target."""
-    if env.common_step_counter >= disable_after_steps:
+    """Early-stage exploration reward: velocity projection towards target.
+
+    Paper Eq.(3), removed when task reward reaches 50% of its maximum.
+    """
+    if getattr(env, "_bishe_disable_exploration_bias", False):
+        return torch.zeros(env.num_envs, device=env.device)
+
+    task_reward_mean = torch.mean(
+        _final_position_task_reward_raw(env, command_name, activate_s=activate_s, distance_scale=distance_scale)
+    ).item()
+    task_reward_ema = float(getattr(env, "_bishe_task_reward_ema", 0.0))
+    task_reward_ema = ema_alpha * task_reward_ema + (1.0 - ema_alpha) * task_reward_mean
+    env._bishe_task_reward_ema = task_reward_ema
+    if task_reward_ema >= remove_threshold:
+        env._bishe_disable_exploration_bias = True
         return torch.zeros(env.num_envs, device=env.device)
 
     asset: RigidObject = env.scene[asset_cfg.name]
