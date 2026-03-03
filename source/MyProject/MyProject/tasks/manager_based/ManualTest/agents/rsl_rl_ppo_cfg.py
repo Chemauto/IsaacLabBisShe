@@ -37,10 +37,3 @@ class ManualRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         max_grad_norm=1.0,
     )
 
-@configclass
-class ManualFlatPPORunnerCfg(ManualRoughPPORunnerCfg):
-    def __post_init__(self):
-        super().__post_init__()
-
-        self.experiment_name = "naviation_flat"
-

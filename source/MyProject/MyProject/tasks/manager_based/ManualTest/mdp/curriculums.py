@@ -59,158 +59,131 @@ def pit_difficulty_curriculum(
     env: ManagerBasedRLEnv,
     env_ids: Sequence[int],
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    min_episode_length: int = 500,
-    difficulty_window: int = 100,
 ) -> torch.Tensor:
-    """Custom curriculum term for pit terrain based on robot performance and training progress.
+    """基于训练进度的坑洞地形课程学习（纯进度驱动，无性能反馈）
 
-    This curriculum adjusts terrain difficulty based on:
-    1. Training progress (total number of iterations)
-    2. Robot performance (episode success rate and average velocity)
-    3. Smooth transitions between difficulty levels
-
-    The difficulty progression:
-    - Stage 1 (0-25% training): 70% easy pits, 30% medium pits
-    - Stage 2 (25-50% training): 40% easy pits, 50% medium pits, 10% hard pits
-    - Stage 3 (50-75% training): 20% easy pits, 50% medium pits, 30% hard pits
-    - Stage 4 (75-100% training): 10% easy pits, 40% medium pits, 50% hard pits
+    难度递进：
+    - Stage 1 (0-25%): Level 0-2, 只用简单坑 (10-20cm)
+    - Stage 2 (25-50%): Level 1-4, 逐渐引入中等坑 (20-27cm)
+    - Stage 3 (50-75%): Level 3-6, 主要中等坑 (27-35cm)
+    - Stage 4 (75-100%): Level 5-8, 挑战深坑 (35-50cm)
 
     Args:
-        env: The learning environment.
-        env_ids: The environment IDs to update.
-        asset_cfg: The asset configuration.
-        min_episode_length: Minimum episode length before considering advancement.
-        difficulty_window: Window size for averaging performance metrics.
+        env: 学习环境
+        env_ids: 环境ID
+        asset_cfg: 机器人配置
 
     Returns:
-        The current difficulty level (0.0 to 1.0).
+        当前难度级别 (0.0 到 1.0)
     """
-    # Extract used quantities
-    asset: Articulation = env.scene[asset_cfg.name]
+    # 获取地形对象
     terrain: TerrainImporter = env.scene.terrain
 
-    # Get training progress (normalized iteration count)
+    # 步骤1: 获取训练进度 (0% → 100%)
     total_iterations = getattr(env, "common_step_counter", 0)
-    max_iterations = 15000  # Adjust based on your training plan
+    max_iterations = 15000  # 根据训练计划调整
     training_progress = min(total_iterations / max_iterations, 1.0)
 
-    # Determine difficulty stage based on training progress
-    if training_progress < 0.25:
+    # 步骤2: 根据训练进度确定目标难度级别
+    if training_progress < 0.25:      # 前25%训练
         target_level_min = 0
         target_level_max = 2
-    elif training_progress < 0.5:
+    elif training_progress < 0.5:     # 25%-50%训练
         target_level_min = 1
         target_level_max = 4
-    elif training_progress < 0.75:
+    elif training_progress < 0.75:    # 50%-75%训练
         target_level_min = 3
         target_level_max = 6
-    else:
+    else:                             # 75%-100%训练
         target_level_min = 5
         target_level_max = 8
 
-    # Get current terrain levels
+    # 计算目标级别（范围的中点）
+    target_level = (target_level_min + target_level_max) / 2.0
+
+    # 获取当前地形级别
     current_levels = terrain.terrain_levels[env_ids]
 
-    # Check robot performance for additional adjustments
-    # Compute average velocity magnitude
-    if hasattr(asset, "data") and hasattr(asset.data, "root_vel_w"):
-        vel_mag = torch.norm(asset.data.root_vel_w[env_ids, :2], dim=1)
-        avg_vel = torch.mean(vel_mag)
-
-        # Robots performing well can progress faster
-        performance_multiplier = 1.0
-        avg_vel = avg_vel.item() if torch.is_tensor(avg_vel) else avg_vel
-        if avg_vel > 0.8:  # Robot is moving well
-            performance_multiplier = 1.2
-        elif avg_vel < 0.3:  # Robot is struggling
-            performance_multiplier = 0.8
-    else:
-        performance_multiplier = 1.0
-
-    # Compute target level with performance adjustment
-    target_level = (target_level_min + target_level_max) / 2 * performance_multiplier
-    target_level = min(max(target_level, 0), terrain.cfg.max_init_terrain_level)
-
-    # Smooth transition: only move a small step toward target
+    # 步骤3: 平滑过渡到目标级别
     level_diff = target_level - current_levels.float()
-    max_step = 0.1  # Maximum level change per update
+    max_step = 0.05  # 每次最多变化0.05个级别（更平滑）
     level_diff = torch.clamp(level_diff, -max_step, max_step)
 
-    # Determine which environments should move up or down
-    move_up = level_diff > 0.02
-    move_down = level_diff < -0.02
+    # 确定哪些环境需要升级或降级
+    move_up = level_diff > 0.01  # 大于0.01才升级
+    move_down = level_diff < -0.01  # 小于-0.01才降级
 
-    # Update terrain levels
+    # 更新地形级别
     if torch.any(move_up) or torch.any(move_down):
         terrain.update_env_origins(env_ids, move_up, move_down)
 
-    # Return normalized difficulty (0.0 to 1.0)
+    # 返回归一化的难度 (0.0 到 1.0)
     max_possible_level = terrain.cfg.max_init_terrain_level
     current_difficulty = torch.mean(current_levels.float()) / max(max_possible_level, 1)
 
     return current_difficulty
 
 
-def adaptive_pit_curriculum(
-    env: ManagerBasedRLEnv,
-    env_ids: Sequence[int],
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    command_threshold: float = 0.5,
-) -> torch.Tensor:
-    """Adaptive curriculum that adjusts difficulty based on command tracking performance.
-
-    This term is specifically designed for navigation tasks where the robot must reach
-    target positions. It increases difficulty when the robot successfully reaches targets
-    and decreases difficulty when it fails consistently.
-
-    Args:
-        env: The learning environment.
-        env_ids: The environment IDs to update.
-        asset_cfg: The asset configuration.
-        command_threshold: Velocity threshold for considering movement as successful.
-
-    Returns:
-        The mean terrain level for the given environment ids.
-    """
-    # Extract used quantities
-    asset: Articulation = env.scene[asset_cfg.name]
-    terrain: TerrainImporter = env.scene.terrain
-
-    # Get position command (for navigation tasks)
-    try:
-        command = env.command_manager.get_command("pose_command")
-        command_pos = command[env_ids, :2]  # x, y position targets
-    except (KeyError, AttributeError):
-        # Fallback to velocity command
-        command = env.command_manager.get_command("base_velocity")
-        command_pos = command[env_ids, :2]
-
-    # Compute current position relative to environment origin
-    current_pos = asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2]
-
-    # Compute distance to command
-    distance_to_command = torch.norm(current_pos - command_pos, dim=1)
-
-    # Robots that are close to their target (success) move to harder terrains
-    success_threshold = 0.5  # meters
-    move_up = distance_to_command < success_threshold
-
-    # Robots that are far from target and not moving (failure) move to easier terrains
-    failure_threshold = 2.0  # meters
-    move_down = distance_to_command > failure_threshold
-
-    # Get current velocity to detect stuck robots
-    if hasattr(asset, "data") and hasattr(asset.data, "root_vel_w"):
-        vel_mag = torch.norm(asset.data.root_vel_w[env_ids, :2], dim=1)
-        is_stuck = vel_mag < 0.1
-        move_down = move_down & is_stuck
-
-    # Ensure no environment moves both up and down
-    move_down = move_down & ~move_up
-
-    # Update terrain levels
-    if torch.any(move_up) or torch.any(move_down):
-        terrain.update_env_origins(env_ids, move_up, move_down)
-
-    # Return the mean terrain level
-    return torch.mean(terrain.terrain_levels.float())
+# def adaptive_pit_curriculum(
+#     env: ManagerBasedRLEnv,
+#     env_ids: Sequence[int],
+#     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+#     command_threshold: float = 0.5,
+# ) -> torch.Tensor:
+#     """Adaptive curriculum that adjusts difficulty based on command tracking performance.
+#
+#     This term is specifically designed for navigation tasks where the robot must reach
+#     target positions. It increases difficulty when the robot successfully reaches targets
+#     and decreases difficulty when it fails consistently.
+#
+#     Args:
+#         env: The learning environment.
+#         env_ids: The environment IDs to update.
+#         asset_cfg: The asset configuration.
+#         command_threshold: Velocity threshold for considering movement as successful.
+#
+#     Returns:
+#         The mean terrain level for the given environment ids.
+#     """
+#     # Extract used quantities
+#     asset: Articulation = env.scene[asset_cfg.name]
+#     terrain: TerrainImporter = env.scene.terrain
+#
+#     # Get position command (for navigation tasks)
+#     try:
+#         command = env.command_manager.get_command("pose_command")
+#         command_pos = command[env_ids, :2]  # x, y position targets
+#     except (KeyError, AttributeError):
+#         # Fallback to velocity command
+#         command = env.command_manager.get_command("base_velocity")
+#         command_pos = command[env_ids, :2]
+#
+#     # Compute current position relative to environment origin
+#     current_pos = asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2]
+#
+#     # Compute distance to command
+#     distance_to_command = torch.norm(current_pos - command_pos, dim=1)
+#
+#     # Robots that are close to their target (success) move to harder terrains
+#     success_threshold = 0.5  # meters
+#     move_up = distance_to_command < success_threshold
+#
+#     # Robots that are far from target and not moving (failure) move to easier terrains
+#     failure_threshold = 2.0  # meters
+#     move_down = distance_to_command > failure_threshold
+#
+#     # Get current velocity to detect stuck robots
+#     if hasattr(asset, "data") and hasattr(asset.data, "root_vel_w"):
+#         vel_mag = torch.norm(asset.data.root_vel_w[env_ids, :2], dim=1)
+#         is_stuck = vel_mag < 0.1
+#         move_down = move_down & is_stuck
+#
+#     # Ensure no environment moves both up and down
+#     move_down = move_down & ~move_up
+#
+#     # Update terrain levels
+#     if torch.any(move_up) or torch.any(move_down):
+#         terrain.update_env_origins(env_ids, move_up, move_down)
+#
+#     # Return the mean terrain level
+#     return torch.mean(terrain.terrain_levels.float())

@@ -51,7 +51,6 @@ from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import (
 from MyProject.tasks.manager_based.ManualTest.config.terrain import (
     STAIR_TERRAINS_CFG,
     MIXED_PIT_TERRAINS_CFG,
-    LAYERED_PIT_TERRAINS_CFG,
 )
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughEnvCfg()
 #分层的强化学习的方式，低层的强化学习为之前已经训练好的在平地上行走的策略
@@ -67,7 +66,7 @@ class MySceneCfg(WalkMySceneCfg):
         prim_path="/World/ground",
         terrain_type="generator",
         terrain_generator=MIXED_PIT_TERRAINS_CFG,
-        max_init_terrain_level=5,  # 课程学习：从简单到困难
+        max_init_terrain_level=5,  # 
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -83,31 +82,6 @@ class MySceneCfg(WalkMySceneCfg):
         debug_vis=False,
     )
 
-
-@configclass
-class LayeredPitSceneCfg(WalkMySceneCfg):
-    """分层坑洞地形场景配置 - 配合自定义 curriculum 实现真正的课程学习"""
-
-    # 使用分层坑洞地形（6个难度级别，按比例分布）
-    terrain = WalkMySceneCfg.terrain.__class__(
-        prim_path="/World/ground",
-        terrain_type="generator",
-        terrain_generator=LAYERED_PIT_TERRAINS_CFG,
-        max_init_terrain_level=10,  # 支持10个难度级别（0-9）
-        collision_group=-1,
-        physics_material=sim_utils.RigidBodyMaterialCfg(
-            friction_combine_mode="multiply",
-            restitution_combine_mode="multiply",
-            static_friction=1.0,
-            dynamic_friction=1.0,
-        ),
-        visual_material=sim_utils.MdlFileCfg(
-            mdl_path=f"{ISAACLAB_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
-            project_uvw=True,
-            texture_scale=(0.25, 0.25),
-        ),
-        debug_vis=False,
-    )
 
 
 ##
@@ -240,7 +214,7 @@ class LocomotionManualRoughEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the navigation environment with adaptive curriculum learning."""
 
     # environment settings
-    scene: LayeredPitSceneCfg = LayeredPitSceneCfg(num_envs=4096, env_spacing=2.5)
+    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     events: EventCfg = EventCfg()
@@ -248,7 +222,6 @@ class LocomotionManualRoughEnvCfg(ManagerBasedRLEnvCfg):
     commands: CommandsCfg = CommandsCfg()
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
-    curriculum: AdaptiveCurriculumCfg = AdaptiveCurriculumCfg()  # 使用自适应课程学习
 
     def __post_init__(self):
         """Post initialization."""
