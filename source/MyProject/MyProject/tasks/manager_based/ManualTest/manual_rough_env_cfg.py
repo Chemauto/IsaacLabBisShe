@@ -43,24 +43,31 @@ from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 # Scene definition
 ##
 
-import MyProject.tasks.manager_based.NaviationTest.mdp as mdp
-from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo2WalkRoughEnvCfg
-from MyProject.tasks.manager_based.NaviationTest.config.terrain import STAIR_TERRAINS_CFG
+import MyProject.tasks.manager_based.ManualTest.mdp as mdp
+from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import (
+    VelocityGo2WalkRoughEnvCfg,
+    MySceneCfg as WalkMySceneCfg,
+)
+from MyProject.tasks.manager_based.ManualTest.config.terrain import (
+    STAIR_TERRAINS_CFG,
+    MIXED_PIT_TERRAINS_CFG,
+    LAYERED_PIT_TERRAINS_CFG,
+)
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughEnvCfg()
 #分层的强化学习的方式，低层的强化学习为之前已经训练好的在平地上行走的策略
 #如果需要训练好的话，这个层次的策略也应该训练好一点
 
 
 @configclass
-class MySceneCfg(InteractiveSceneCfg):
-    """Configuration for the terrain scene with a legged robot."""
+class MySceneCfg(WalkMySceneCfg):
+    """扩展低层环境的场景配置，使用混合坑洞地形，支持课程学习"""
 
-    # ground terrain
-    terrain = TerrainImporterCfg(
+    # 覆盖地形配置为混合坑洞（含三种难度：30%简单 + 50%中等 + 20%困难）
+    terrain = WalkMySceneCfg.terrain.__class__(
         prim_path="/World/ground",
         terrain_type="generator",
-        terrain_generator=ROUGH_TERRAINS_CFG,
-        max_init_terrain_level=5,
+        terrain_generator=MIXED_PIT_TERRAINS_CFG,
+        max_init_terrain_level=5,  # 课程学习：从简单到困难
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -75,43 +82,31 @@ class MySceneCfg(InteractiveSceneCfg):
         ),
         debug_vis=False,
     )
-    # 平台
-    platform = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Platform",
-        spawn=sim_utils.CuboidCfg(
-            size=(1.0, 1.0, 0.26),
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
-            mass_props=sim_utils.MassPropertiesCfg(mass=0.0),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=(0.0, 1.0, 0.0),  # 绿色平台
-                metallic=0.3,
-                roughness=0.5,
-            ),
+
+
+@configclass
+class LayeredPitSceneCfg(WalkMySceneCfg):
+    """分层坑洞地形场景配置 - 配合自定义 curriculum 实现真正的课程学习"""
+
+    # 使用分层坑洞地形（6个难度级别，按比例分布）
+    terrain = WalkMySceneCfg.terrain.__class__(
+        prim_path="/World/ground",
+        terrain_type="generator",
+        terrain_generator=LAYERED_PIT_TERRAINS_CFG,
+        max_init_terrain_level=10,  # 支持10个难度级别（0-9）
+        collision_group=-1,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(
-            pos=(2.0, 0.0, 0.13),
+        visual_material=sim_utils.MdlFileCfg(
+            mdl_path=f"{ISAACLAB_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
+            project_uvw=True,
+            texture_scale=(0.25, 0.25),
         ),
-    )
-    # robots
-    robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-    # sensors
-    height_scanner = RayCasterCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/base",
-        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
-        ray_alignment="yaw",
-        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
         debug_vis=False,
-        mesh_prim_paths=["/World/ground"],
-    )
-    contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
-    # lights
-    sky_light = AssetBaseCfg(
-        prim_path="/World/skyLight",
-        spawn=sim_utils.DomeLightCfg(
-            intensity=750.0,
-            texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
-        ),
     )
 
 
@@ -228,16 +223,24 @@ class CurriculumCfg:
     terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
 
 
+@configclass
+class AdaptiveCurriculumCfg:
+    """Adaptive curriculum terms for pit terrain training."""
+
+    # 使用基于训练进度和机器人性能的自适应课程学习
+    pit_difficulty = CurrTerm(func=mdp.pit_difficulty_curriculum)
+
+
 ##
 # Environment configuration
 ##
 
 @configclass
-class LocomotionNaviationRoughEnvCfg(ManagerBasedRLEnvCfg):
-    """Configuration for the navigation environment."""
+class LocomotionManualRoughEnvCfg(ManagerBasedRLEnvCfg):
+    """Configuration for the navigation environment with adaptive curriculum learning."""
 
     # environment settings
-    scene: SceneEntityCfg = LOW_LEVEL_ENV_CFG.scene
+    scene: LayeredPitSceneCfg = LayeredPitSceneCfg(num_envs=4096, env_spacing=2.5)
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     events: EventCfg = EventCfg()
@@ -245,6 +248,7 @@ class LocomotionNaviationRoughEnvCfg(ManagerBasedRLEnvCfg):
     commands: CommandsCfg = CommandsCfg()
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
+    curriculum: AdaptiveCurriculumCfg = AdaptiveCurriculumCfg()  # 使用自适应课程学习
 
     def __post_init__(self):
         """Post initialization."""
@@ -262,7 +266,7 @@ class LocomotionNaviationRoughEnvCfg(ManagerBasedRLEnvCfg):
             self.scene.contact_forces.update_period = self.sim.dt
 
 
-class LocomotionNaviationRoughEnvCfg_Play(LocomotionNaviationRoughEnvCfg):
+class LocomotionManualRoughEnvCfg_Play(LocomotionManualRoughEnvCfg):
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()
@@ -292,36 +296,3 @@ class StairClimbingRewardsCfg(RewardsCfg):
     # )
 
 
-@configclass
-class LocomotionNaviationClimbEnvCfg(LocomotionNaviationRoughEnvCfg):
-    """
-    Configuration for the navigation environment specialized for stair climbing.
-    专门用来爬楼梯的动作训练导航,只使用正向和反向楼梯地形
-    """
-
-    def __post_init__(self):
-        """Post initialization to override terrain configuration."""
-        # Call parent post init first
-        super().__post_init__()
-
-        # Override terrain to use only stairs
-        # 覆盖地形配置,只使用楼梯
-        self.scene.terrain.terrain_generator = STAIR_TERRAINS_CFG
-        # 使用爬楼梯专用奖励配置
-        # self.rewards = StairClimbingRewardsCfg()
-        # 这个攀爬楼梯的奖励有点小问题
-
-
-@configclass
-class LocomotionNaviationClimbEnvCfg_Play(LocomotionNaviationClimbEnvCfg):
-    """Play configuration for stair climbing environment."""
-
-    def __post_init__(self) -> None:
-        # post init of parent
-        super().__post_init__()
-
-        # make a smaller scene for play
-        self.scene.num_envs = 50
-        self.scene.env_spacing = 4
-        # disable randomization for play
-        self.observations.policy.enable_corruption = False
