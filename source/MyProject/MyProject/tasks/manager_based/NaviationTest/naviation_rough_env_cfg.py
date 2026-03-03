@@ -325,3 +325,9 @@ class LocomotionNaviationClimbEnvCfg_Play(LocomotionNaviationClimbEnvCfg):
         self.scene.env_spacing = 4
         # disable randomization for play
         self.observations.policy.enable_corruption = False
+
+        # Set fixed target position for testing (adjust these values as needed)
+        # Setting min==max gives a fixed command
+        self.commands.pose_command.ranges.pos_x = (3.0, 3.0)  # Fixed target x = 2.0m
+        self.commands.pose_command.ranges.pos_y = (0.0, 0.0)  # Fixed target y = 0.0m
+        self.commands.pose_command.ranges.heading = (0.0, 0.0)  # Fixed heading = 0 rad
