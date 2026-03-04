@@ -81,6 +81,16 @@ class MySceneCfg(WalkMySceneCfg):
         ),
         debug_vis=False,
     )
+    # sensors
+    height_scanner = RayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/base",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
+    contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
 
 
 
@@ -133,7 +143,12 @@ class ObservationsCfg:
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
         projected_gravity = ObsTerm(func=mdp.projected_gravity)
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
-
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            clip=(-1.0, 1.0),
+        )
+        actions = ObsTerm(func=mdp.last_action)
     # observation groups
     policy: PolicyCfg = PolicyCfg()
 
