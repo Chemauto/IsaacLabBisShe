@@ -131,33 +131,58 @@ def pit_terrain_by_iteration(
     return torch.tensor(float(stage), device=env.device)
 
 
-def terrain_levels_vel(
-    env: ManagerBasedRLEnv, env_ids: Sequence[int], asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
-) -> torch.Tensor:
-    """Curriculum based on the distance the robot walked when commanded to move at a desired velocity.
 
-    This term is used to increase the difficulty of the terrain when the robot walks far enough and decrease the
-    difficulty when the robot walks less than half of the distance required by the commanded velocity.
 
-    .. note::
-        It is only possible to use this term with the terrain type ``generator``. For further information
-        on different terrain types, check the :class:`isaaclab.terrains.TerrainImporter` class.
-
-    Returns:
-        The mean terrain level for the given environment ids.
-    """
-    # extract the used quantities (to enable type-hinting)
-    asset: Articulation = env.scene[asset_cfg.name]
-    terrain: TerrainImporter = env.scene.terrain
-    command = env.command_manager.get_command("base_velocity")
-    # compute the distance the robot walked
-    distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)
-    # robots that walked far enough progress to harder terrains
-    move_up = distance > terrain.cfg.terrain_generator.size[0] / 2
-    # robots that walked less than half of their required distance go to simpler terrains
-    move_down = distance < torch.norm(command[env_ids, :2], dim=1) * env.max_episode_length_s * 0.5
-    move_down *= ~move_up
-    # update terrain levels
-    terrain.update_env_origins(env_ids, move_up, move_down)
-    # return the mean terrain level
-    return torch.mean(terrain.terrain_levels.float())
+# -----------------------------------------------------------------------------
+# 课程学习逻辑总说明（通用模板）
+# -----------------------------------------------------------------------------
+# 本文件目前包含两类课程策略：
+# 1) pit_terrain_by_iteration:
+#    - 纯“训练进度驱动”（只看迭代轮次，不看任务成功率）。
+#    - 通过 iter_stage_boundaries 划分阶段。
+#    - 每个阶段用 stage_weights 控制各子地形（easy/medium/hard）的采样概率。
+#    - 每个阶段用 stage_max_level_ratio 限制可用 terrain_level 上限，实现“先易后难”。
+#
+# 2) terrain_levels_vel:
+#    - “性能驱动”（看机器人是否走得足够远）。
+#    - 走得好则升级地形，走得差则降级地形。
+#
+# 在 ManualTest 中，当前激活的是 pit_terrain_by_iteration（见 manual_rough_env_cfg.py 的 CurriculumCfg），
+# terrain_levels_vel 作为备选策略保留，默认不接入。
+#
+# --------------------------- 如何迁移到其他地形 -------------------------------
+# 若你要做 gap / obstacle / 混合复杂地形，可复用 pit_terrain_by_iteration 的框架：
+#
+# Step 1: 在 terrain 配置里定义子地形 key
+#   例如: ("gap_easy", "gap_hard") 或 ("obs_low", "obs_mid", "obs_high")。
+#
+# Step 2: 在课程函数中替换 terrain_keys
+#   terrain_keys = ("easy_pit", "medium_pit", "hard_pit")  -> 你的 key 列表。
+#
+# Step 3: 调整 stage_weights
+#   - 每个阶段一个 tuple，长度等于 terrain_keys 数量；
+#   - 数值越大，该子地形被采样概率越高；
+#   - 建议早期“简单 key”权重大，后期“困难 key”权重大。
+#
+# Step 4: 调整 iter_stage_boundaries
+#   - 按总训练迭代数划分阶段；
+#   - 例如总 2000 iter，可设 (0, 500, 1200, 1700)。
+#
+# Step 5: 校准 steps_per_iteration
+#   - 该值应与 PPO 配置 num_steps_per_env 对齐；
+#   - 作用是把 common_step_counter（全局 step）换算为迭代轮次。
+#
+# Step 6: 调整 stage_max_level_ratio
+#   - 控制每阶段最高 terrain_level；
+#   - 典型设置为递增，如 (0.3, 0.5, 0.7, 1.0)。
+#
+# Step 7: 在 env cfg 中挂载 CurrTerm
+#   - CurriculumCfg 内新增对应 CurrTerm；
+#   - 环境类中确保 curriculum: CurriculumCfg = CurriculumCfg()；
+#   - terrain_generator.curriculum = True。
+#
+# ----------------------------- 调参经验建议 -----------------------------------
+# 1. 如果训练前期频繁摔倒：提高简单地形权重，降低 stage_max_level_ratio。
+# 2. 如果中后期收敛太慢：提前提高困难地形权重，或缩短阶段边界间距。
+# 3. 如果训练波动大：减少相邻阶段权重差，避免难度突变。
+# 4. 若要“只按进度”课程：不要在同一任务同时启用性能驱动升级/降级项，避免策略冲突。
