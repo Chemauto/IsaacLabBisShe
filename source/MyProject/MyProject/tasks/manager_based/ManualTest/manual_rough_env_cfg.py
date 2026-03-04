@@ -119,7 +119,7 @@ class ActionsCfg:
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True)
     pre_trained_policy_action: mdp.PreTrainedPolicyActionCfg = mdp.PreTrainedPolicyActionCfg(
         asset_name="robot",
-        policy_path="/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt",
+        policy_path="/home/robot/work/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt",
 
         #在模型加载着一块，IsaacLab中的自带的RSL—RL训练代码的模型是checkpoint文件
         #而这个给出的示例代码则是TorchScript文件
