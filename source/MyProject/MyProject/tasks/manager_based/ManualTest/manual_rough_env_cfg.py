@@ -61,7 +61,7 @@ LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughEnvCfg()
 class MySceneCfg(WalkMySceneCfg):
     """扩展低层环境的场景配置，使用混合坑洞地形，支持课程学习"""
 
-    # 覆盖地形配置为混合坑洞（含三种难度：30%简单 + 50%中等 + 20%困难）
+    # 覆盖地形配置为混合坑洞（含三种难度：60%简单 + 30%中等 + 10%困难）
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
@@ -120,9 +120,7 @@ class ActionsCfg:
     pre_trained_policy_action: mdp.PreTrainedPolicyActionCfg = mdp.PreTrainedPolicyActionCfg(
         asset_name="robot",
         policy_path="/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt",
-        # policy_path=f"{ISAACLAB_NUCLEUS_DIR}/Policies/ANYmal-C/Blind/policy.pt",
-        #This
-        # policy_path=f"{ISAACLAB_NUCLEUS_DIR}/Policies/ANYmal-C/Blind/policy.pt",
+
         #在模型加载着一块，IsaacLab中的自带的RSL—RL训练代码的模型是checkpoint文件
         #而这个给出的示例代码则是TorchScript文件
         #在NewTools文件夹下的NewTools/model_trans.py可以转换模型
@@ -207,17 +205,26 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    """Curriculum terms for the MDP."""
+    """课程学习配置：仅按训练 iter 推进坑洞难度。"""
 
-    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
+    pit_terrain_schedule = CurrTerm(
+        func=mdp.pit_terrain_by_iteration,
+        params={
+            # 课程阶段切换迭代点（总共 1500 iter 的默认划分）。
+            "iter_stage_boundaries": (0, 400, 900, 1300),
+            # ManualTest 的 PPO 配置是 num_steps_per_env=8，用于 step->iter 换算。
+            "steps_per_iteration": 8,
+            "stage_weights": (
+                (0.85, 0.14, 0.01),  # 前期：简单坑为主
+                (0.65, 0.28, 0.07),
+                (0.45, 0.35, 0.20),
+                (0.25, 0.35, 0.40),  # 后期：困难坑占比提高
+            ),
+            # 每个阶段允许的最大地形等级比例（从低到高逐步放开）。
+            "stage_max_level_ratio": (0.35, 0.55, 0.75, 1.0),
+        },
+    )
 
-
-@configclass
-class AdaptiveCurriculumCfg:
-    """Adaptive curriculum terms for pit terrain training."""
-
-    # 使用基于训练进度和机器人性能的自适应课程学习
-    pit_difficulty = CurrTerm(func=mdp.pit_difficulty_curriculum)
 
 
 ##
@@ -237,6 +244,7 @@ class LocomotionManualRoughEnvCfg(ManagerBasedRLEnvCfg):
     commands: CommandsCfg = CommandsCfg()
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
         """Post initialization."""
@@ -253,6 +261,9 @@ class LocomotionManualRoughEnvCfg(ManagerBasedRLEnvCfg):
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = self.sim.dt
 
+        if self.scene.terrain.terrain_generator is not None:
+            self.scene.terrain.terrain_generator.curriculum = True
+
 
 class LocomotionManualRoughEnvCfg_Play(LocomotionManualRoughEnvCfg):
     def __post_init__(self) -> None:
@@ -264,23 +275,4 @@ class LocomotionManualRoughEnvCfg_Play(LocomotionManualRoughEnvCfg):
         self.scene.env_spacing = 4
         # disable randomization for play
         self.observations.policy.enable_corruption = False
-
-
-
-@configclass
-class StairClimbingRewardsCfg(RewardsCfg):
-    """Extended rewards for stair climbing tasks."""
-    # 爬楼梯进展奖励是否需要呢?
-    climb_progress = RewTerm(
-        func=mdp.climb_progress_reward,
-        weight=1.0,
-        params={"command_name": "pose_command", "max_forward_distance": 2.0, "sigma": 0.25},
-    )
-    # # 保持平稳姿态的惩罚(增加权重)
-    # flat_orientation = RewTerm(
-    #     func=mdp.flat_orientation_l2,
-    #     weight=-5.0,  # 从默认的 -2.5 增加到 -5.0,爬楼梯时姿态更重要
-    #     params={"asset_cfg": SceneEntityCfg("robot")},
-    # )
-
 

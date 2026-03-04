@@ -23,6 +23,114 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+def _env_ids_to_tensor(env: ManagerBasedRLEnv, env_ids: Sequence[int] | torch.Tensor) -> torch.Tensor:
+    """将 env_ids 统一转换为当前设备上的 long tensor。"""
+    if isinstance(env_ids, torch.Tensor):
+        return env_ids.to(device=env.device, dtype=torch.long)
+    return torch.as_tensor(list(env_ids), device=env.device, dtype=torch.long)
+
+
+def _compute_column_map(terrain_gen_cfg) -> dict[str, list[int]]:
+    """按照 sub_terrain 的 proportion，计算每个地形对应的列索引集合。"""
+    names = list(terrain_gen_cfg.sub_terrains.keys())
+    proportions = [terrain_gen_cfg.sub_terrains[name].proportion for name in names]
+    total = sum(proportions)
+    if total <= 0.0:
+        return {name: [] for name in names}
+
+    cumulative = []
+    running = 0.0
+    for p in proportions:
+        running += p / total
+        cumulative.append(running)
+
+    col_map = {name: [] for name in names}
+    for col in range(terrain_gen_cfg.num_cols):
+        value = col / float(terrain_gen_cfg.num_cols) + 1.0e-3
+        idx = 0
+        while idx < len(cumulative) - 1 and value >= cumulative[idx]:
+            idx += 1
+        col_map[names[idx]].append(col)
+    return col_map
+
+
+def _select_stage(current_iteration: int, iter_stage_boundaries: tuple[int, ...]) -> int:
+    """根据当前迭代数选择课程阶段索引。"""
+    stage = 0
+    for idx, boundary in enumerate(iter_stage_boundaries):
+        if current_iteration >= boundary:
+            stage = idx
+    return stage
+
+
+def pit_terrain_by_iteration(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    iter_stage_boundaries: tuple[int, int, int, int] = (0, 400, 900, 1300),
+    steps_per_iteration: int = 8,
+    stage_weights: tuple[tuple[float, float, float], ...] = (
+        (0.85, 0.14, 0.01),  # easy/medium/hard
+        (0.65, 0.28, 0.07),
+        (0.45, 0.35, 0.20),
+        (0.25, 0.35, 0.40),
+    ),
+    stage_max_level_ratio: tuple[float, ...] = (0.35, 0.55, 0.75, 1.0),
+) -> torch.Tensor:
+    """仅基于训练迭代数的坑洞课程学习。
+
+    前期：主要采样简单坑，并限制较低地形等级；
+    后期：逐步提高中/困难坑占比，并放开更高地形等级。
+    """
+    terrain: TerrainImporter = env.scene.terrain
+    if terrain.cfg.terrain_type != "generator" or terrain.cfg.terrain_generator is None:
+        return torch.tensor(0.0, device=env.device)
+
+    env_ids_t = _env_ids_to_tensor(env, env_ids)
+    if env_ids_t.numel() == 0:
+        return torch.tensor(0.0, device=env.device)
+
+    terrain_gen_cfg = terrain.cfg.terrain_generator
+    col_map = _compute_column_map(terrain_gen_cfg)
+
+    terrain_keys = ("easy_pit", "medium_pit", "hard_pit")
+    if any(len(col_map.get(key, [])) == 0 for key in terrain_keys):
+        return torch.tensor(0.0, device=env.device)
+
+    # Isaac Lab 中 common_step_counter 是全局 step，这里换算为训练迭代轮数。
+    current_iteration = int(env.common_step_counter) // max(1, int(steps_per_iteration))
+    stage = _select_stage(current_iteration, iter_stage_boundaries)
+    stage = min(stage, len(stage_weights) - 1, len(stage_max_level_ratio) - 1)
+
+    # 按当前阶段的 easy/medium/hard 权重采样地形类型。
+    weights = torch.tensor(stage_weights[stage], device=env.device, dtype=torch.float32)
+    probs = weights / torch.clamp(weights.sum(), min=1.0e-6)
+    picked_keys = torch.multinomial(probs, num_samples=env_ids_t.numel(), replacement=True)
+
+    sampled_types = torch.empty(env_ids_t.numel(), dtype=torch.long, device=env.device)
+    for key_idx, key in enumerate(terrain_keys):
+        mask = picked_keys == key_idx
+        if not torch.any(mask):
+            continue
+        columns = torch.as_tensor(col_map[key], dtype=torch.long, device=env.device)
+        sampled = torch.randint(0, columns.numel(), (int(mask.sum().item()),), device=env.device)
+        sampled_types[mask] = columns[sampled]
+
+    terrain.terrain_types[env_ids_t] = sampled_types
+
+    # 按阶段限制最大 terrain level，形成“由易到难”的课程推进。
+    max_level = max(
+        0,
+        min(
+            terrain.max_terrain_level - 1,
+            int(round((terrain.max_terrain_level - 1) * float(stage_max_level_ratio[stage]))),
+        ),
+    )
+    terrain.terrain_levels[env_ids_t] = torch.clamp(terrain.terrain_levels[env_ids_t], min=0, max=max_level)
+    terrain.env_origins[env_ids_t] = terrain.terrain_origins[terrain.terrain_levels[env_ids_t], terrain.terrain_types[env_ids_t]]
+
+    return torch.tensor(float(stage), device=env.device)
+
+
 def terrain_levels_vel(
     env: ManagerBasedRLEnv, env_ids: Sequence[int], asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
@@ -53,137 +161,3 @@ def terrain_levels_vel(
     terrain.update_env_origins(env_ids, move_up, move_down)
     # return the mean terrain level
     return torch.mean(terrain.terrain_levels.float())
-
-
-def pit_difficulty_curriculum(
-    env: ManagerBasedRLEnv,
-    env_ids: Sequence[int],
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-) -> torch.Tensor:
-    """基于训练进度的坑洞地形课程学习（纯进度驱动，无性能反馈）
-
-    难度递进：
-    - Stage 1 (0-25%): Level 0-2, 只用简单坑 (10-20cm)
-    - Stage 2 (25-50%): Level 1-4, 逐渐引入中等坑 (20-27cm)
-    - Stage 3 (50-75%): Level 3-6, 主要中等坑 (27-35cm)
-    - Stage 4 (75-100%): Level 5-8, 挑战深坑 (35-50cm)
-
-    Args:
-        env: 学习环境
-        env_ids: 环境ID
-        asset_cfg: 机器人配置
-
-    Returns:
-        当前难度级别 (0.0 到 1.0)
-    """
-    # 获取地形对象
-    terrain: TerrainImporter = env.scene.terrain
-
-    # 步骤1: 获取训练进度 (0% → 100%)
-    total_iterations = getattr(env, "common_step_counter", 0)
-    max_iterations = 15000  # 根据训练计划调整
-    training_progress = min(total_iterations / max_iterations, 1.0)
-
-    # 步骤2: 根据训练进度确定目标难度级别
-    if training_progress < 0.25:      # 前25%训练
-        target_level_min = 0
-        target_level_max = 2
-    elif training_progress < 0.5:     # 25%-50%训练
-        target_level_min = 1
-        target_level_max = 4
-    elif training_progress < 0.75:    # 50%-75%训练
-        target_level_min = 3
-        target_level_max = 6
-    else:                             # 75%-100%训练
-        target_level_min = 5
-        target_level_max = 8
-
-    # 计算目标级别（范围的中点）
-    target_level = (target_level_min + target_level_max) / 2.0
-
-    # 获取当前地形级别
-    current_levels = terrain.terrain_levels[env_ids]
-
-    # 步骤3: 平滑过渡到目标级别
-    level_diff = target_level - current_levels.float()
-    max_step = 0.05  # 每次最多变化0.05个级别（更平滑）
-    level_diff = torch.clamp(level_diff, -max_step, max_step)
-
-    # 确定哪些环境需要升级或降级
-    move_up = level_diff > 0.01  # 大于0.01才升级
-    move_down = level_diff < -0.01  # 小于-0.01才降级
-
-    # 更新地形级别
-    if torch.any(move_up) or torch.any(move_down):
-        terrain.update_env_origins(env_ids, move_up, move_down)
-
-    # 返回归一化的难度 (0.0 到 1.0)
-    max_possible_level = terrain.cfg.max_init_terrain_level
-    current_difficulty = torch.mean(current_levels.float()) / max(max_possible_level, 1)
-
-    return current_difficulty
-
-
-# def adaptive_pit_curriculum(
-#     env: ManagerBasedRLEnv,
-#     env_ids: Sequence[int],
-#     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-#     command_threshold: float = 0.5,
-# ) -> torch.Tensor:
-#     """Adaptive curriculum that adjusts difficulty based on command tracking performance.
-#
-#     This term is specifically designed for navigation tasks where the robot must reach
-#     target positions. It increases difficulty when the robot successfully reaches targets
-#     and decreases difficulty when it fails consistently.
-#
-#     Args:
-#         env: The learning environment.
-#         env_ids: The environment IDs to update.
-#         asset_cfg: The asset configuration.
-#         command_threshold: Velocity threshold for considering movement as successful.
-#
-#     Returns:
-#         The mean terrain level for the given environment ids.
-#     """
-#     # Extract used quantities
-#     asset: Articulation = env.scene[asset_cfg.name]
-#     terrain: TerrainImporter = env.scene.terrain
-#
-#     # Get position command (for navigation tasks)
-#     try:
-#         command = env.command_manager.get_command("pose_command")
-#         command_pos = command[env_ids, :2]  # x, y position targets
-#     except (KeyError, AttributeError):
-#         # Fallback to velocity command
-#         command = env.command_manager.get_command("base_velocity")
-#         command_pos = command[env_ids, :2]
-#
-#     # Compute current position relative to environment origin
-#     current_pos = asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2]
-#
-#     # Compute distance to command
-#     distance_to_command = torch.norm(current_pos - command_pos, dim=1)
-#
-#     # Robots that are close to their target (success) move to harder terrains
-#     success_threshold = 0.5  # meters
-#     move_up = distance_to_command < success_threshold
-#
-#     # Robots that are far from target and not moving (failure) move to easier terrains
-#     failure_threshold = 2.0  # meters
-#     move_down = distance_to_command > failure_threshold
-#
-#     # Get current velocity to detect stuck robots
-#     if hasattr(asset, "data") and hasattr(asset.data, "root_vel_w"):
-#         vel_mag = torch.norm(asset.data.root_vel_w[env_ids, :2], dim=1)
-#         is_stuck = vel_mag < 0.1
-#         move_down = move_down & is_stuck
-#
-#     # Ensure no environment moves both up and down
-#     move_down = move_down & ~move_up
-#
-#     # Update terrain levels
-#     if torch.any(move_up) or torch.any(move_down):
-#         terrain.update_env_origins(env_ids, move_up, move_down)
-#
-#     # Return the mean terrain level
-#     return torch.mean(terrain.terrain_levels.float())
