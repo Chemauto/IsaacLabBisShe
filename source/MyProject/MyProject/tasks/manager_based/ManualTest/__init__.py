@@ -36,3 +36,13 @@ gym.register(
     },
 )
 
+gym.register(
+    id="Template-Manual-Rough-Go2-Eval-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.manual_rough_env_cfg:LocomotionManualRoughEnvCfg_Eval",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:ManualRoughPPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_manual_rough_ppo_cfg.yaml",
+    },
+)

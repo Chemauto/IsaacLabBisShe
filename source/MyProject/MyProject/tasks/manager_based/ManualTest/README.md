@@ -11,6 +11,7 @@
 
 - `Template-Manual-Rough-Go2-v0`：训练环境
 - `Template-Manual-Rough-Go2-Play-v0`：可视化/回放环境
+- `Template-Manual-Rough-Go2-Eval-v0`：固定评估环境（关闭训练课程）
 
 注册位置：`__init__.py`
 
@@ -92,6 +93,17 @@ ManualTest/
 
 这样可实现“前期简单多，后期困难多”的课程学习。
 
+## P0 基线指标日志
+
+已新增 `Curriculum/p0_metrics/*` 指标（在 reset 时统计）：
+- `Curriculum/p0_metrics/success_rate`
+- `Curriculum/p0_metrics/hard_pit_success_rate`
+- `Curriculum/p0_metrics/hard_pit_active_rate`
+- `Curriculum/p0_metrics/fall_rate`
+- `Curriculum/p0_metrics/timeout_rate`
+- `Curriculum/p0_metrics/final_distance_mean`
+- `Curriculum/p0_metrics/energy_proxy`
+
 ## 训练与回放
 
 在仓库根目录执行。
@@ -128,6 +140,12 @@ python scripts/rsl_rl/train.py \
 
 ```bash
 python scripts/rsl_rl/play.py --task Template-Manual-Rough-Go2-Play-v0
+```
+
+### 5) 固定评估（推荐用于改动前后对比）
+
+```bash
+python scripts/rsl_rl/play.py --task Template-Manual-Rough-Go2-Eval-v0
 ```
 
 ## 关键可调参数

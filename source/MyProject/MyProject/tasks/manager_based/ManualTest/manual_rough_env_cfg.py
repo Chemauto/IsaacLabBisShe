@@ -49,8 +49,8 @@ from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import (
     MySceneCfg as WalkMySceneCfg,
 )
 from MyProject.tasks.manager_based.ManualTest.config.terrain import (
-
     MIXED_PIT_TERRAINS_CFG,
+    EVAL_PIT_TERRAINS_CFG,
 )
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughEnvCfg()
 #分层的强化学习的方式，低层的强化学习为之前已经训练好的在平地上行走的策略
@@ -224,6 +224,15 @@ class CurriculumCfg:
             "stage_max_level_ratio": (0.35, 0.55, 0.75, 1.0),
         },
     )
+    # P0 基线统计：在 reset 前输出 success/fall/final_distance/energy 等指标到日志。
+    p0_metrics = CurrTerm(
+        func=mdp.p0_episode_metrics,
+        params={
+            "command_name": "pose_command",
+            "success_distance_threshold": 0.5,
+            "hard_terrain_key": "hard_pit",
+        },
+    )
 
 
 
@@ -276,3 +285,20 @@ class LocomotionManualRoughEnvCfg_Play(LocomotionManualRoughEnvCfg):
         # disable randomization for play
         self.observations.policy.enable_corruption = False
 
+
+class LocomotionManualRoughEnvCfg_Eval(LocomotionManualRoughEnvCfg):
+    """固定评估配置：关闭训练课程，使用固定浅/中/深沟地形。"""
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+
+        self.scene.num_envs = 256
+        self.scene.env_spacing = 3.0
+        self.scene.terrain.terrain_generator = EVAL_PIT_TERRAINS_CFG
+        self.scene.terrain.max_init_terrain_level = 5
+        if self.scene.terrain.terrain_generator is not None:
+            self.scene.terrain.terrain_generator.curriculum = False
+
+        # 评估时关闭训练课程项，只保留 P0 指标统计。
+        self.curriculum.pit_terrain_schedule = None
+        self.observations.policy.enable_corruption = False

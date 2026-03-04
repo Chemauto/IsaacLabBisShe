@@ -25,21 +25,46 @@
 
 ---
 
-## 1. P0（必须先做）：建立可比较基线
+## 1. P0（必须先做）：建立可比较基线（改成可量化）
 
-### TODO 1.1 记录“过沟能力”指标（新增日志项）
-- 文件：`manual_rough_env_cfg.py`、必要时 `mdp/rewards.py`
-- 指标至少包含：
-  - `success_rate`（episode 末距离阈值内成功率）
-  - `fall_rate`（非法接触/姿态失败）
-  - `hard_pit_success_rate`（困难坑子集成功率）
-  - `episode_return` 与 `energy_proxy`（torque/acc/action_rate 相关）
-- 验收：能在 tensorboard 或日志中按 iteration 看到上述曲线。
+### TODO 1.1 定义基线指标（先统一统计口径）
+- 文件：
+  - `manual_rough_env_cfg.py`
+  - `mdp/rewards.py`（如需新增统计辅助函数）
+- 必须记录的核心指标（按 episode 聚合）：
+  - `success_rate`：episode 结束时 `||target_xy|| < 0.5m` 记为成功。
+  - `hard_pit_success_rate`：仅在 hard pit 环境子集上统计成功率。
+  - `fall_rate`：`base_contact` 或 `bad_orientation` 终止占比。
+  - `timeout_rate`：超时结束占比（区分“失败摔倒”与“没到目标”）。
+  - `final_distance_mean`：episode 末目标距离均值（越小越好）。
+  - `energy_proxy`：`joint_torques_l2 + joint_acc_l2 + action_rate_l2` 的均值。
+- 建议补充指标（便于调参）：
+  - `curriculum_stage`（当前课程阶段均值）
+  - `terrain_level_mean`（平均地形等级）
+- 验收：
+  - TensorBoard 可看到上述曲线；
+  - 每条曲线随 iteration 更新且无 NaN。
 
-### TODO 1.2 固定评估集
-- 文件：`config/terrain.py`（新增固定评估地形配置）
-- 做法：准备一组固定深沟场景（浅/中/深各若干），评估时不随机。
-- 验收：每次改动后可复现同一评估结果（减少“随机变好了”的假象）。
+### TODO 1.2 固定评估集（和训练解耦）
+- 文件：
+  - `config/terrain.py`（新增评估专用 terrain cfg）
+  - `manual_rough_env_cfg.py`（新增 eval/play 配置入口）
+- 做法：
+  - 新增 `EVAL_PIT_TERRAINS_CFG`，包含固定浅/中/深沟组合；
+  - 评估时关闭地形随机课程（固定 `terrain_types` 与 `terrain_levels`）；
+  - 固定随机种子（至少 3 个：`0/1/2`）跑同一评估集。
+- 验收：
+  - 同一 checkpoint 重复评估，指标波动在可接受范围（例如 success_rate 波动 < 3%）。
+
+### TODO 1.3 先跑一次“当前代码基线”
+- 命令（示例）：
+  - `python scripts/rsl_rl/train.py --task Template-Manual-Rough-Go2-v0 --headless --num_envs 2048 --max_iterations 300 --run_name p0_baseline`
+  - `python scripts/rsl_rl/play.py --task Template-Manual-Rough-Go2-Play-v0 --checkpoint <baseline_ckpt>`
+- 产出物：
+  - `baseline_metrics.md`（记录上述核心指标）
+  - `baseline_video.mp4`（至少含 easy / medium / hard 各一段）
+- 验收：
+  - 后续任何改动必须和此 baseline 做同口径对比，不允许“只看回报”。
 
 ---
 
@@ -174,4 +199,3 @@
 2. 失败率（base contact / bad orientation）明显低于当前基线。
 3. 无“靠运气过沟”：成功轨迹可复现、动作不过分抖动。
 4. 课程推进阶段中无大面积性能崩塌（曲线可解释）。
-

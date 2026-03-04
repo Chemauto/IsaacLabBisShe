@@ -84,3 +84,27 @@ MIXED_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
     },
 )
 
+# 固定评估地形：用于跨版本可比较评测（浅/中/深沟各占一定比例）
+EVAL_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
+    **PIT_TERRAIN_COMMON_PARAMS,
+    sub_terrains={
+        "easy_pit": terrain_gen.MeshPitTerrainCfg(
+            proportion=0.34,
+            pit_depth_range=(0.15, 0.15),
+            platform_width=2.0,
+            double_pit=False,
+        ),
+        "medium_pit": terrain_gen.MeshPitTerrainCfg(
+            proportion=0.33,
+            pit_depth_range=(0.30, 0.30),
+            platform_width=2.0,
+            double_pit=False,
+        ),
+        "hard_pit": terrain_gen.MeshPitTerrainCfg(
+            proportion=0.33,
+            pit_depth_range=(0.45, 0.45),
+            platform_width=2.0,
+            double_pit=False,
+        ),
+    },
+)

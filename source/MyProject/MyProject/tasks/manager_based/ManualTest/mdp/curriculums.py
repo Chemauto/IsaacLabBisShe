@@ -131,6 +131,80 @@ def pit_terrain_by_iteration(
     return torch.tensor(float(stage), device=env.device)
 
 
+def p0_episode_metrics(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    command_name: str = "pose_command",
+    success_distance_threshold: float = 0.5,
+    hard_terrain_key: str = "hard_pit",
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> dict[str, float]:
+    """在 reset 前统计 P0 基线指标，并通过 Curriculum 日志输出。"""
+    env_ids_t = _env_ids_to_tensor(env, env_ids)
+    if env_ids_t.numel() == 0:
+        return {
+            "success_rate": 0.0,
+            "hard_pit_success_rate": 0.0,
+            "hard_pit_active_rate": 0.0,
+            "fall_rate": 0.0,
+            "timeout_rate": 0.0,
+            "final_distance_mean": 0.0,
+            "energy_proxy": 0.0,
+        }
+
+    # 训练启动时会先调用一次 reset，此时还没有 reset_time_outs/reset_terminated 缓冲区。
+    if not hasattr(env, "reset_time_outs") or not hasattr(env, "reset_terminated"):
+        return {
+            "success_rate": 0.0,
+            "hard_pit_success_rate": 0.0,
+            "hard_pit_active_rate": 0.0,
+            "fall_rate": 0.0,
+            "timeout_rate": 0.0,
+            "final_distance_mean": 0.0,
+            "energy_proxy": 0.0,
+        }
+
+    command = env.command_manager.get_command(command_name)
+    final_distance = torch.norm(command[env_ids_t, :2], dim=1)
+
+    timeout = env.reset_time_outs[env_ids_t]
+    terminated = env.reset_terminated[env_ids_t]
+    fall = terminated & (~timeout)
+    success = timeout & (final_distance < success_distance_threshold)
+
+    terrain: TerrainImporter = env.scene.terrain
+    hard_mask = torch.zeros_like(timeout)
+    if terrain.cfg.terrain_type == "generator" and terrain.cfg.terrain_generator is not None:
+        col_map = _compute_column_map(terrain.cfg.terrain_generator)
+        hard_cols = col_map.get(hard_terrain_key, [])
+        if len(hard_cols) > 0:
+            hard_cols_t = torch.as_tensor(hard_cols, device=env.device, dtype=torch.long)
+            hard_mask = (terrain.terrain_types[env_ids_t].unsqueeze(1) == hard_cols_t.unsqueeze(0)).any(dim=1)
+
+    hard_timeout = timeout & hard_mask
+    hard_success = success & hard_mask
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    torque_term = torch.sum(torch.square(asset.data.applied_torque[env_ids_t]), dim=1)
+    joint_acc_term = torch.sum(torch.square(asset.data.joint_acc[env_ids_t]), dim=1)
+    action_delta = env.action_manager.action[env_ids_t] - env.action_manager.prev_action[env_ids_t]
+    action_rate_term = torch.sum(torch.square(action_delta), dim=1)
+    energy_proxy = torch.mean(torque_term + joint_acc_term + action_rate_term)
+
+    hard_timeout_count = int(hard_timeout.sum().item())
+    hard_success_rate = float(hard_success.sum().item()) / float(hard_timeout_count) if hard_timeout_count > 0 else 0.0
+
+    return {
+        "success_rate": torch.mean(success.float()).item(),
+        "hard_pit_success_rate": hard_success_rate,
+        "hard_pit_active_rate": torch.mean(hard_mask.float()).item(),
+        "fall_rate": torch.mean(fall.float()).item(),
+        "timeout_rate": torch.mean(timeout.float()).item(),
+        "final_distance_mean": torch.mean(final_distance).item(),
+        "energy_proxy": energy_proxy.item(),
+    }
+
+
 
 
 # -----------------------------------------------------------------------------
