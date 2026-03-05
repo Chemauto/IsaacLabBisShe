@@ -106,7 +106,8 @@ class CommandsCfg:
     pose_command = mdp.UniformPose2dCommandCfg(
         asset_name="robot",
         simple_heading=False,
-        resampling_time_range=(8.0, 8.0),
+        # 对齐论文：每回合一个目标，回合长度 6s。
+        resampling_time_range=(6.0, 6.0),
         debug_vis=True,
         ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-3.0, 3.0), pos_y=(-3.0, 3.0), heading=(-math.pi, math.pi)),
     )
@@ -175,39 +176,39 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
-    # 稠密导航奖励（前期主导）
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-400.0)
-    position_tracking = RewTerm(
-        func=mdp.position_command_error_tanh,
-        weight=0.5,
-        params={"std": 2.0, "command_name": "pose_command"},
-    )
-    position_tracking_fine_grained = RewTerm(
-        func=mdp.position_command_error_tanh,
-        weight=0.5,
-        params={"std": 0.2, "command_name": "pose_command"},
-    )
-    orientation_tracking = RewTerm(
-        func=mdp.heading_command_error_abs,
-        weight=-0.2,
-        params={"command_name": "pose_command"},
-    )
+    # 按论文流程：关闭稠密导航主奖励，使用末端任务奖励为主。
+    # termination_penalty = RewTerm(func=mdp.is_terminated, weight=0.0)
+    # position_tracking = RewTerm(
+    #     func=mdp.position_command_error_tanh,
+    #     weight=0.0,
+    #     params={"std": 2.0, "command_name": "pose_command"},
+    # )
+    # position_tracking_fine_grained = RewTerm(
+    #     func=mdp.position_command_error_tanh,
+    #     weight=0.0,
+    #     params={"std": 0.2, "command_name": "pose_command"},
+    # )
+    # orientation_tracking = RewTerm(
+    #     func=mdp.heading_command_error_abs,
+    #     weight=0.0,
+    #     params={"command_name": "pose_command"},
+    # )
 
     # 任务主奖励：末端位置奖励（论文风格），在回合最后一段时间激活。
     final_position = RewTerm(
         func=mdp.final_position_reward,
-        weight=0.0,
+        weight=4.0,
         params={"command_name": "pose_command", "activate_s": 1.0, "distance_scale": 4.0},
     )
     # 早期探索引导：朝目标方向移动，收敛后自动关闭。
     exploration_bias = RewTerm(
         func=mdp.velocity_towards_target_bias,
-        weight=0.0,
+        weight=0.3,
         params={"command_name": "pose_command", "remove_threshold": 0.35, "ema_alpha": 0.995},
     )
     stalling = RewTerm(
         func=mdp.stalling_penalty,
-        weight=0.0,
+        weight=-0.8,
         params={"command_name": "pose_command", "speed_threshold": 0.08, "distance_threshold": 0.6},
     )
 
@@ -256,8 +257,8 @@ class CurriculumCfg:
         params={
             # 课程阶段切换迭代点（总共 1500 iter 的默认划分）。
             "iter_stage_boundaries": (0, 400, 900, 1300),
-            # ManualTest 的 PPO 配置是 num_steps_per_env=8，用于 step->iter 换算。
-            "steps_per_iteration": 8,
+            # 与 PPO 配置 num_steps_per_env=48 对齐，用于 step->iter 换算。
+            "steps_per_iteration": 48,
             "stage_weights": (
                 (0.85, 0.14, 0.01),  # 前期：简单坑为主
                 (0.65, 0.28, 0.07),
@@ -275,22 +276,6 @@ class CurriculumCfg:
             "command_name": "pose_command",
             "success_distance_threshold": 0.5,
             "hard_terrain_key": "hard_pit",
-        },
-    )
-    # 奖励混合课程：前半程稠密导航，后半程平滑切到末端奖励。
-    reward_blend = CurrTerm(
-        func=mdp.blend_navigation_reward_schedule,
-        params={
-            "steps_per_iteration": 8,
-            "blend_start_iter": 300,
-            "blend_end_iter": 1100,
-            "dense_position_weight": 0.5,
-            "dense_position_fine_weight": 0.5,
-            "dense_orientation_weight": -0.2,
-            "dense_termination_weight": -400.0,
-            "sparse_final_weight": 4.0,
-            "sparse_exploration_weight": 0.3,
-            "sparse_stalling_weight": -0.8,
         },
     )
 
@@ -322,6 +307,8 @@ class LocomotionManualRoughEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = LOW_LEVEL_ENV_CFG.decimation
         self.decimation = LOW_LEVEL_ENV_CFG.decimation * 10
         self.episode_length_s = self.commands.pose_command.resampling_time_range[1]
+        # 对齐论文：有限时域任务，不使用无限时域 bootstrapping 假设。
+        self.is_finite_horizon = True
 
         if self.scene.height_scanner is not None:
             self.scene.height_scanner.update_period = (
@@ -361,5 +348,4 @@ class LocomotionManualRoughEnvCfg_Eval(LocomotionManualRoughEnvCfg):
 
         # 评估时关闭训练课程项，只保留 P0 指标统计。
         self.curriculum.pit_terrain_schedule = None
-        self.curriculum.reward_blend = None
         self.observations.policy.enable_corruption = False

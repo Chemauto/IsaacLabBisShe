@@ -205,63 +205,6 @@ def p0_episode_metrics(
     }
 
 
-def _set_reward_weight_if_exists(env: ManagerBasedRLEnv, term_name: str, weight: float) -> None:
-    if term_name not in env.reward_manager.active_terms:
-        return
-    term_cfg = env.reward_manager.get_term_cfg(term_name)
-    term_cfg.weight = float(weight)
-    env.reward_manager.set_term_cfg(term_name, term_cfg)
-
-
-def blend_navigation_reward_schedule(
-    env: ManagerBasedRLEnv,
-    env_ids: Sequence[int],
-    steps_per_iteration: int = 8,
-    blend_start_iter: int = 300,
-    blend_end_iter: int = 1100,
-    dense_position_weight: float = 0.5,
-    dense_position_fine_weight: float = 0.5,
-    dense_orientation_weight: float = -0.2,
-    dense_termination_weight: float = -400.0,
-    sparse_final_weight: float = 4.0,
-    sparse_exploration_weight: float = 0.3,
-    sparse_stalling_weight: float = -0.8,
-) -> dict[str, float]:
-    """混合奖励课程：
-
-    前期以稠密导航奖励为主，后期平滑切到末端任务奖励。
-    """
-    del env_ids  # weight is global; not per-env.
-
-    current_iteration = int(env.common_step_counter) // max(1, int(steps_per_iteration))
-    if blend_end_iter <= blend_start_iter:
-        alpha = 1.0
-    else:
-        alpha = float(current_iteration - blend_start_iter) / float(blend_end_iter - blend_start_iter)
-        alpha = max(0.0, min(1.0, alpha))
-
-    dense_scale = 1.0 - alpha
-    sparse_scale = alpha
-
-    _set_reward_weight_if_exists(env, "position_tracking", dense_position_weight * dense_scale)
-    _set_reward_weight_if_exists(env, "position_tracking_fine_grained", dense_position_fine_weight * dense_scale)
-    _set_reward_weight_if_exists(env, "orientation_tracking", dense_orientation_weight * dense_scale)
-    _set_reward_weight_if_exists(env, "termination_penalty", dense_termination_weight * dense_scale)
-
-    _set_reward_weight_if_exists(env, "final_position", sparse_final_weight * sparse_scale)
-    _set_reward_weight_if_exists(env, "exploration_bias", sparse_exploration_weight * sparse_scale)
-    _set_reward_weight_if_exists(env, "stalling", sparse_stalling_weight * sparse_scale)
-
-    return {
-        "iter": float(current_iteration),
-        "blend_alpha": float(alpha),
-        "dense_scale": float(dense_scale),
-        "sparse_scale": float(sparse_scale),
-    }
-
-
-
-
 # -----------------------------------------------------------------------------
 # 课程学习逻辑总说明（通用模板）
 # -----------------------------------------------------------------------------
