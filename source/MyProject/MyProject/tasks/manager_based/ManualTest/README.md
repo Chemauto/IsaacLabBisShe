@@ -1,11 +1,11 @@
 # ManualTest
 
-`ManualTest` 是基于 Isaac Lab 的 Unitree Go2 粗糙坑洞导航任务，采用“高层导航策略 + 低层预训练步态策略”的分层控制方式。
+`ManualTest` 是基于 Isaac Lab 的 Unitree Go2 粗糙坑洞导航任务，当前为**端到端关节动作版本**（策略直接输出关节目标位置，由底层 PD 转力矩）。
 
-当前版本重点是：
-- 在混合坑洞地形上进行位置与朝向跟踪训练
-- 使用按训练迭代数（iter）推进的课程学习
-- 前期更多简单坑，后期逐步增加中/困难坑比例
+当前版本重点：
+- 目标导航 + 越坑洞联合训练（`pose_command`）
+- 课程学习仅按训练迭代数（iter）推进难度
+- 前期简单坑占比高，后期逐步提升困难坑占比
 
 ## 已注册环境
 
@@ -15,7 +15,7 @@
 
 注册位置：`__init__.py`
 
-## 目录结构
+## 目录结构（当前）
 
 ```text
 ManualTest/
@@ -25,7 +25,9 @@ ManualTest/
 │   └── terrain.py                     # 坑洞地形生成配置（easy/medium/hard/mixed）
 ├── mdp/
 │   ├── __init__.py
-│   ├── pre_trained_policy_action.py   # 高层动作 -> 低层预训练策略动作
+│   ├── commands.py                    # AdvancedPose2dCommand（极坐标采样+有效目标过滤）
+│   ├── commands_cfg.py                # 命令配置
+│   ├── observations.py                # time_to_go、pose_command_position_b 等观测函数
 │   ├── rewards.py                     # 任务奖励
 │   ├── terminations.py                # 终止项（含可选越界终止）
 │   └── curriculums.py                 # 课程学习函数（iter 驱动）
@@ -34,25 +36,25 @@ ManualTest/
     └── skrl_manual_rough_ppo_cfg.yaml # skrl PPO 配置
 ```
 
-## 任务与控制逻辑
+## 动作、命令与观测（当前）
 
-- 高层动作：`PreTrainedPolicyAction.action_dim = 3`
-  - 维度定义：`[v_x, v_y, w_z]`
-- 高层命令：`pose_command`（由 `UniformPose2dCommand` 生成，4 维）
-  - 维度定义：`[x, y, z, heading]`
-  - 说明：虽然采样范围配置的是 `pos_x/pos_y/heading`，但 `z` 会自动使用机器人默认根高度，因此命令张量是 4 维
-- 低层控制：加载 TorchScript 低层策略（`policy_path`），输出低层关节目标动作（Go2 通常为 12 维）
-- 高层策略观测维度（当前配置）：
-  - `base_lin_vel`: 3 维
-  - `projected_gravity`: 3 维
-  - `pose_command`: 4 维
-  - `height_scan`: 187 维
-  - `actions`: 3 维
-  - 合计：`3 + 3 + 4 + 187 + 3 = 200` 维
-  - 其中 `height_scan=187` 的来源：`GridPatternCfg(resolution=0.1, size=[1.6, 1.0])`
-    - x 方向采样点数：`1.6 / 0.1 + 1 = 17`
-    - y 方向采样点数：`1.0 / 0.1 + 1 = 11`
-    - 总射线数：`17 * 11 = 187`
+- 动作：`JointPositionActionCfg`
+  - 策略输出所有关节目标位置（Go2 通常 12 维）
+- 命令：`AdvancedPose2dCommandCfg`
+  - 目标按极坐标在机器人周围采样，半径 `[1.0, 5.0]` m
+  - 带有效目标过滤（避开坑底/高障碍），失败重采样
+- 策略观测项：
+  - `base_lin_vel`：3 维
+  - `base_ang_vel`：3 维
+  - `projected_gravity`：3 维
+  - `pose_command`：3 维（`dx, dy, dz`，机体系）
+  - `time_to_go`：1 维
+  - `joint_pos`：12 维（Go2）
+  - `joint_vel`：12 维（Go2）
+  - `height_scan`：187 维
+  - `actions`：12 维（上一时刻动作）
+  - 合计：`236` 维（按 Go2 12 关节）
+- 观测噪声：已开启 `enable_corruption=True`，并对速度、重力投影、关节、高度扫描注入噪声
 
 ## 地形配置
 
@@ -62,12 +64,12 @@ ManualTest/
 - `HARD_PIT_TERRAINS_CFG`
 - `MIXED_PIT_TERRAINS_CFG`（默认训练使用）
 
-`MIXED_PIT_TERRAINS_CFG` 当前比例：
+`MIXED_PIT_TERRAINS_CFG` 默认比例：
 - easy: `0.60`
 - medium: `0.30`
 - hard: `0.10`
 
-说明：`proportion` 决定“地图池”里各类地形列分布，是静态容量；课程学习再基于 iter 动态重采样。
+说明：`proportion` 决定地形池静态容量；训练时课程学习会按 iter 动态重采样不同难度。
 
 ## 课程学习（核心）
 
@@ -75,9 +77,9 @@ ManualTest/
 
 使用函数：`mdp/curriculums.py::pit_terrain_by_iteration`
 
-当前默认参数：
+当前默认参数（`manual_rough_env_cfg.py`）：
 - `iter_stage_boundaries = (0, 400, 900, 1300)`
-- `steps_per_iteration = 8`（与 `agents/rsl_rl_ppo_cfg.py` 的 `num_steps_per_env=8` 对齐）
+- `steps_per_iteration = 48`（与 `agents/rsl_rl_ppo_cfg.py` 的 `num_steps_per_env=48` 对齐）
 - `stage_weights`（按 easy/medium/hard）：
   - stage0: `(0.85, 0.14, 0.01)`
   - stage1: `(0.65, 0.28, 0.07)`
@@ -91,18 +93,27 @@ ManualTest/
 3. 按该 stage 权重重采样 `easy_pit/medium_pit/hard_pit`。
 4. 同时限制该 stage 允许的最大 `terrain_level`。
 
-这样可实现“前期简单多，后期困难多”的课程学习。
+并包含 `p0_metrics` 统计项，在训练日志输出：
+- `success_rate`
+- `hard_pit_success_rate`
+- `hard_pit_active_rate`
+- `fall_rate`
+- `timeout_rate`
+- `final_distance_mean`
+- `energy_proxy`
 
-## P0 基线指标日志
+## 奖励（当前）
 
-已新增 `Curriculum/p0_metrics/*` 指标（在 reset 时统计）：
-- `Curriculum/p0_metrics/success_rate`
-- `Curriculum/p0_metrics/hard_pit_success_rate`
-- `Curriculum/p0_metrics/hard_pit_active_rate`
-- `Curriculum/p0_metrics/fall_rate`
-- `Curriculum/p0_metrics/timeout_rate`
-- `Curriculum/p0_metrics/final_distance_mean`
-- `Curriculum/p0_metrics/energy_proxy`
+- 任务主奖励：
+  - `final_position`（末端位置奖励，后 1s 激活）
+  - `exploration_bias`（早期探索引导，可自动关闭）
+  - `stalling`（停滞惩罚）
+- 正则惩罚：
+  - `dof_acc_l2`
+  - `dof_torques_l2`
+  - `undesired_contacts`（`.*_thigh|.*_calf`）
+  - `action_rate_l2`
+  - `feet_acc_l2`
 
 ## 训练与回放
 
@@ -125,14 +136,14 @@ python scripts/rsl_rl/train.py \
   --run_name smoke_manual
 ```
 
-### 3) 正式训练（默认 PPO 配置是 1500 iter）
+### 3) 正式训练（默认 PPO 配置是 2000 iter）
 
 ```bash
 python scripts/rsl_rl/train.py \
   --task Template-Manual-Rough-Go2-v0 \
   --headless \
   --num_envs 4096 \
-  --max_iterations 1500 \
+  --max_iterations 2000 \
   --run_name manual_curriculum
 ```
 
@@ -171,10 +182,15 @@ python scripts/rsl_rl/play.py --task Template-Manual-Rough-Go2-Eval-v0
 - 提高早期 easy 权重，降低 hard 权重。
 - 降低早期 `stage_max_level_ratio`。
 
-3. 低层策略加载失败
-- 检查 `policy_path` 是否存在且为 TorchScript `.pt` 文件。
+3. `undesired_contacts` 报正则不匹配
+- Go2 刚体名是小写（如 `FL_thigh`），不要写 `.*THIGH`。
+- 当前推荐：`body_names=".*_thigh|.*_calf"`。
 
-## 备注
+## 复现状态（只看“能否复现流程”）
 
-- `max_init_terrain_level` 仅控制初始地形等级上限，不是完整课程学习机制。
-- 若迁移到 gap/obstacle 等任务，可复用 `pit_terrain_by_iteration` 的框架，替换 `terrain_keys` 与阶段权重即可。
+- 当前已可视为“方法流程复现版”：
+  - 端到端关节动作
+  - 论文式 episode（6s、目标采样、time-to-go 输入）
+  - iter 驱动地形课程学习
+  - 可训练、可回放、可固定评估
+- 若要继续追论文效果，重点在奖励权重、课程阈值与超参精调，而不是框架重写。
