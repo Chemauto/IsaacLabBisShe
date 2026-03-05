@@ -135,32 +135,48 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Observations for policy group."""
 
-        # observation terms (order preserved)
-        # 机体线速度观测（加入传感器噪声，提升 sim2real 鲁棒性）
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
-        # 机体角速度观测（论文要求包含 base angular velocity）
-        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
-        # 重力方向投影（姿态感知），同样注入小噪声
-        projected_gravity = ObsTerm(
-            func=mdp.projected_gravity,
-            noise=Unoise(n_min=-0.05, n_max=0.05),
-        )
-        # 论文对齐：使用目标 3D 位置（机体系），不直接使用 heading 命令。
-        pose_command = ObsTerm(func=mdp.pose_command_position_b, params={"command_name": "pose_command"})
-        # 剩余时间输入（论文中的 remaining time）
-        time_to_go = ObsTerm(func=mdp.normalized_time_to_go)
-        # 关节位置/速度观测
+        """
+        The observations include 1.joint positions, 2.joint velocities,3.base linear and 4.angular velocity, 5.commands, 
+        6.previous actions, and 7.terrain measurements sampled around the robot.
+        The commands are defined as the three-dimensional location of the target expressed in the base frame and the remaining
+        time to reach that location.
+
+        """
+
+        # 1.关节位置 12
         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        # 2.速度观测 12
         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
-        # 地形高度扫描（加入噪声，防止策略过拟合“完美地形感知”）
+
+        # 3.机体线速度观测（加入传感器噪声，提升 sim2real 鲁棒性）3
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+        # 4.机体角速度观测（论文要求包含 base angular velocity）3
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
+
+
+        # 5.论文对齐：使用目标 3D 位置（机体系），不直接使用 heading 命令。3 
+        pose_command = ObsTerm(func=mdp.pose_command_position_b, params={"command_name": "pose_command"})
+
+        # 6.上一时刻动作（端到端时为关节维动作历史）12
+        actions = ObsTerm(func=mdp.last_action)
+        # 7.地形高度扫描（加入噪声，防止策略过拟合“完美地形感知”）187
         height_scan = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             noise=Unoise(n_min=-0.1, n_max=0.1),
             clip=(-1.0, 1.0),
         )
-        # 上一时刻动作（端到端时为关节维动作历史）
-        actions = ObsTerm(func=mdp.last_action)
+
+        # 重力方向投影（姿态感知），同样注入小噪声 3
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
+
+        # 剩余时间输入（论文中的 remaining time）这个是为了后面那个的时间奖励进行观测的 1
+        time_to_go = ObsTerm(func=mdp.normalized_time_to_go)
+
+        # 一共12 + 12 + 3 + 3 + 3 + 12 + 187 + 3 + 1 = 236 维度
 
         def __post_init__(self):
             # 开启观测扰动与拼接，和 WalkTest 保持一致
