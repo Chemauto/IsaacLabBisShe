@@ -2,6 +2,21 @@
 
 目标：以 `ManualTest` 为主线，不追求 1:1 复现论文，但优先解决“当前能导航、但高沟通过率低”的问题，并逐步靠近论文 *Advanced Skills by Learning Locomotion and Local Navigation End-to-End* 的关键思想。
 
+## 当前状态总览（2026-03-04）
+
+- 已完成：
+  - `P0` 基线指标记录与固定评估环境（含 `Template-Manual-Rough-Go2-Eval-v0`）
+  - `P1.1` 末端任务奖励主导（已接入 `final_position_reward`）
+  - `P1.2` `time_to_go` 观测（已接入，观测维度 +1）
+  - `P1.3` 早期探索偏置（已接入 `velocity_towards_target_bias`，支持自动关闭）
+  - `P2.1` 大部分稳定性惩罚（`torques/acc/action_rate/feet_acc/undesired_contacts` 已接入）
+  - `P2.2` 新增 `bad_orientation` 终止项
+- 未完成：
+  - `P3.1` 有效目标 patch 过滤（ManualTest 仍未迁移 AdvancedPose2dCommand）
+  - `P3.2` pit 难度细粒度扩展（仍是 easy/medium/hard）
+  - `P4` 课程门控（目前仍是纯 iter，未加成功率冻结/回退）
+  - `P5` 动作架构 A/B 决策与路线 B 实施
+
 ## 0. 当前差距（先统一认识）
 
 对照论文与现有 `ManualTest`：
@@ -28,6 +43,7 @@
 ## 1. P0（必须先做）：建立可比较基线（改成可量化）
 
 ### TODO 1.1 定义基线指标（先统一统计口径）
+- 状态：`已完成`
 - 文件：
   - `manual_rough_env_cfg.py`
   - `mdp/rewards.py`（如需新增统计辅助函数）
@@ -46,6 +62,7 @@
   - 每条曲线随 iteration 更新且无 NaN。
 
 ### TODO 1.2 固定评估集（和训练解耦）
+- 状态：`已完成`
 - 文件：
   - `config/terrain.py`（新增评估专用 terrain cfg）
   - `manual_rough_env_cfg.py`（新增 eval/play 配置入口）
@@ -57,6 +74,7 @@
   - 同一 checkpoint 重复评估，指标波动在可接受范围（例如 success_rate 波动 < 3%）。
 
 ### TODO 1.3 先跑一次“当前代码基线”
+- 状态：`进行中（你已跑通训练与回放，建议补齐 baseline_metrics.md / baseline_video.mp4）`
 - 命令（示例）：
   - `python scripts/rsl_rl/train.py --task Template-Manual-Rough-Go2-v0 --headless --num_envs 2048 --max_iterations 300 --run_name p0_baseline`
   - `python scripts/rsl_rl/play.py --task Template-Manual-Rough-Go2-Play-v0 --checkpoint <baseline_ckpt>`
@@ -73,6 +91,7 @@
 > 这是最接近论文、同时最可能直接提升“高沟通过率”的关键改动。
 
 ### TODO 2.1 在 ManualTest 引入末端任务奖励
+- 状态：`已完成`
 - 参考实现：`BiSheTest/mdp/rewards.py::final_position_reward`
 - 目标文件：`ManualTest/mdp/rewards.py`、`manual_rough_env_cfg.py`
 - 做法：
@@ -81,12 +100,14 @@
 - 验收：策略在临近 episode 末时更主动收敛到目标，且中途轨迹更自由。
 
 ### TODO 2.2 加入 time-to-go 观测
+- 状态：`已完成`
 - 参考实现：`BiSheTest/mdp/observations.py::normalized_time_to_go`
 - 目标文件：`ManualTest/mdp/observations.py`（可新建）与 `manual_rough_env_cfg.py`
 - 做法：把归一化剩余时间 `[0,1]` 拼进 policy obs。
 - 验收：观测维度更新正确；训练稳定性不下降。
 
 ### TODO 2.3 增加“早期探索偏置”，后期自动关闭（可选但推荐）
+- 状态：`已完成`
 - 参考实现：`BiSheTest/mdp/rewards.py::velocity_towards_target_bias`
 - 目的：解决纯末端奖励前期探索困难。
 - 验收：前期收敛更快，中后期不会被该项锁死（EMA 阈值后自动置零）。
@@ -96,6 +117,7 @@
 ## 3. P2（高沟通过率直接相关）：重做惩罚项与终止条件
 
 ### TODO 3.1 引入论文同类惩罚
+- 状态：`部分完成（核心惩罚已接入，权重仍需实验调参）`
 - 目标文件：`manual_rough_env_cfg.py`、`mdp/rewards.py`
 - 至少加入：
   - `joint_torques_l2`
@@ -106,6 +128,7 @@
 - 验收：训练不会学出“暴力蹬跳+高冲击”策略，硬件友好度提升。
 
 ### TODO 3.2 调整终止条件，避免过早截断可恢复动作
+- 状态：`部分完成（已加 bad_orientation，阈值和 body_names 仍需基于日志细调）`
 - 目标文件：`manual_rough_env_cfg.py`
 - 做法：
   - 复核 `base_contact` 阈值与 body_names
@@ -117,6 +140,7 @@
 ## 4. P3（地形与目标采样）：避免无效任务
 
 ### TODO 4.1 引入有效目标 patch 过滤
+- 状态：`未完成`
 - 参考实现：`BiSheTest/mdp/commands.py::AdvancedPose2dCommand`
 - 目标文件：`ManualTest/mdp/commands.py`（建议新增）+ `manual_rough_env_cfg.py`
 - 做法：
@@ -125,6 +149,7 @@
 - 验收：减少“目标在坑底/不可达区域”导致的无效训练样本。
 
 ### TODO 4.2 扩展 pit 难度分辨率
+- 状态：`未完成`
 - 目标文件：`config/terrain.py`
 - 做法：把当前 `easy/medium/hard` 拆成更细粒度（如 `pit_l1..pit_l5`），课程更平滑。
 - 验收：阶段切换时成功率波动减小。
@@ -134,6 +159,7 @@
 ## 5. P4（课程学习升级）：从“纯 iter”到“iter + 成功率门控”
 
 ### TODO 5.1 保留 iter 主线，增加阶段门控
+- 状态：`未完成`
 - 目标文件：`mdp/curriculums.py`
 - 做法：
   - 仍按 `iter_stage_boundaries` 前进
@@ -141,6 +167,7 @@
 - 验收：后期 hard pit 不再“突然崩盘”。
 
 ### TODO 5.2 课程参数外置化
+- 状态：`未完成`
 - 目标文件：`config/terrain.py` 或新建 `config/curriculum.py`
 - 做法：`terrain_keys / stage_weights / max_level_ratio / thresholds` 统一配置化。
 - 验收：换地形类型时几乎不改课程函数主体。
@@ -159,6 +186,7 @@
 - 预期上限更高，但训练不稳定风险更大，工程成本更高。
 
 ### TODO 6.1 做明确 A/B 决策门槛
+- 状态：`未完成`
 - 若路线 A 在固定评估集上达到目标（例如 hard pit 成功率 > 70%），可不切路线 B。
 - 若 A 卡住，则启动 B（分阶段、低学习率、强惩罚冷启动）。
 

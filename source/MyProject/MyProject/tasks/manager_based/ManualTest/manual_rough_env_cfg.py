@@ -141,6 +141,7 @@ class ObservationsCfg:
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
         projected_gravity = ObsTerm(func=mdp.projected_gravity)
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
+        time_to_go = ObsTerm(func=mdp.normalized_time_to_go)
         height_scan = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
@@ -174,6 +175,7 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
+    # 稠密导航奖励（前期主导）
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-400.0)
     position_tracking = RewTerm(
         func=mdp.position_command_error_tanh,
@@ -190,6 +192,48 @@ class RewardsCfg:
         weight=-0.2,
         params={"command_name": "pose_command"},
     )
+
+    # 任务主奖励：末端位置奖励（论文风格），在回合最后一段时间激活。
+    final_position = RewTerm(
+        func=mdp.final_position_reward,
+        weight=0.0,
+        params={"command_name": "pose_command", "activate_s": 1.0, "distance_scale": 4.0},
+    )
+    # 早期探索引导：朝目标方向移动，收敛后自动关闭。
+    exploration_bias = RewTerm(
+        func=mdp.velocity_towards_target_bias,
+        weight=0.0,
+        params={"command_name": "pose_command", "remove_threshold": 0.35, "ema_alpha": 0.995},
+    )
+    stalling = RewTerm(
+        func=mdp.stalling_penalty,
+        weight=0.0,
+        params={"command_name": "pose_command", "speed_threshold": 0.08, "distance_threshold": 0.6},
+    )
+
+
+    # 与 WalkTest 对齐的通用正则惩罚项
+    
+    # lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
+    # ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    
+    ####是否需要呢？？？
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)#关节加速度惩罚 1.原来的论文里面joint accelerations
+    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)#关节力矩惩罚 2.原来的论文里面joint torques
+    undesired_contacts = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-1.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
+    )#碰撞惩罚  3.原来的论文里面collisions
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)#突然的动作变化 4.原来的论文里面abrupt actions changes
+
+
+    feet_acc_l2 = RewTerm(
+        func=mdp.feet_acc_l2,
+        weight=-2.0e-5,
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=".*_foot")},
+    )#足端加速度惩罚 5.原论文额外强调 feet accelerations
+
 
 
 @configclass
@@ -231,6 +275,22 @@ class CurriculumCfg:
             "command_name": "pose_command",
             "success_distance_threshold": 0.5,
             "hard_terrain_key": "hard_pit",
+        },
+    )
+    # 奖励混合课程：前半程稠密导航，后半程平滑切到末端奖励。
+    reward_blend = CurrTerm(
+        func=mdp.blend_navigation_reward_schedule,
+        params={
+            "steps_per_iteration": 8,
+            "blend_start_iter": 300,
+            "blend_end_iter": 1100,
+            "dense_position_weight": 0.5,
+            "dense_position_fine_weight": 0.5,
+            "dense_orientation_weight": -0.2,
+            "dense_termination_weight": -400.0,
+            "sparse_final_weight": 4.0,
+            "sparse_exploration_weight": 0.3,
+            "sparse_stalling_weight": -0.8,
         },
     )
 
@@ -301,4 +361,5 @@ class LocomotionManualRoughEnvCfg_Eval(LocomotionManualRoughEnvCfg):
 
         # 评估时关闭训练课程项，只保留 P0 指标统计。
         self.curriculum.pit_terrain_schedule = None
+        self.curriculum.reward_blend = None
         self.observations.policy.enable_corruption = False
