@@ -1,7 +1,7 @@
 """Configuration for box terrains."""
 
 import isaaclab.terrains as terrain_gen
-from isaaclab.terrains import TerrainGeneratorCfg
+from isaaclab.terrains import FlatPatchSamplingCfg, TerrainGeneratorCfg
 #This file is design to generate terrain
 
 # 统一的坑洞地形尺寸参数
@@ -16,6 +16,19 @@ PIT_TERRAIN_COMMON_PARAMS = {
     "use_cache": False,
 }
 
+
+def _target_patch_sampling() -> dict[str, FlatPatchSamplingCfg]:
+    return {
+        "target": FlatPatchSamplingCfg(
+            num_patches=64,
+            patch_radius=[0.20, 0.14],
+            x_range=(-4.5, 4.5),
+            y_range=(-4.5, 4.5),
+            z_range=(-1.2, 1.2),
+            max_height_diff=0.05,
+        )
+    }
+
 # 简单坑洞（浅坑）
 EASY_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
     **PIT_TERRAIN_COMMON_PARAMS,
@@ -25,6 +38,7 @@ EASY_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
             pit_depth_range=(0.1, 0.2),    # 浅坑：10-20cm
             platform_width=2.0,
             double_pit=False,
+            flat_patch_sampling=_target_patch_sampling(),
         ),
     },
 )
@@ -38,6 +52,7 @@ MEDIUM_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
             pit_depth_range=(0.2, 0.35),   # 中等深度：20-35cm
             platform_width=2.0,
             double_pit=False,
+            flat_patch_sampling=_target_patch_sampling(),
         ),
     },
 )
@@ -51,6 +66,7 @@ HARD_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
             pit_depth_range=(0.35, 0.5),   # 深坑：35-50cm
             platform_width=2.0,
             double_pit=False,
+            flat_patch_sampling=_target_patch_sampling(),
         ),
     },
 )
@@ -66,6 +82,7 @@ MIXED_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
             pit_depth_range=(0.1, 0.2),
             platform_width=2.0,
             double_pit=False,
+            flat_patch_sampling=_target_patch_sampling(),
         ),
         # 阶段2：逐渐引入中等坑洞
         "medium_pit": terrain_gen.MeshPitTerrainCfg(
@@ -73,6 +90,7 @@ MIXED_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
             pit_depth_range=(0.2, 0.35),
             platform_width=2.0,
             double_pit=False,
+            flat_patch_sampling=_target_patch_sampling(),
         ),
         # 阶段3：少量困难坑洞作为挑战
         "hard_pit": terrain_gen.MeshPitTerrainCfg(
@@ -80,6 +98,7 @@ MIXED_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
             pit_depth_range=(0.35, 0.5),
             platform_width=2.0,
             double_pit=False,
+            flat_patch_sampling=_target_patch_sampling(),
         ),
     },
 )
@@ -93,18 +112,21 @@ EVAL_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
             pit_depth_range=(0.15, 0.15),
             platform_width=2.0,
             double_pit=False,
+            flat_patch_sampling=_target_patch_sampling(),
         ),
         "medium_pit": terrain_gen.MeshPitTerrainCfg(
             proportion=0.33,
             pit_depth_range=(0.30, 0.30),
             platform_width=2.0,
             double_pit=False,
+            flat_patch_sampling=_target_patch_sampling(),
         ),
         "hard_pit": terrain_gen.MeshPitTerrainCfg(
             proportion=0.33,
             pit_depth_range=(0.45, 0.45),
             platform_width=2.0,
             double_pit=False,
+            flat_patch_sampling=_target_patch_sampling(),
         ),
     },
 )

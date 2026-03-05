@@ -103,13 +103,20 @@ class MySceneCfg(WalkMySceneCfg):
 class CommandsCfg:
     """Command specifications for the MDP."""
 
-    pose_command = mdp.UniformPose2dCommandCfg(
+    pose_command = mdp.AdvancedPose2dCommandCfg(
         asset_name="robot",
-        simple_heading=False,
+        simple_heading=True,
         # 对齐论文：每回合一个目标，回合长度 6s。
         resampling_time_range=(6.0, 6.0),
         debug_vis=True,
-        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-3.0, 3.0), pos_y=(-3.0, 3.0), heading=(-math.pi, math.pi)),
+        radius_range=(1.0, 5.0),
+        goal_height_offset=0.5,
+        use_valid_target_patches=True,
+        target_patch_name="target",
+        max_target_height_offset=0.6,
+        fallback_to_polar_sampling=False,
+        log_patch_fallback=True,
+        ranges=mdp.AdvancedPose2dCommandCfg.Ranges(heading=(-math.pi, math.pi)),
     )
 
 
@@ -120,8 +127,7 @@ class ActionsCfg:
     # joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.25, use_default_offset=True)
     pre_trained_policy_action: mdp.PreTrainedPolicyActionCfg = mdp.PreTrainedPolicyActionCfg(
         asset_name="robot",
-        policy_path="/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt",
-
+        policy_path="/home/robot/work/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt",
         #在模型加载着一块，IsaacLab中的自带的RSL—RL训练代码的模型是checkpoint文件
         #而这个给出的示例代码则是TorchScript文件
         #在NewTools文件夹下的NewTools/model_trans.py可以转换模型
@@ -143,6 +149,8 @@ class ObservationsCfg:
         projected_gravity = ObsTerm(func=mdp.projected_gravity)
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
         time_to_go = ObsTerm(func=mdp.normalized_time_to_go)
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         height_scan = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
@@ -224,7 +232,7 @@ class RewardsCfg:
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
         weight=-1.0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_thigh|.*_calf"), "threshold": 1.0},
     )#碰撞惩罚  3.原来的论文里面collisions
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)#突然的动作变化 4.原来的论文里面abrupt actions changes
 
