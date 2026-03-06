@@ -66,9 +66,9 @@ def final_position_reward(
 ) -> torch.Tensor:
     """末端任务奖励：仅在回合最后 activate_s 秒激活。"""
     command = env.command_manager.get_command(command_name)
-    distance = torch.norm(command[:, :2], dim=1)
+    distance = torch.norm(command[:, :3], dim=1)
     remaining_time_s = (env.max_episode_length - env.episode_length_buf).float() * env.step_dt
-    active = remaining_time_s <= activate_s
+    active = remaining_time_s < activate_s
     # 对齐论文形式：1/Tr * 1/(1 + k*||e||^2)
     return (1.0 / activate_s) * (1.0 / (1.0 + distance_scale * torch.square(distance))) * active.float()
 
@@ -77,33 +77,29 @@ def velocity_towards_target_bias(
     env: ManagerBasedRLEnv,
     command_name: str,
     remove_threshold: float = 0.5,
-    ema_alpha: float = 0.995,
-    clip_speed: float = 1.0,
+    speed_epsilon: float = 1.0e-6,
 ) -> torch.Tensor:
-    """早期探索奖励：鼓励沿目标方向的前向速度，达到阈值后自动关闭。"""
+    """探索奖励（论文 Eq.(3)）：朝目标方向移动时给正奖励。"""
     if getattr(env, "_manual_disable_exploration_bias", False):
         return torch.zeros(env.num_envs, device=env.device)
 
     command = env.command_manager.get_command(command_name)
-    target_vec = command[:, :2]
-    target_norm = torch.norm(target_vec, dim=1, keepdim=True).clamp(min=1.0e-6)
-    target_dir = target_vec / target_norm
     vel_xy = env.scene["robot"].data.root_lin_vel_b[:, :2]
-    forward_speed = torch.sum(vel_xy * target_dir, dim=1)
-    scale = max(float(clip_speed), 1.0e-6)
-    speed_reward = torch.clamp(forward_speed / scale, min=-1.0, max=1.0)
+    target_vec = command[:, :2]
+    vel_norm = torch.norm(vel_xy, dim=1)
+    target_norm = torch.norm(target_vec, dim=1)
+    denom = vel_norm * target_norm
+    cosine = torch.sum(vel_xy * target_vec, dim=1) / torch.clamp(denom, min=speed_epsilon)
+    cosine = torch.clamp(cosine, min=-1.0, max=1.0)
 
-    # 当末端任务奖励 EMA 达到阈值后，关闭该引导项，避免长期干扰最优策略。
+    # 当末端任务奖励达到最大值 50% 时关闭探索项（论文描述）。
     task_reward_mean = torch.mean(final_position_reward(env, command_name=command_name)).item()
-    task_reward_ema = float(getattr(env, "_manual_task_reward_ema", 0.0))
-    task_reward_ema = ema_alpha * task_reward_ema + (1.0 - ema_alpha) * task_reward_mean
-    env._manual_task_reward_ema = task_reward_ema
-    if task_reward_ema >= remove_threshold:
+    if task_reward_mean >= remove_threshold:
         env._manual_disable_exploration_bias = True
         return torch.zeros(env.num_envs, device=env.device)
 
-    valid_target = (target_norm.squeeze(1) > 0.05).float()
-    return speed_reward * valid_target
+    valid = (target_norm > 0.05) & (vel_norm > 0.05)
+    return cosine * valid.float()
 
 
 def stalling_penalty(

@@ -166,16 +166,10 @@ class ObservationsCfg:
             clip=(-1.0, 1.0),
         )
 
-        # 重力方向投影（姿态感知），同样注入小噪声 3
-        projected_gravity = ObsTerm(
-            func=mdp.projected_gravity,
-            noise=Unoise(n_min=-0.05, n_max=0.05),
-        )
-
         # 剩余时间输入（论文中的 remaining time）这个是为了后面那个的时间奖励进行观测的 1
         time_to_go = ObsTerm(func=mdp.normalized_time_to_go)
 
-        # 一共12 + 12 + 3 + 3 + 3 + 12 + 187 + 3 + 1 = 236 维度
+        # 一共 12 + 12 + 3 + 3 + 3 + 12 + 187 + 1 = 233 维度
 
         def __post_init__(self):
             # 开启观测扰动与拼接，和 WalkTest 保持一致
@@ -216,44 +210,26 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
-    # 跌倒终止惩罚：避免“翻滚后快速重开”成为漏洞策略。
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-20.0)
-    # position_tracking = RewTerm(
-    #     func=mdp.position_command_error_tanh,
-    #     weight=0.0,
-    #     params={"std": 2.0, "command_name": "pose_command"},
-    # )
-    # position_tracking_fine_grained = RewTerm(
-    #     func=mdp.position_command_error_tanh,
-    #     weight=0.0,
-    #     params={"std": 0.2, "command_name": "pose_command"},
-    # )
-    # orientation_tracking = RewTerm(
-    #     func=mdp.heading_command_error_abs,
-    #     weight=0.0,
-    #     params={"command_name": "pose_command"},
-    # )
 
     # 任务主奖励：末端位置奖励（论文风格），在回合最后一段时间激活。
     final_position = RewTerm(
         func=mdp.final_position_reward,
-        weight=4.0,
+        weight=1.0,
         params={"command_name": "pose_command", "activate_s": 1.0, "distance_scale": 4.0},
     )
     # 早期探索引导：朝目标方向移动，收敛后自动关闭。
     exploration_bias = RewTerm(
         func=mdp.velocity_towards_target_bias,
-        weight=0.8,
+        weight=1.0,
         params={
             "command_name": "pose_command",
             "remove_threshold": 0.5,
-            "ema_alpha": 0.995,
-            "clip_speed": 1.0,
+            "speed_epsilon": 1.0e-6,
         },
     )
     stalling = RewTerm(
         func=mdp.stalling_penalty,
-        weight=-0.2,
+        weight=-1.0,
         params={"command_name": "pose_command", "speed_threshold": 0.1, "distance_threshold": 0.5},
     )
 
@@ -295,32 +271,23 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    """课程学习配置：仅按训练 iter 推进坑洞难度。"""
+    """论文风格课程学习：按每回合成功/失败更新地形等级。"""
 
-    pit_terrain_schedule = CurrTerm(
-        func=mdp.pit_terrain_by_iteration,
+    pit_terrain_success = CurrTerm(
+        func=mdp.pit_terrain_by_command_success,
         params={
-            # 课程阶段切换迭代点（总共 1500 iter 的默认划分）。
-            "iter_stage_boundaries": (0, 400, 900, 1300),
-            # 与 PPO 配置 num_steps_per_env=48 对齐，用于 step->iter 换算。
-            "steps_per_iteration": 48,
-            "stage_weights": (
-                (0.85, 0.14, 0.01),  # 前期：简单坑为主
-                (0.65, 0.28, 0.07),
-                (0.45, 0.35, 0.20),
-                (0.25, 0.35, 0.40),  # 后期：困难坑占比提高
-            ),
-            # 每个阶段允许的最大地形等级比例（从低到高逐步放开）。
-            "stage_max_level_ratio": (0.35, 0.55, 0.75, 1.0),
+            "command_name": "pose_command",
+            "success_distance_threshold": 0.5,
+            "level_step_up": 1,
+            "level_step_down": 1,
         },
     )
-    # P0 基线统计：在 reset 前输出 success/fall/final_distance/energy 等指标到日志。
+    # P0 基线统计：在 reset 前仅输出 success_rate 到日志。
     p0_metrics = CurrTerm(
         func=mdp.p0_episode_metrics,
         params={
             "command_name": "pose_command",
             "success_distance_threshold": 0.5,
-            "hard_terrain_key": "hard_pit",
         },
     )
 
@@ -391,5 +358,5 @@ class LocomotionManualRoughEnvCfg_Eval(LocomotionManualRoughEnvCfg):
             self.scene.terrain.terrain_generator.curriculum = False
 
         # 评估时关闭训练课程项，只保留 P0 指标统计。
-        self.curriculum.pit_terrain_schedule = None
+        self.curriculum.pit_terrain_success = None
         self.observations.policy.enable_corruption = False
