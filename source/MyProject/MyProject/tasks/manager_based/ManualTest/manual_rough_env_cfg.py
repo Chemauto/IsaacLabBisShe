@@ -153,7 +153,6 @@ class ObservationsCfg:
         # 4.机体角速度观测（论文要求包含 base angular velocity）3
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
 
-
         # 5.论文对齐：使用目标 3D 位置（机体系），不直接使用 heading 命令。3 
         pose_command = ObsTerm(func=mdp.pose_command_position_b, params={"command_name": "pose_command"})
 
@@ -205,12 +204,20 @@ class EventCfg:
             },
         },
     )
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={
+            "position_range": (1.0, 1.0),
+            "velocity_range": (0.0, 0.0),
+        },
+    )
 
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
-    # 按论文流程：关闭稠密导航主奖励，使用末端任务奖励为主。
-    # termination_penalty = RewTerm(func=mdp.is_terminated, weight=0.0)
+    # 跌倒终止惩罚：避免“翻滚后快速重开”成为漏洞策略。
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-20.0)
     # position_tracking = RewTerm(
     #     func=mdp.position_command_error_tanh,
     #     weight=0.0,
@@ -236,13 +243,18 @@ class RewardsCfg:
     # 早期探索引导：朝目标方向移动，收敛后自动关闭。
     exploration_bias = RewTerm(
         func=mdp.velocity_towards_target_bias,
-        weight=0.3,
-        params={"command_name": "pose_command", "remove_threshold": 0.35, "ema_alpha": 0.995},
+        weight=0.8,
+        params={
+            "command_name": "pose_command",
+            "remove_threshold": 0.5,
+            "ema_alpha": 0.995,
+            "clip_speed": 1.0,
+        },
     )
     stalling = RewTerm(
         func=mdp.stalling_penalty,
-        weight=-0.8,
-        params={"command_name": "pose_command", "speed_threshold": 0.08, "distance_threshold": 0.6},
+        weight=-0.2,
+        params={"command_name": "pose_command", "speed_threshold": 0.1, "distance_threshold": 0.5},
     )
 
 

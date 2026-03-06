@@ -76,10 +76,11 @@ def final_position_reward(
 def velocity_towards_target_bias(
     env: ManagerBasedRLEnv,
     command_name: str,
-    remove_threshold: float = 0.35,
+    remove_threshold: float = 0.5,
     ema_alpha: float = 0.995,
+    clip_speed: float = 1.0,
 ) -> torch.Tensor:
-    """早期探索奖励：鼓励朝目标方向移动，达到阈值后自动关闭。"""
+    """早期探索奖励：鼓励沿目标方向的前向速度，达到阈值后自动关闭。"""
     if getattr(env, "_manual_disable_exploration_bias", False):
         return torch.zeros(env.num_envs, device=env.device)
 
@@ -87,9 +88,10 @@ def velocity_towards_target_bias(
     target_vec = command[:, :2]
     target_norm = torch.norm(target_vec, dim=1, keepdim=True).clamp(min=1.0e-6)
     target_dir = target_vec / target_norm
-
     vel_xy = env.scene["robot"].data.root_lin_vel_b[:, :2]
-    vel_projection = torch.sum(vel_xy * target_dir, dim=1)
+    forward_speed = torch.sum(vel_xy * target_dir, dim=1)
+    scale = max(float(clip_speed), 1.0e-6)
+    speed_reward = torch.clamp(forward_speed / scale, min=-1.0, max=1.0)
 
     # 当末端任务奖励 EMA 达到阈值后，关闭该引导项，避免长期干扰最优策略。
     task_reward_mean = torch.mean(final_position_reward(env, command_name=command_name)).item()
@@ -100,15 +102,15 @@ def velocity_towards_target_bias(
         env._manual_disable_exploration_bias = True
         return torch.zeros(env.num_envs, device=env.device)
 
-    valid = (target_norm.squeeze(1) > 0.05).float()
-    return vel_projection * valid
+    valid_target = (target_norm.squeeze(1) > 0.05).float()
+    return speed_reward * valid_target
 
 
 def stalling_penalty(
     env: ManagerBasedRLEnv,
     command_name: str,
-    speed_threshold: float = 0.08,
-    distance_threshold: float = 0.6,
+    speed_threshold: float = 0.1,
+    distance_threshold: float = 0.5,
 ) -> torch.Tensor:
     """远离目标但移动很慢时惩罚，减少“站桩”。"""
     command = env.command_manager.get_command(command_name)
