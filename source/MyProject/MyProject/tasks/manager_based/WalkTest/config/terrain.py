@@ -139,27 +139,27 @@ BISHE_PIT_MIX_TERRAINS_CFG = TerrainGeneratorCfg(
     slope_threshold=0.75,
     use_cache=False,
     sub_terrains={
-        # Pit-dominant mix: 60% pit + 20% stairs + 10% boxes + 5% rough
+        # Pit-dominant mix: 40% pit + 40% stairs + 10% boxes + 10% rough
         "easy_pit": terrain_gen.MeshPitTerrainCfg(
-            proportion=0.30,
-            pit_depth_range=(0.10, 0.22),
+            proportion=0.15,
+            pit_depth_range=(0.05, 0.20),
             platform_width=2.0,
             double_pit=False,
         ),
         "medium_pit": terrain_gen.MeshPitTerrainCfg(
             proportion=0.20,
-            pit_depth_range=(0.20, 0.35),
+            pit_depth_range=(0.20, 0.30),
             platform_width=2.0,
             double_pit=False,
         ),
         "hard_pit": terrain_gen.MeshPitTerrainCfg(
-            proportion=0.10,
-            pit_depth_range=(0.30, 0.48),
+            proportion=0.05,
+            pit_depth_range=(0.25, 0.35),
             platform_width=2.0,
             double_pit=False,
         ),
         "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-            proportion=0.10,
+            proportion=0.20,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=3.0,
@@ -167,7 +167,7 @@ BISHE_PIT_MIX_TERRAINS_CFG = TerrainGeneratorCfg(
             holes=False,
         ),
         "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.10,
+            proportion=0.20,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=3.0,
