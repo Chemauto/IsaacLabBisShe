@@ -393,6 +393,16 @@ class LocomotionBiShePitEnvCfg(VelocityGo2WalkRoughEnvCfg):
         # self.rewards = StairClimbingRewardsCfg()
 
 
+#   python train.py \
+#     --task Template-Velocity-Go2-Walk-BiShe-Pit-v0 \
+#     --headless \
+#     --resume \
+#     --experiment_name go2_walk_bishe \  这个在rsl-rl文件夹下新建一个
+#     --load_run '^bootstrap_from_rough$' \ 下面再建一个子文件夹
+#     --checkpoint '^WalkStart\.pt$' \ 实际walk策略
+#     --run_name ft_from_WalkStart
+
+
 @configclass
 class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
     """Play configuration for pit-traversal environment."""
