@@ -13,4 +13,4 @@ Use this project
 6. Train the final policy follow as this order
    ‘python train.py --task Template-Naviation-Test-Unitree-Go2-v0 --headless’
 
-
+7. 这个分支的代码参考了advanced skills code，需要时间去复刻测试
