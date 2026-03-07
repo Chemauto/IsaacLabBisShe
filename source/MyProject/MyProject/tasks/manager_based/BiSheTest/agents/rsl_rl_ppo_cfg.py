@@ -9,12 +9,11 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 
 
 @configclass
-class ManualRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    # 对齐论文稳定性设置：增大每次迭代采样步数 + 训练 2000 iter。
-    num_steps_per_env = 48
-    max_iterations = 2000
+class BiSheRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 8
+    max_iterations = 1500
     save_interval = 50
-    experiment_name = "manual_rough"
+    experiment_name = "bishe_rough"
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=0.5,
         actor_obs_normalization=False,
@@ -37,3 +36,11 @@ class ManualRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
+
+# @configclass
+# class BiSheFlatPPORunnerCfg(BiSheRoughPPORunnerCfg):
+#     def __post_init__(self):
+#         super().__post_init__()
+
+#         self.experiment_name = "bishe_flat"
+

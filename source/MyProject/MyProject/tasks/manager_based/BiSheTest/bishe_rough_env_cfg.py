@@ -43,30 +43,24 @@ from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 # Scene definition
 ##
 
-import MyProject.tasks.manager_based.ManualTest.mdp as mdp
-from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import (
-    VelocityGo2WalkRoughEnvCfg,
-    MySceneCfg as WalkMySceneCfg,
-)
-from MyProject.tasks.manager_based.ManualTest.config.terrain import (
-    MIXED_PIT_TERRAINS_CFG,
-    EVAL_PIT_TERRAINS_CFG,
-)
+import MyProject.tasks.manager_based.BiSheTest.mdp as mdp
+from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo2WalkRoughEnvCfg
+from MyProject.tasks.manager_based.BiSheTest.config.terrain import STAIR_TERRAINS_CFG
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughEnvCfg()
 #分层的强化学习的方式，低层的强化学习为之前已经训练好的在平地上行走的策略
 #如果需要训练好的话，这个层次的策略也应该训练好一点
 
 
 @configclass
-class MySceneCfg(WalkMySceneCfg):
-    """扩展低层环境的场景配置，使用混合坑洞地形，支持课程学习"""
+class MySceneCfg(InteractiveSceneCfg):
+    """Configuration for the terrain scene with a legged robot."""
 
-    # 覆盖地形配置为混合坑洞（含三种难度：60%简单 + 30%中等 + 10%困难）
+    # ground terrain
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
-        terrain_generator=MIXED_PIT_TERRAINS_CFG,
-        max_init_terrain_level=5,  #
+        terrain_generator=ROUGH_TERRAINS_CFG,
+        max_init_terrain_level=5,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -81,6 +75,26 @@ class MySceneCfg(WalkMySceneCfg):
         ),
         debug_vis=False,
     )
+    # 平台
+    platform = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Platform",
+        spawn=sim_utils.CuboidCfg(
+            size=(1.0, 1.0, 0.26),
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+            mass_props=sim_utils.MassPropertiesCfg(mass=0.0),
+            collision_props=sim_utils.CollisionPropertiesCfg(),
+            visual_material=sim_utils.PreviewSurfaceCfg(
+                diffuse_color=(0.0, 1.0, 0.0),  # 绿色平台
+                metallic=0.3,
+                roughness=0.5,
+            ),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(2.0, 0.0, 0.13),
+        ),
+    )
+    # robots
+    robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
     # sensors
     height_scanner = RayCasterCfg(
         prim_path="{ENV_REGEX_NS}/Robot/base",
@@ -91,7 +105,14 @@ class MySceneCfg(WalkMySceneCfg):
         mesh_prim_paths=["/World/ground"],
     )
     contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
-
+    # lights
+    sky_light = AssetBaseCfg(
+        prim_path="/World/skyLight",
+        spawn=sim_utils.DomeLightCfg(
+            intensity=750.0,
+            texture_file=f"{ISAAC_NUCLEUS_DIR}/Materials/Textures/Skies/PolyHaven/kloofendal_43d_clear_puresky_4k.hdr",
+        ),
+    )
 
 
 ##
@@ -103,20 +124,12 @@ class MySceneCfg(WalkMySceneCfg):
 class CommandsCfg:
     """Command specifications for the MDP."""
 
-    pose_command = mdp.AdvancedPose2dCommandCfg(
+    pose_command = mdp.UniformPose2dCommandCfg(
         asset_name="robot",
-        simple_heading=True,
-        # 对齐论文：每回合一个目标，回合长度 6s。
-        resampling_time_range=(6.0, 6.0),
+        simple_heading=False,
+        resampling_time_range=(8.0, 8.0),
         debug_vis=True,
-        radius_range=(1.0, 5.0),
-        goal_height_offset=0.5,
-        use_valid_target_patches=True,
-        target_patch_name="target",
-        max_target_height_offset=0.6,
-        fallback_to_polar_sampling=False,
-        log_patch_fallback=True,
-        ranges=mdp.AdvancedPose2dCommandCfg.Ranges(heading=(-math.pi, math.pi)),
+        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-3.0, 3.0), pos_y=(-3.0, 3.0), heading=(-math.pi, math.pi)),
     )
 
 
@@ -128,6 +141,9 @@ class ActionsCfg:
     pre_trained_policy_action: mdp.PreTrainedPolicyActionCfg = mdp.PreTrainedPolicyActionCfg(
         asset_name="robot",
         policy_path="/home/robot/work/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt",
+        # policy_path=f"{ISAACLAB_NUCLEUS_DIR}/Policies/ANYmal-C/Blind/policy.pt",
+        #This
+        # policy_path=f"{ISAACLAB_NUCLEUS_DIR}/Policies/ANYmal-C/Blind/policy.pt",
         #在模型加载着一块，IsaacLab中的自带的RSL—RL训练代码的模型是checkpoint文件
         #而这个给出的示例代码则是TorchScript文件
         #在NewTools文件夹下的NewTools/model_trans.py可以转换模型
@@ -145,18 +161,16 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
-        projected_gravity = ObsTerm(func=mdp.projected_gravity)
-        pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
-        time_to_go = ObsTerm(func=mdp.normalized_time_to_go)
-        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel) #3
+        projected_gravity = ObsTerm(func=mdp.projected_gravity) #3
+        pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"}) #4
         height_scan = ObsTerm(
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=(-1.0, 1.0),
-        )
-        actions = ObsTerm(func=mdp.last_action)
+        ) #187
+        actions = ObsTerm(func=mdp.last_action) #3
+
     # observation groups
     policy: PolicyCfg = PolicyCfg()
 
@@ -184,65 +198,22 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
-    # 按论文流程：关闭稠密导航主奖励，使用末端任务奖励为主。
-    # termination_penalty = RewTerm(func=mdp.is_terminated, weight=0.0)
-    # position_tracking = RewTerm(
-    #     func=mdp.position_command_error_tanh,
-    #     weight=0.0,
-    #     params={"std": 2.0, "command_name": "pose_command"},
-    # )
-    # position_tracking_fine_grained = RewTerm(
-    #     func=mdp.position_command_error_tanh,
-    #     weight=0.0,
-    #     params={"std": 0.2, "command_name": "pose_command"},
-    # )
-    # orientation_tracking = RewTerm(
-    #     func=mdp.heading_command_error_abs,
-    #     weight=0.0,
-    #     params={"command_name": "pose_command"},
-    # )
-
-    # 任务主奖励：末端位置奖励（论文风格），在回合最后一段时间激活。
-    final_position = RewTerm(
-        func=mdp.final_position_reward,
-        weight=4.0,
-        params={"command_name": "pose_command", "activate_s": 1.0, "distance_scale": 4.0},
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-400.0)
+    position_tracking = RewTerm(
+        func=mdp.position_command_error_tanh,
+        weight=0.5,
+        params={"std": 2.0, "command_name": "pose_command"},
     )
-    # 早期探索引导：朝目标方向移动，收敛后自动关闭。
-    exploration_bias = RewTerm(
-        func=mdp.velocity_towards_target_bias,
-        weight=0.3,
-        params={"command_name": "pose_command", "remove_threshold": 0.35, "ema_alpha": 0.995},
+    position_tracking_fine_grained = RewTerm(
+        func=mdp.position_command_error_tanh,
+        weight=0.5,
+        params={"std": 0.2, "command_name": "pose_command"},
     )
-    stalling = RewTerm(
-        func=mdp.stalling_penalty,
-        weight=-0.8,
-        params={"command_name": "pose_command", "speed_threshold": 0.08, "distance_threshold": 0.6},
+    orientation_tracking = RewTerm(
+        func=mdp.heading_command_error_abs,
+        weight=-0.2,
+        params={"command_name": "pose_command"},
     )
-
-
-    # 与 WalkTest 对齐的通用正则惩罚项
-    
-    # lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    # ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    
-    ####是否需要呢？？？
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)#关节加速度惩罚 1.原来的论文里面joint accelerations
-    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)#关节力矩惩罚 2.原来的论文里面joint torques
-    undesired_contacts = RewTerm(
-        func=mdp.undesired_contacts,
-        weight=-1.0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_thigh|.*_calf"), "threshold": 1.0},
-    )#碰撞惩罚  3.原来的论文里面collisions
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)#突然的动作变化 4.原来的论文里面abrupt actions changes
-
-
-    feet_acc_l2 = RewTerm(
-        func=mdp.feet_acc_l2,
-        weight=-2.0e-5,
-        params={"asset_cfg": SceneEntityCfg("robot", body_names=".*_foot")},
-    )#足端加速度惩罚 5.原论文额外强调 feet accelerations
-
 
 
 @configclass
@@ -258,35 +229,9 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    """课程学习配置：仅按训练 iter 推进坑洞难度。"""
+    """Curriculum terms for the MDP."""
 
-    pit_terrain_schedule = CurrTerm(
-        func=mdp.pit_terrain_by_iteration,
-        params={
-            # 课程阶段切换迭代点（总共 1500 iter 的默认划分）。
-            "iter_stage_boundaries": (0, 400, 900, 1300),
-            # 与 PPO 配置 num_steps_per_env=48 对齐，用于 step->iter 换算。
-            "steps_per_iteration": 48,
-            "stage_weights": (
-                (0.85, 0.14, 0.01),  # 前期：简单坑为主
-                (0.65, 0.28, 0.07),
-                (0.45, 0.35, 0.20),
-                (0.25, 0.35, 0.40),  # 后期：困难坑占比提高
-            ),
-            # 每个阶段允许的最大地形等级比例（从低到高逐步放开）。
-            "stage_max_level_ratio": (0.35, 0.55, 0.75, 1.0),
-        },
-    )
-    # P0 基线统计：在 reset 前输出 success/fall/final_distance/energy 等指标到日志。
-    p0_metrics = CurrTerm(
-        func=mdp.p0_episode_metrics,
-        params={
-            "command_name": "pose_command",
-            "success_distance_threshold": 0.5,
-            "hard_terrain_key": "hard_pit",
-        },
-    )
-
+    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
 
 
 ##
@@ -294,11 +239,11 @@ class CurriculumCfg:
 ##
 
 @configclass
-class LocomotionManualRoughEnvCfg(ManagerBasedRLEnvCfg):
-    """Configuration for the navigation environment with adaptive curriculum learning."""
+class LocomotionBiSheRoughEnvCfg(ManagerBasedRLEnvCfg):
+    """Configuration for the navigation environment."""
 
     # environment settings
-    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+    scene: SceneEntityCfg = LOW_LEVEL_ENV_CFG.scene
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     events: EventCfg = EventCfg()
@@ -306,7 +251,6 @@ class LocomotionManualRoughEnvCfg(ManagerBasedRLEnvCfg):
     commands: CommandsCfg = CommandsCfg()
     rewards: RewardsCfg = RewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
-    curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
         """Post initialization."""
@@ -315,8 +259,6 @@ class LocomotionManualRoughEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = LOW_LEVEL_ENV_CFG.decimation
         self.decimation = LOW_LEVEL_ENV_CFG.decimation * 10
         self.episode_length_s = self.commands.pose_command.resampling_time_range[1]
-        # 对齐论文：有限时域任务，不使用无限时域 bootstrapping 假设。
-        self.is_finite_horizon = True
 
         if self.scene.height_scanner is not None:
             self.scene.height_scanner.update_period = (
@@ -325,11 +267,8 @@ class LocomotionManualRoughEnvCfg(ManagerBasedRLEnvCfg):
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = self.sim.dt
 
-        if self.scene.terrain.terrain_generator is not None:
-            self.scene.terrain.terrain_generator.curriculum = True
 
-
-class LocomotionManualRoughEnvCfg_Play(LocomotionManualRoughEnvCfg):
+class LocomotionBiSheRoughEnvCfg_Play(LocomotionBiSheRoughEnvCfg):
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()
@@ -341,19 +280,60 @@ class LocomotionManualRoughEnvCfg_Play(LocomotionManualRoughEnvCfg):
         self.observations.policy.enable_corruption = False
 
 
-class LocomotionManualRoughEnvCfg_Eval(LocomotionManualRoughEnvCfg):
-    """固定评估配置：关闭训练课程，使用固定浅/中/深沟地形。"""
 
-    def __post_init__(self) -> None:
+@configclass
+class StairClimbingRewardsCfg(RewardsCfg):
+    """Extended rewards for stair climbing tasks."""
+    # 爬楼梯进展奖励是否需要呢?
+    climb_progress = RewTerm(
+        func=mdp.climb_progress_reward,
+        weight=1.0,
+        params={"command_name": "pose_command", "max_forward_distance": 2.0, "sigma": 0.25},
+    )
+    # # 保持平稳姿态的惩罚(增加权重)
+    # flat_orientation = RewTerm(
+    #     func=mdp.flat_orientation_l2,
+    #     weight=-5.0,  # 从默认的 -2.5 增加到 -5.0,爬楼梯时姿态更重要
+    #     params={"asset_cfg": SceneEntityCfg("robot")},
+    # )
+
+
+@configclass
+class LocomotionBiSheClimbEnvCfg(LocomotionBiSheRoughEnvCfg):
+    """
+    Configuration for the navigation environment specialized for stair climbing.
+    专门用来爬楼梯的动作训练导航,只使用正向和反向楼梯地形
+    """
+
+    def __post_init__(self):
+        """Post initialization to override terrain configuration."""
+        # Call parent post init first
         super().__post_init__()
 
-        self.scene.num_envs = 256
-        self.scene.env_spacing = 3.0
-        self.scene.terrain.terrain_generator = EVAL_PIT_TERRAINS_CFG
-        self.scene.terrain.max_init_terrain_level = 5
-        if self.scene.terrain.terrain_generator is not None:
-            self.scene.terrain.terrain_generator.curriculum = False
+        # Override terrain to use only stairs
+        # 覆盖地形配置,只使用楼梯
+        self.scene.terrain.terrain_generator = STAIR_TERRAINS_CFG
+        # 使用爬楼梯专用奖励配置
+        # self.rewards = StairClimbingRewardsCfg()
+        # 这个攀爬楼梯的奖励有点小问题
 
-        # 评估时关闭训练课程项，只保留 P0 指标统计。
-        self.curriculum.pit_terrain_schedule = None
+
+@configclass
+class LocomotionBiSheClimbEnvCfg_Play(LocomotionBiSheClimbEnvCfg):
+    """Play configuration for stair climbing environment."""
+
+    def __post_init__(self) -> None:
+        # post init of parent
+        super().__post_init__()
+
+        # make a smaller scene for play
+        self.scene.num_envs = 50
+        self.scene.env_spacing = 4
+        # disable randomization for play
         self.observations.policy.enable_corruption = False
+
+        # Set fixed target position for testing (adjust these values as needed)
+        # Setting min==max gives a fixed command
+        self.commands.pose_command.ranges.pos_x = (3.0, 3.0)  # Fixed target x = 2.0m
+        self.commands.pose_command.ranges.pos_y = (0.0, 0.0)  # Fixed target y = 0.0m
+        self.commands.pose_command.ranges.heading = (0.0, 0.0)  # Fixed heading = 0 rad

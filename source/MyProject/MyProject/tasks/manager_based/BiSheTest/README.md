@@ -1,4 +1,4 @@
-# NaviationTest - Hierarchical Navigation Task
+# BiSheTest - Hierarchical Navigation Task
 
 **Unitree Go2 四足机器人分层强化学习导航任务**
 
@@ -21,14 +21,14 @@
 ## 目录结构
 
 ```
-NaviationTest/
+BiSheTest/
 ├── __init__.py                    # Gym 环境注册
-├── naviation_rough_env_cfg.py     # 粗糙地形导航配置
-├── naviation_flat_env_cfg.py      # 平坦地形导航配置
+├── bishe_rough_env_cfg.py     # 粗糙地形导航配置
+├── bishe_flat_env_cfg.py      # 平坦地形导航配置
 ├── agents/
 │   ├── __init__.py
 │   ├── rsl_rl_ppo_cfg.py         # PPO 训练配置
-│   └── skrl_nav_*_ppo_cfg.yaml   # SKRL 配置
+│   └── skrl_bishe_*_ppo_cfg.yaml # SKRL 配置
 ├── mdp/
 │   ├── __init__.py
 │   ├── pre_trained_policy_action.py  # 分层动作管理器
@@ -46,12 +46,12 @@ NaviationTest/
 
 | 环境 ID | 地形类型 | 用途 | 环境数量 |
 |---------|---------|------|---------|
-| `Template-Naviation-Rough-Go2-v0` | 粗糙地形 + 障碍物 | 训练 | 4096 |
-| `Template-Naviation-Rough-Go2-Play-v0` | 粗糙地形 + 障碍物 | 推理/可视化 | 50 |
-| `Template-Naviation-Flat-Go2-v0` | 平坦地形 | 训练 | 4096 |
-| `Template-Naviation-Flat-Go2-Play-v0` | 平坦地形 | 推理/可视化 | 50 |
-| `Template-Naviation-Climb-Go2-v0` | 楼梯地形 | 训练 | 4096 |
-| `Template-Naviation-Climb-Go2-Play-v0` | 楼梯地形 | 推理/可视化 | 50 |
+| `Template-BiShe-Rough-Go2-v0` | 粗糙地形 + 障碍物 | 训练 | 4096 |
+| `Template-BiShe-Rough-Go2-Play-v0` | 粗糙地形 + 障碍物 | 推理/可视化 | 50 |
+| `Template-BiShe-Flat-Go2-v0` | 平坦地形 | 训练 | 4096 |
+| `Template-BiShe-Flat-Go2-Play-v0` | 平坦地形 | 推理/可视化 | 50 |
+| `Template-BiShe-Climb-Go2-v0` | 楼梯地形 | 训练 | 4096 |
+| `Template-BiShe-Climb-Go2-Play-v0` | 楼梯地形 | 推理/可视化 | 50 |
 
 ---
 
@@ -76,7 +76,7 @@ NaviationTest/
    ```
 
 3. **更新导航配置中的模型路径**
-   在 `naviation_rough_env_cfg.py:143` 更新：
+   在 `bishe_rough_env_cfg.py:143` 更新：
    ```python
    policy_path="ModelBackup/TransPolicy/WalkRoughNewTransfer.pt"
    ```
@@ -85,21 +85,21 @@ NaviationTest/
 
 ```bash
 # 粗糙地形导航（带障碍物）
-python scripts/rsl_rl/train.py --task Template-Naviation-Rough-Go2-v0 --headless
+python scripts/rsl_rl/train.py --task Template-BiShe-Rough-Go2-v0 --headless
 
 # 平坦地形导航
-python scripts/rsl_rl/train.py --task Template-Naviation-Flat-Go2-v0 --headless
+python scripts/rsl_rl/train.py --task Template-BiShe-Flat-Go2-v0 --headless
 
 # 楼梯攀爬导航
-python scripts/rsl_rl/train.py --task Template-Naviation-Climb-Go2-v0 --headless
+python scripts/rsl_rl/train.py --task Template-BiShe-Climb-Go2-v0 --headless
 ```
 
 ### 推理和可视化
 
 ```bash
 # 使用训练好的模型进行推理
-python scripts/rsl_rl/play.py --task Template-Naviation-Climb-Go2-Play-v0 \
-    --checkpoint ModelBackup/NaviationPolicy/model_XXXX.pt
+python scripts/rsl_rl/play.py --task Template-BiShe-Climb-Go2-Play-v0 \
+    --checkpoint ModelBackup/BiShePolicy/model_XXXX.pt
 ```
 
 ---
@@ -125,7 +125,7 @@ pose_command = mdp.UniformPose2dCommandCfg(
 ```
 
 **测试时设置固定目标**：
-在 `LocomotionNaviationClimbEnvCfg_Play.__post_init__()` 中：
+在 `LocomotionBiSheClimbEnvCfg_Play.__post_init__()` 中：
 ```python
 # 设置固定目标（min==max 即为固定值）
 self.commands.pose_command.ranges.pos_x = (3.0, 3.0)
@@ -325,10 +325,10 @@ pre_trained_policy_action = mdp.PreTrainedPolicyActionCfg(
 **A**: 修改观测后必须重新训练：
 ```bash
 # 删除旧模型
-rm -rf logs/rsl_rl/naviation_rough/
+rm -rf logs/rsl_rl/bishe_rough/
 
 # 重新训练
-python scripts/rsl_rl/train.py --task Template-Naviation-Rough-Go2-v0 --headless
+python scripts/rsl_rl/train.py --task Template-BiShe-Rough-Go2-v0 --headless
 ```
 
 ---

@@ -392,7 +392,6 @@ class LocomotionClimbEnvCfg(VelocityGo2WalkRoughEnvCfg):
         self.scene.terrain.terrain_generator = STAIR_TERRAINS_CFG
         # 使用爬楼梯专用奖励配置
         # self.rewards = StairClimbingRewardsCfg()
-        # 这个攀爬楼梯的奖励有点小问题
 
 
 @configclass
@@ -421,7 +420,7 @@ class LocomotionClimbEnvCfg_Play(LocomotionClimbEnvCfg):
 
         # Use a fixed velocity command for stair-climbing evaluation.
         self.commands.base_velocity.rel_standing_envs = 0.0
-        self.commands.base_velocity.heading_command = False
+        self.commands.base_velocity.heading_command = True
         self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)  #
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)  # 
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)  # 
