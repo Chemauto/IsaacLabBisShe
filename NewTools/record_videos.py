@@ -47,14 +47,14 @@ parser.add_argument(
     "--camera_eye_offset",
     type=float,
     nargs=3,
-    default=[0.0, 3.0, 1.4],
+    default=[0.0, 3.2, 1.1],
     help="Camera eye offset relative to robot base position.",
 )
 parser.add_argument(
     "--camera_target_offset",
     type=float,
     nargs=3,
-    default=[0.6, 0.0, 0.5],
+    default=[0.0, 0.0, 0.45],
     help="Camera target offset relative to robot base position (lower z => look more downward).",
 )
 # eye_offset = [-3.0, 0, 1.4]
