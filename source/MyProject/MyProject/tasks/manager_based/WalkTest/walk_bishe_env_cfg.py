@@ -427,7 +427,11 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
         self.events.base_external_force_torque = None
         self.events.push_robot = None
 
+
+
+
         # Use a fixed velocity command for pit-traversal evaluation.
+        self.events.reset_base.params["pose_range"] = {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (0, 0)}
         self.commands.base_velocity.rel_standing_envs = 0.0
         self.commands.base_velocity.heading_command = True
         self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)  #
