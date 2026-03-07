@@ -395,7 +395,7 @@ class LocomotionBiShePitEnvCfg(VelocityGo2WalkRoughEnvCfg):
         self.rewards.undesired_contacts = RewTerm(
             func=mdp.undesired_contacts,
             weight=-1.0,
-            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*(THIGH|CALF)"), "threshold": 1.0},
+            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_(thigh|calf)"), "threshold": 1.0},
         )
         # 第一次训练的时候没有用到这个
 
