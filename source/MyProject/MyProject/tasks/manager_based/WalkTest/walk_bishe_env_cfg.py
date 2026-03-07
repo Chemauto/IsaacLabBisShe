@@ -389,6 +389,16 @@ class LocomotionBiShePitEnvCfg(VelocityGo2WalkRoughEnvCfg):
 
         # Override terrain to use pit-dominant mixed terrains.
         self.scene.terrain.terrain_generator = MIXED_PIT_TERRAINS_CFG
+        # Re-enable undesired contacts penalty for pit training.
+
+        # 第一次训练的时候没有用到这个,防止碰到腿
+        self.rewards.undesired_contacts = RewTerm(
+            func=mdp.undesired_contacts,
+            weight=-1.0,
+            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*(THIGH|CALF)"), "threshold": 1.0},
+        )
+        # 第一次训练的时候没有用到这个
+
         # 使用跨越坑洞专用奖励配置
         # self.rewards = StairClimbingRewardsCfg()
 
