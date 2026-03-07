@@ -29,6 +29,42 @@ BOX_TERRAINS_CFG = TerrainGeneratorCfg(
 )
 """Box terrains configuration."""
 
+# 毕设攀爬技能专用：box 主导，混入少量楼梯
+BISHE_CLIMB_BOX_TERRAINS_CFG = TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    sub_terrains={
+        "boxes": terrain_gen.MeshRandomGridTerrainCfg(
+            proportion=0.8,
+            grid_width=0.45,
+            grid_height_range=(0.08, 0.25),
+            platform_width=2.0,
+        ),
+        "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.1,
+            step_height_range=(0.05, 0.23),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.1,
+            step_height_range=(0.05, 0.23),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+    },
+)
+
 # 简单坑洞（训练初期）
 EASY_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
     size=(8.0, 8.0),
