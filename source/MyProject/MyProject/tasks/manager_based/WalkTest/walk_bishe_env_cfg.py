@@ -24,7 +24,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
-from MyProject.tasks.manager_based.WalkTest.config.terrain import BISHE_CLIMB_BOX_TERRAINS_CFG, BISHE_PIT_MIX_TERRAINS_CFG
+from MyProject.tasks.manager_based.WalkTest.config.terrain import BISHE_CLIMB_BOX_TERRAINS_CFG,BOX_TERRAINS_CFG,MIXED_PIT_TERRAINS_CFG
 ##
 # Pre-defined configs
 ##
@@ -388,7 +388,7 @@ class LocomotionBiShePitEnvCfg(VelocityGo2WalkRoughEnvCfg):
         super().__post_init__()
 
         # Override terrain to use pit-dominant mixed terrains.
-        self.scene.terrain.terrain_generator = BISHE_PIT_MIX_TERRAINS_CFG
+        self.scene.terrain.terrain_generator = MIXED_PIT_TERRAINS_CFG
         # 使用跨越坑洞专用奖励配置
         # self.rewards = StairClimbingRewardsCfg()
 
@@ -426,35 +426,7 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)  # fixed heading target when heading_command is True
 
 
-@configclass
-class LocomotionBiSheBoxClimbEnvCfg(VelocityGo2WalkRoughEnvCfg):
-    """
-    Configuration for locomotion skill training focused on climbing via box-dominant terrains.
-    对齐论文中的 climbing 技能训练：box 主导，混入少量楼梯。
-    """
 
-    def __post_init__(self):
-        """Post initialization to override terrain configuration."""
-        super().__post_init__()
-        self.scene.terrain.terrain_generator = BISHE_CLIMB_BOX_TERRAINS_CFG
-
-
-@configclass
-class LocomotionBiSheBoxClimbEnvCfg_Play(LocomotionBiSheBoxClimbEnvCfg):
-    """Play configuration for box-climb locomotion environment."""
-
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self.scene.num_envs = 50
-        self.scene.env_spacing = 4
-        self.scene.terrain.max_init_terrain_level = None
-        if self.scene.terrain.terrain_generator is not None:
-            self.scene.terrain.terrain_generator.num_rows = 5
-            self.scene.terrain.terrain_generator.num_cols = 5
-            self.scene.terrain.terrain_generator.curriculum = False
-        self.observations.policy.enable_corruption = False
-        self.events.base_external_force_torque = None
-        self.events.push_robot = None
 
 
 @configclass
