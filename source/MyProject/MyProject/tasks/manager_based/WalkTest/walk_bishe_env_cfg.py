@@ -24,7 +24,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
-from MyProject.tasks.manager_based.WalkTest.config.terrain import MIXED_PIT_TERRAINS_CFG
+from MyProject.tasks.manager_based.WalkTest.config.terrain import BISHE_PIT_MIX_TERRAINS_CFG
 ##
 # Pre-defined configs
 ##
@@ -387,8 +387,8 @@ class LocomotionBiShePitEnvCfg(VelocityGo2WalkRoughEnvCfg):
         # Call parent post init first
         super().__post_init__()
 
-        # Override terrain to use pit traversal terrains.
-        self.scene.terrain.terrain_generator = MIXED_PIT_TERRAINS_CFG
+        # Override terrain to use pit-dominant mixed terrains.
+        self.scene.terrain.terrain_generator = BISHE_PIT_MIX_TERRAINS_CFG
         # 使用跨越坑洞专用奖励配置
         # self.rewards = StairClimbingRewardsCfg()
 

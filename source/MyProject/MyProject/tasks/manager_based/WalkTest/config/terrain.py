@@ -127,6 +127,67 @@ MIXED_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
         ),
     },
 )
+
+# 以坑洞为主的混合地形 - 用于毕业设计的低层动作训练
+BISHE_PIT_MIX_TERRAINS_CFG = TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    sub_terrains={
+        # Pit-dominant mix: 60% pit + 20% stairs + 10% boxes + 5% rough
+        "easy_pit": terrain_gen.MeshPitTerrainCfg(
+            proportion=0.30,
+            pit_depth_range=(0.10, 0.22),
+            platform_width=2.0,
+            double_pit=False,
+        ),
+        "medium_pit": terrain_gen.MeshPitTerrainCfg(
+            proportion=0.20,
+            pit_depth_range=(0.20, 0.35),
+            platform_width=2.0,
+            double_pit=False,
+        ),
+        "hard_pit": terrain_gen.MeshPitTerrainCfg(
+            proportion=0.10,
+            pit_depth_range=(0.30, 0.48),
+            platform_width=2.0,
+            double_pit=False,
+        ),
+        "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.10,
+            step_height_range=(0.05, 0.23),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.10,
+            step_height_range=(0.05, 0.23),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "boxes": terrain_gen.MeshRandomGridTerrainCfg(
+            proportion=0.10,
+            grid_width=0.45,
+            grid_height_range=(0.05, 0.2),
+            platform_width=2.0,
+        ),
+        "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+            proportion=0.10,
+            noise_range=(0.02, 0.10),
+            noise_step=0.02,
+            border_width=0.25,
+        ),
+    },
+)
 #复杂地形
 ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     size=(8.0, 8.0),
@@ -197,4 +258,3 @@ STAIR_TERRAINS_CFG = TerrainGeneratorCfg(
         ),
     },
 )
-
