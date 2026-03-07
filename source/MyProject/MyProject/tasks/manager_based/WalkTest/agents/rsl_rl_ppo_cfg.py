@@ -37,6 +37,17 @@ class Go2WalkRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         max_grad_norm=1.0,
     )
 
+@configclass
+class Go2WalkBiShePPORunnerCfg(Go2WalkRoughPPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.experiment_name = "go2_walk_bishe"
+
+
+# Backward-compatible alias for older references.
+
+
 
 @configclass
 class Go2WalkFlatPPORunnerCfg(Go2WalkRoughPPORunnerCfg):

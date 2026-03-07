@@ -71,6 +71,30 @@ gym.register(
     },
 )
 
+
+####################################毕业坑洞地形的设置#####################################
+
+gym.register(
+    id="Template-Velocity-Go2-Walk-BiShe-Pit-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.walk_bishe_env_cfg:LocomotionBiShePitEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2WalkBiShePPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_walk_bishe_ppo_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Velocity-Go2-Walk-BiShe-Pit-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.walk_bishe_env_cfg:LocomotionBiShePitEnvCfg_Play",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2WalkBiShePPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_walk_bishe_ppo_cfg.yaml",
+    },
+)
 ####################################平坦地形的设置#####################################
 gym.register(
     id="Template-Velocity-Go2-Walk-Flat-v0",
