@@ -47,17 +47,18 @@ parser.add_argument(
     "--camera_eye_offset",
     type=float,
     nargs=3,
-    default=[-1.8, 0.0, 0.95],
+    default=[0.0, 3.0, 1.4],
     help="Camera eye offset relative to robot base position.",
 )
 parser.add_argument(
     "--camera_target_offset",
     type=float,
     nargs=3,
-    default=[0.9, 0.0, 0.2],
+    default=[0.6, 0.0, 0.5],
     help="Camera target offset relative to robot base position (lower z => look more downward).",
 )
-
+# eye_offset = [-3.0, 0, 1.4]
+# target_offset = [0.6, 0, 0.5]
 # append AppLauncher args (headless/device/enable_cameras/etc.)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
