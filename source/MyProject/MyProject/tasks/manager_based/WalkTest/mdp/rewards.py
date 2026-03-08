@@ -110,6 +110,35 @@ def track_ang_vel_z_world_exp(
     return torch.exp(-ang_vel_error / std**2)
 
 
+def move_in_command_direction(
+    env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """奖励“实际运动方向”和“速度指令方向”在平面内的一致性。
+
+    设计思路：
+    1) 将机器人线速度转换到 yaw 对齐的机体坐标系（只取 XY）。
+    2) 计算指令 XY 与实际 XY 的余弦相似度。
+    3) 截断到 [0, 1]：反向或侧向运动不给正奖励。
+    4) 当指令几乎为 0 时屏蔽该奖励，避免静止抖动拿分。
+    """
+    asset = env.scene[asset_cfg.name]
+    # 实际平面速度（yaw 对齐坐标系），形状: [num_envs, 2]
+    vel_yaw = quat_apply_inverse(yaw_quat(asset.data.root_quat_w), asset.data.root_lin_vel_w[:, :3])[:, :2]
+    # 指令平面速度，形状: [num_envs, 2]
+    command_xy = env.command_manager.get_command(command_name)[:, :2]
+
+    # 计算余弦相似度所需的向量范数
+    cmd_norm = torch.norm(command_xy, dim=1)
+    vel_norm = torch.norm(vel_yaw, dim=1)
+    # cos(theta) = dot(a, b) / (||a|| * ||b||)，加 1e-6 防止除零
+    cosine = torch.sum(command_xy * vel_yaw, dim=1) / (cmd_norm * vel_norm + 1e-6)
+    # 只保留正向对齐奖励；反向不奖励
+    reward = torch.clamp(cosine, min=0.0, max=1.0)
+    # 指令很小时不计算方向奖励
+    reward *= cmd_norm > 0.1
+    return reward
+
+
 def stand_still_joint_deviation_l1(
     env, command_name: str, command_threshold: float = 0.06, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:

@@ -24,6 +24,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
+import MyProject.tasks.manager_based.WalkTest.mdp as walk_mdp
 from MyProject.tasks.manager_based.WalkTest.config.terrain import MIXED_PIT_TERRAINS_PLAY_CFG,MIXED_PIT_TERRAINS_CFG
 ##
 # Pre-defined configs
@@ -253,14 +254,36 @@ class RewardsCfg:
             "threshold": 0.5,
         },
     )
-    undesired_contacts = RewTerm(
-        func=mdp.undesired_contacts,
-        weight=-1.0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
-    )
+    # undesired_contacts = RewTerm(
+    #     func=mdp.undesired_contacts,
+    #     weight=-1.0,
+    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
+    # )
     # -- optional penalties
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
+
+
+@configclass
+class BiShePitRewardsCfg(RewardsCfg):
+    """Reward terms specialized for pit traversal skill training."""
+
+    move_in_command_direction = RewTerm(
+        func=walk_mdp.move_in_command_direction,
+        weight=0.6,
+        params={"command_name": "base_velocity"},
+    )
+    undesired_contacts = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-1.5,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_(thigh|calf)"), "threshold": 1.0},
+    )
+    # Paper-style head collision shaping: penalize base/head contact instead of only terminating.
+    head_collision_penalty = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-2.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
+    )
 
 
 @configclass
@@ -381,6 +404,7 @@ class LocomotionBiShePitEnvCfg(VelocityGo2WalkRoughEnvCfg):
     Configuration for the locomotion environment specialized for pit traversal.
     专门用于跨越坑洞地形的动作训练
     """
+    rewards: BiShePitRewardsCfg = BiShePitRewardsCfg()
 
     def __post_init__(self):
         """Post initialization to override terrain configuration."""
@@ -389,15 +413,15 @@ class LocomotionBiShePitEnvCfg(VelocityGo2WalkRoughEnvCfg):
 
         # Override terrain to use pit-dominant mixed terrains.
         self.scene.terrain.terrain_generator = MIXED_PIT_TERRAINS_CFG
-        # Re-enable undesired contacts penalty for pit training.
-
-        # 第一次训练的时候没有用到这个,防止碰到腿
-        self.rewards.undesired_contacts = RewTerm(
-            func=mdp.undesired_contacts,
-            weight=-1.5,
-            params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_(thigh|calf)"), "threshold": 1.0},
-        )
-        # 第一次训练的时候没有用到这个
+        # 1) Forward-dominant command distribution.
+        self.commands.base_velocity.rel_standing_envs = 0.0
+        self.commands.base_velocity.rel_heading_envs = 0.0
+        self.commands.base_velocity.heading_command = False
+        self.commands.base_velocity.ranges.lin_vel_x = (0.4, 1.2)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.08, 0.08)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.25, 0.25)
+        # 4) Use head-collision penalty as shaping signal, not only hard termination.
+        self.terminations.base_contact = None
 
         # 使用跨越坑洞专用奖励配置
         # self.rewards = StairClimbingRewardsCfg()
