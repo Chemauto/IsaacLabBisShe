@@ -1,2 +1,4 @@
+
+ @ scripts/rsl_rl/train_from_walkstart.py在原来的基础上继续训练的脚本
 ModelBackup/WalkPolicy/WalkRoughNew.pt这个策略可以在普通的行走策略上执行，但是如果翻越Pit的话就会有一点问题
 ModelBackup/BiShePolicy/BiSheClimbPitPolicy.pt，这个在行走的策略基础之上进行了微调，效果还行，可以翻越过Pit,但是有时候会姿势有点问题
