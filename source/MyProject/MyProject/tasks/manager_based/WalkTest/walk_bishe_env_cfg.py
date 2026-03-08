@@ -266,7 +266,7 @@ class RewardsCfg:
 
 @configclass
 class BiShePitRewardsCfg(RewardsCfg):
-    """Reward terms specialized for pit traversal skill training."""
+    """用于跨越坑洞技能训练的奖励项。"""
 
     move_in_command_direction = RewTerm(
         func=walk_mdp.move_in_command_direction,
@@ -275,13 +275,13 @@ class BiShePitRewardsCfg(RewardsCfg):
     )
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-1.5,
+        weight=-1.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_(thigh|calf)"), "threshold": 1.0},
     )
-    # Paper-style head collision shaping: penalize base/head contact instead of only terminating.
+    # 论文风格的“头部碰撞”塑形：对 base/头部接触做惩罚，而不是只依赖终止。
     head_collision_penalty = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-2.0,
+        weight=-3.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
     )
 
@@ -399,28 +399,59 @@ class VelocityGo2WalkRoughEnvCfg_Play(VelocityGo2WalkRoughEnvCfg):
 
 
 @configclass
-class LocomotionBiShePitEnvCfg(VelocityGo2WalkRoughEnvCfg):
+class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
     """
     Configuration for the locomotion environment specialized for pit traversal.
     专门用于跨越坑洞地形的动作训练
     """
-    rewards: BiShePitRewardsCfg = BiShePitRewardsCfg()
+    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+    observations: ObservationsCfg = ObservationsCfg()
+    actions: ActionsCfg = ActionsCfg()
+    commands: CommandsCfg = CommandsCfg()
+    rewards: RewardsCfg = RewardsCfg()
+    pit_rewards: BiShePitRewardsCfg = BiShePitRewardsCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
+    events: EventCfg = EventCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
-        """Post initialization to override terrain configuration."""
-        # Call parent post init first
-        super().__post_init__()
-
-        # Override terrain to use pit-dominant mixed terrains.
+        """后初始化：覆盖为坑洞训练配置。"""
+        # 覆盖地形为坑洞主导混合地形。
         self.scene.terrain.terrain_generator = MIXED_PIT_TERRAINS_CFG
-        # 1) Forward-dominant command distribution.
-        self.commands.base_velocity.rel_standing_envs = 0.0
-        self.commands.base_velocity.rel_heading_envs = 0.0
-        self.commands.base_velocity.heading_command = False
-        self.commands.base_velocity.ranges.lin_vel_x = (0.4, 1.2)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.08, 0.08)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.25, 0.25)
-        # 4) Use head-collision penalty as shaping signal, not only hard termination.
+        # 同时保留两套奖励配置，默认使用 pit 专用奖励。直接继承了
+        self.rewards = self.pit_rewards
+        # 通用参数。
+        self.decimation = 4
+        self.episode_length_s = 20.0
+        # 仿真参数。
+        self.sim.dt = 0.005
+        self.sim.render_interval = self.decimation
+        self.sim.physics_material = self.scene.terrain.physics_material
+        self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
+        # 稳定性相关设置。
+        self.events.push_robot = None
+        self.events.base_com = None
+        # 传感器更新周期。
+        if self.scene.height_scanner is not None:
+            self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+        if self.scene.contact_forces is not None:
+            self.scene.contact_forces.update_period = self.sim.dt
+        # 根据配置启用/关闭地形课程学习。
+        if getattr(self.curriculum, "terrain_levels", None) is not None:
+            if self.scene.terrain.terrain_generator is not None:
+                self.scene.terrain.terrain_generator.curriculum = True
+        else:
+            if self.scene.terrain.terrain_generator is not None:
+                self.scene.terrain.terrain_generator.curriculum = False
+        # 1) 前向主导的命令分布。
+        # self.commands.base_velocity.rel_standing_envs = 0.0
+        # self.commands.base_velocity.rel_heading_envs = 0.0
+        # self.commands.base_velocity.heading_command = True
+        # self.commands.base_velocity.ranges.lin_vel_x = (0.4, 1.2)
+        # self.commands.base_velocity.ranges.lin_vel_y = (-0.08, 0.08)
+        # self.commands.base_velocity.ranges.ang_vel_z = (-0.25, 0.25)
+        # 先不加入这个
+        # 4) 将“头部碰撞惩罚”作为塑形信号，而不是只依赖硬终止。
         self.terminations.base_contact = None
 
         # 使用跨越坑洞专用奖励配置
