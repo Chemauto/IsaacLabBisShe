@@ -24,7 +24,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
-from MyProject.tasks.manager_based.WalkTest.config.terrain import BISHE_CLIMB_BOX_TERRAINS_CFG,BOX_TERRAINS_CFG,MIXED_PIT_TERRAINS_CFG
+from MyProject.tasks.manager_based.WalkTest.config.terrain import MIXED_PIT_TERRAINS_PLAY_CFG,MIXED_PIT_TERRAINS_CFG
 ##
 # Pre-defined configs
 ##
@@ -356,7 +356,7 @@ class VelocityGo2WalkRoughEnvCfg_Play(VelocityGo2WalkRoughEnvCfg):
         super().__post_init__()
 
         # make a smaller scene for play
-        self.scene.num_envs = 50
+        self.scene.num_envs = 1
         self.scene.env_spacing = 2.5
         # spawn the robot randomly in the grid (instead of their terrain levels)
         self.scene.terrain.max_init_terrain_level = None
@@ -394,7 +394,7 @@ class LocomotionBiShePitEnvCfg(VelocityGo2WalkRoughEnvCfg):
         # 第一次训练的时候没有用到这个,防止碰到腿
         self.rewards.undesired_contacts = RewTerm(
             func=mdp.undesired_contacts,
-            weight=-1.0,
+            weight=-1.5,
             params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_(thigh|calf)"), "threshold": 1.0},
         )
         # 第一次训练的时候没有用到这个
@@ -413,6 +413,17 @@ class LocomotionBiShePitEnvCfg(VelocityGo2WalkRoughEnvCfg):
 #     --run_name ft_from_WalkStart
 
 
+
+#   python train.py \
+#     --task Template-Velocity-Go2-Walk-BiShe-Pit-v0 \
+#     --headless \
+#     --resume \
+#     --experiment_name go2_walk_bishe \  
+#     --load_run '^climbpit1$' \ 
+#     --checkpoint '^model_2998\.pt$' \ 
+#     --run_name ft_from_WalkStart
+
+
 @configclass
 class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
     """Play configuration for pit-traversal environment."""
@@ -420,7 +431,7 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()
-
+        self.scene.terrain.terrain_generator = MIXED_PIT_TERRAINS_PLAY_CFG
         # make a smaller scene for play
         self.scene.num_envs = 50
         self.scene.env_spacing = 4
@@ -437,7 +448,11 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
         self.events.base_external_force_torque = None
         self.events.push_robot = None
 
-
+        # 显示高程图信息查看
+        if self.scene.height_scanner is not None:
+            self.scene.height_scanner.debug_vis = True
+            self.scene.height_scanner.visualizer_cfg.prim_path = "/World/Visuals/HeightScanner"
+            self.scene.height_scanner.visualizer_cfg.markers["hit"].radius = 0.06
 
 
         # Use a fixed velocity command for pit-traversal evaluation.
