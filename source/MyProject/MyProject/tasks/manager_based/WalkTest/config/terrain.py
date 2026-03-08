@@ -152,7 +152,7 @@ MIXED_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
         # 3. 困难坑洞 (20%) - 强化训练
         "hard_pit": terrain_gen.MeshPitTerrainCfg(
             proportion=0.20,
-            pit_depth_range=(0.28, 0.33),        # 最深坑洞
+            pit_depth_range=(0.25, 0.35),        # 最深坑洞
             platform_width=3,                # 
             double_pit=False,                   # 双层结构
 
