@@ -275,8 +275,14 @@ class BiShePitRewardsCfg(RewardsCfg):
     )
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-1.0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_(thigh|calf)"), "threshold": 1.0},
+        weight=-3.0,
+        params={
+            # 同时兼容大小写命名，避免正则没命中导致该惩罚失效
+            "sensor_cfg": SceneEntityCfg(
+                "contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]|[Cc][Aa][Ll][Ff]|[Hh][Ii][Pp]).*"
+            ),
+            "threshold": 1.0,
+        },
     )
     # 论文风格的“头部碰撞”塑形：对 base/头部接触做惩罚，而不是只依赖终止。
     head_collision_penalty = RewTerm(
@@ -443,17 +449,19 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         else:
             if self.scene.terrain.terrain_generator is not None:
                 self.scene.terrain.terrain_generator.curriculum = False
-        # 1) 前向主导的命令分布。
-        # self.commands.base_velocity.rel_standing_envs = 0.0
-        # self.commands.base_velocity.rel_heading_envs = 0.0
-        # self.commands.base_velocity.heading_command = True
-        # self.commands.base_velocity.ranges.lin_vel_x = (0.4, 1.2)
-        # self.commands.base_velocity.ranges.lin_vel_y = (-0.08, 0.08)
-        # self.commands.base_velocity.ranges.ang_vel_z = (-0.25, 0.25)
-        # 先不加入这个
-        # 4) 将“头部碰撞惩罚”作为塑形信号，而不是只依赖硬终止。
-        self.terminations.base_contact = None
-
+        # 4) 头部碰撞用惩罚塑形；硬终止仅针对腿/髋碰撞，避免“大腿顶着过坑”。
+        self.terminations.base_contact = DoneTerm(
+            func=mdp.illegal_contact,
+            params={
+                "sensor_cfg": SceneEntityCfg(
+                    "contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]|[Cc][Aa][Ll][Ff]|[Hh][Ii][Pp]).*"
+                ),
+                "threshold": 1.5,
+            },
+        )
+        #   1. 只有惩罚：策略可能仍“偶尔碰一下”换取前进收益。
+        #   2. 只有终止：信号太稀疏，只知道“死了”，不知道“怎么更好”。
+        #   3. 两者一起：既有连续梯度（惩罚），又有明确红线（终止），通常更快、更稳。
         # 使用跨越坑洞专用奖励配置
         # self.rewards = StairClimbingRewardsCfg()
 
