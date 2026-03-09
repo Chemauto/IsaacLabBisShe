@@ -275,20 +275,26 @@ class BiShePitRewardsCfg(RewardsCfg):
     )
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-3.0,
+        weight=-2.0,
         params={
             # 同时兼容大小写命名，避免正则没命中导致该惩罚失效
             "sensor_cfg": SceneEntityCfg(
-                "contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]|[Cc][Aa][Ll][Ff]|[Hh][Ii][Pp]).*"
+                "contact_forces", body_names=".*([Cc][Aa][Ll][Ff]).*"
             ),
             "threshold": 1.0,
         },
-    )
-    # 论文风格的“头部碰撞”塑形：对 base/头部接触做惩罚，而不是只依赖终止。
+    )#此时小腿部分也给惩罚
+
+    # 论文风格的“头部碰撞”塑形：对 base/头部接触做惩罚，。髋关节和大腿部分，惩罚
     head_collision_penalty = RewTerm(
         func=mdp.undesired_contacts,
         weight=-3.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
+    )
+    thigh_hip_collision_penalty = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-3.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]|[Hh][Ii][Pp]).*"), "threshold": 1.0},
     )
 
 
@@ -297,11 +303,29 @@ class TerminationsCfg:
     """Termination terms for the MDP."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+
+    # 头部碰撞用惩罚塑形；硬终止保持 base，避免腿/髋轻微接触导致过早终止。
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
     )
-
+    # 仅针对髋碰撞，避免“危险”。
+    hip_contact = DoneTerm(
+        func=mdp.illegal_contact,
+        params={"sensor_cfg": SceneEntityCfg(
+                "contact_forces", body_names=".*([Hh][Ii][Pp]).*"
+                # 髋关节连接了关节身体，这里不能碰到影响电机
+                ),"threshold": 1.0,},
+        )
+    # 大腿过坑是不好的，也会有点影响”。
+    thigh_contact = DoneTerm(
+        func=mdp.illegal_contact,
+        params={"sensor_cfg": SceneEntityCfg(
+                "contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]).*"
+                # 这里阈值可以给高点
+                ),"threshold": 2.5,},
+        )
+                # "contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]|[Cc][Aa][Ll][Ff]|[Hh][Ii][Pp]).*"
 
 @configclass
 class CurriculumCfg:
@@ -449,42 +473,13 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         else:
             if self.scene.terrain.terrain_generator is not None:
                 self.scene.terrain.terrain_generator.curriculum = False
-        # 4) 头部碰撞用惩罚塑形；硬终止仅针对腿/髋碰撞，避免“大腿顶着过坑”。
-        self.terminations.base_contact = DoneTerm(
-            func=mdp.illegal_contact,
-            params={
-                "sensor_cfg": SceneEntityCfg(
-                    "contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]|[Cc][Aa][Ll][Ff]|[Hh][Ii][Pp]).*"
-                ),
-                "threshold": 1.5,
-            },
-        )
+
         #   1. 只有惩罚：策略可能仍“偶尔碰一下”换取前进收益。
         #   2. 只有终止：信号太稀疏，只知道“死了”，不知道“怎么更好”。
         #   3. 两者一起：既有连续梯度（惩罚），又有明确红线（终止），通常更快、更稳。
         # 使用跨越坑洞专用奖励配置
         # self.rewards = StairClimbingRewardsCfg()
 
-
-#   python train.py \
-#     --task Template-Velocity-Go2-Walk-BiShe-Pit-v0 \
-#     --headless \
-#     --resume \
-#     --experiment_name go2_walk_bishe \  这个在rsl-rl文件夹下新建一个
-#     --load_run '^bootstrap_from_rough$' \ 下面再建一个子文件夹
-#     --checkpoint '^WalkStart\.pt$' \ 实际walk策略
-#     --run_name ft_from_WalkStart
-
-
-
-#   python train.py \
-#     --task Template-Velocity-Go2-Walk-BiShe-Pit-v0 \
-#     --headless \
-#     --resume \
-#     --experiment_name go2_walk_bishe \  
-#     --load_run '^climbpit1$' \ 
-#     --checkpoint '^model_2998\.pt$' \ 
-#     --run_name ft_from_WalkStart
 
 
 @configclass

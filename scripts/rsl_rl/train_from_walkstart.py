@@ -10,9 +10,9 @@ from pathlib import Path
 
 DEFAULT_TASK = "Template-Velocity-Go2-Walk-BiShe-Pit-v0"
 DEFAULT_EXPERIMENT = "go2_walk_bishe"
-DEFAULT_RUN_NAME = "Test2"
-DEFAULT_LOAD_RUN = "^bootstrap_from_rough$"
-DEFAULT_CHECKPOINT_NAME = "WalkRoughNew.pt"
+DEFAULT_RUN_NAME = "Test4"
+DEFAULT_LOAD_RUN = "^test4$"
+DEFAULT_CHECKPOINT_NAME = "model_3900.pt"
 #文件夹形式” rsl_rl/logs/rsl_rl/DEFAULT_EXPERIMENT/DEFAULT_LOAD_RUN/DEFAULT_CHECKPOINT_NAME
 
 
