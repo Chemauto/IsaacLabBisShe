@@ -273,6 +273,21 @@ class BiShePitRewardsCfg(RewardsCfg):
         weight=0.5,
         params={"command_name": "base_velocity"},
     )
+    # # 新增：抬脚奖励（仅在 BiShe pit 配置中启用）。
+    # feet_height = RewTerm(
+    #     func=walk_mdp.feet_height,
+    #     weight=3.0,
+    #     params={
+    #         # command_name 保留在接口中，便于后续切回带指令门控版本。
+    #         "command_name": "base_velocity",
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
+    #         # 台阶高度 + 容差。
+    #         "target_height": 0.15,
+    #         # Spot风格奖励曲线宽度，越小越严格。
+    #         "std": 0.05,
+    #         "tanh_mult": 2.0,
+    #     },
+    # )
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
         weight=-0.8,
