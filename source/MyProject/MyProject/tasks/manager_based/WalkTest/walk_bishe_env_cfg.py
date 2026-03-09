@@ -270,12 +270,12 @@ class BiShePitRewardsCfg(RewardsCfg):
 
     move_in_command_direction = RewTerm(
         func=walk_mdp.move_in_command_direction,
-        weight=0.6,
+        weight=0.5,
         params={"command_name": "base_velocity"},
     )
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-2.0,
+        weight=-0.8,
         params={
             # 同时兼容大小写命名，避免正则没命中导致该惩罚失效
             "sensor_cfg": SceneEntityCfg(
@@ -283,7 +283,7 @@ class BiShePitRewardsCfg(RewardsCfg):
             ),
             "threshold": 1.0,
         },
-    )#此时小腿部分也给惩罚
+    )  # 小腿可触碰但给轻惩罚，避免把正常探坑动作误判为坏动作。
 
     # 论文风格的“头部碰撞”塑形：对 base/头部接触做惩罚，。髋关节和大腿部分，惩罚
     head_collision_penalty = RewTerm(
@@ -293,8 +293,11 @@ class BiShePitRewardsCfg(RewardsCfg):
     )
     thigh_hip_collision_penalty = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-3.0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]|[Hh][Ii][Pp]).*"), "threshold": 1.0},
+        weight=-1.5,
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]|[Hh][Ii][Pp]).*"),
+            "threshold": 1.0,
+        },
     )
 
 
@@ -309,23 +312,11 @@ class TerminationsCfg:
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
     )
-    # 仅针对髋碰撞，避免“危险”。
-    hip_contact = DoneTerm(
-        func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg(
-                "contact_forces", body_names=".*([Hh][Ii][Pp]).*"
-                # 髋关节连接了关节身体，这里不能碰到影响电机
-                ),"threshold": 1.0,},
-        )
-    # 大腿过坑是不好的，也会有点影响”。
-    thigh_contact = DoneTerm(
-        func=mdp.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg(
-                "contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]).*"
-                # 这里阈值可以给高点
-                ),"threshold": 2.5,},
-        )
-                # "contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]|[Cc][Aa][Ll][Ff]|[Hh][Ii][Pp]).*"
+    # # 髋关节碰撞仍视为高风险，保留硬终止但阈值适度放宽。
+    # hip_contact = DoneTerm(
+    #     func=mdp.illegal_contact,
+    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*([Hh][Ii][Pp]).*"), "threshold": 1.2},
+    # )
 
 @configclass
 class CurriculumCfg:
