@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 from isaaclab.assets import RigidObject
 from isaaclab.envs import mdp
 from isaaclab.managers import SceneEntityCfg
-from isaaclab.sensors import ContactSensor
+from isaaclab.sensors import ContactSensor, RayCaster
 from isaaclab.utils.math import quat_apply_inverse, yaw_quat
 
 if TYPE_CHECKING:
@@ -162,6 +162,63 @@ def feet_height(
     )
     reward = foot_z_target_error * foot_velocity_tanh
     return torch.exp(-torch.sum(reward, dim=1) / std)
+
+
+def feet_height_pit_gated(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg,
+    sensor_cfg: SceneEntityCfg,
+    target_height: float,
+    std: float,
+    tanh_mult: float,
+    obstacle_height_threshold: float = 0.08,
+    min_obstacle_rays: int = 2,
+    forward_min_x: float = 0.05,
+    rear_max_x: float = -0.05,
+) -> torch.Tensor:
+    """仅在“前方检测到遮挡物”时激活的 Spot 风格抬脚奖励。
+
+    门控逻辑：
+    1. 将射线命中点变换到 yaw 对齐机体系，分别取前方与后方射线。
+    2. 用后方命中高度均值作为“参考地面高度”。
+    3. 当前方命中高度明显高于参考地面（被障碍物遮挡）且命中数量达标时，门控为 1；否则为 0。
+    """
+    # 先计算基础抬脚奖励（Spot 风格指数核）。
+    base_reward = feet_height(
+        env=env,
+        command_name=command_name,
+        asset_cfg=asset_cfg,
+        target_height=target_height,
+        std=std,
+        tanh_mult=tanh_mult,
+    )
+
+    # 读取高度扫描数据。
+    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+
+    # 将命中点变换到 yaw 对齐机体系，筛选“前方”射线。
+    robot: RigidObject = env.scene["robot"]
+    num_rays = sensor.data.ray_hits_w.shape[1]
+    hit_z_w = sensor.data.ray_hits_w[..., 2]
+    rel_hits_w = sensor.data.ray_hits_w - sensor.data.pos_w.unsqueeze(1)
+    rel_hits_yaw = quat_apply_inverse(
+        yaw_quat(robot.data.root_quat_w).unsqueeze(1).repeat(1, num_rays, 1).reshape(-1, 4),
+        rel_hits_w.reshape(-1, 3),
+    ).view(env.num_envs, num_rays, 3)
+    x_coords = rel_hits_yaw[..., 0]
+    forward_mask = x_coords > forward_min_x
+    rear_mask = x_coords < rear_max_x
+
+    # 使用后方射线的命中高度作为参考地面高度。
+    rear_mask_f = rear_mask.float()
+    rear_count = rear_mask_f.sum(dim=1).clamp_min(1.0)
+    rear_ref_z = (hit_z_w * rear_mask_f).sum(dim=1) / rear_count
+
+    # 前方命中高度高于参考地面，视为前方有遮挡物。
+    obstacle_hit_mask = ((hit_z_w - rear_ref_z.unsqueeze(1)) > obstacle_height_threshold) & forward_mask
+    obstacle_gate = (obstacle_hit_mask.sum(dim=1) >= min_obstacle_rays).float()
+    return base_reward * obstacle_gate
 
 
 def feet_height_body(

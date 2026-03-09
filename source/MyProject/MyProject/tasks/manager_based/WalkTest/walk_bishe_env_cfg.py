@@ -273,19 +273,24 @@ class BiShePitRewardsCfg(RewardsCfg):
         weight=0.5,
         params={"command_name": "base_velocity"},
     )
-    # # 新增：抬脚奖励（仅在 BiShe pit 配置中启用）。
+    # # 新增：抬脚奖励（仅在 BiShe pit 配置中启用，且由 height_scanner 门控）。
     # feet_height = RewTerm(
-    #     func=walk_mdp.feet_height,
+    #     func=walk_mdp.feet_height_pit_gated,
     #     weight=3.0,
     #     params={
-    #         # command_name 保留在接口中，便于后续切回带指令门控版本。
     #         "command_name": "base_velocity",
     #         "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
-    #         # 台阶高度 + 容差。
+    #         "sensor_cfg": SceneEntityCfg("height_scanner"),
+    #         # 抬脚目标高度（不是台阶实际高度）。
     #         "target_height": 0.15,
-    #         # Spot风格奖励曲线宽度，越小越严格。
+    #         # Spot 风格奖励曲线宽度，越小越严格。
     #         "std": 0.05,
     #         "tanh_mult": 2.0,
+    #         # 门控参数：仅当前方存在遮挡物时触发。
+    #         "obstacle_height_threshold": 0.15,
+    #         "min_obstacle_rays": 6,
+    #         "forward_min_x": 0.05,
+    #         "rear_max_x": -0.05,
     #     },
     # )
     undesired_contacts = RewTerm(
