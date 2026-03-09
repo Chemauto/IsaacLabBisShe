@@ -14,3 +14,19 @@ Use this project
    ‘python train.py --task Template-Naviation-Test-Unitree-Go2-v0 --headless’
 
 
+.vscode/settings.json在这个文件下写入
+{
+    "python.languageServer": "Pylance",
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}/source/robot_lab",
+        "/home/robot/work/IsaacLab-main/source/isaaclab",
+        "/home/robot/work/IsaacLab-main/source/isaaclab_assets",
+        "/home/robot/work/IsaacLab-main/source/isaaclab_mimic",
+        "/home/robot/work/IsaacLab-main/source/isaaclab_rl",
+        "/home/robot/work/IsaacLab-main/source/isaaclab_tasks",
+    ],
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python-envs.pythonProjects": []
+}
+记得修改文件路径，加入Isaaclab库引用
