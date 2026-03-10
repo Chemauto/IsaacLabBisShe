@@ -268,11 +268,11 @@ class RewardsCfg:
 class BiShePitRewardsCfg(RewardsCfg):
     """用于跨越坑洞技能训练的奖励项。"""
 
-    move_in_command_direction = RewTerm(
-        func=walk_mdp.move_in_command_direction,
-        weight=0.45,  # 原来: 0.5（略降，避免下坑时为追求前进而前扑）
-        params={"command_name": "base_velocity"},
-    )
+    # move_in_command_direction = RewTerm(
+    #     func=walk_mdp.move_in_command_direction,
+    #     weight=0.45,  # 原来: 0.5（略降，避免下坑时为追求前进而前扑）
+    #     params={"command_name": "base_velocity"},
+    # )
     # 增强机身姿态稳定性，抑制下坑时俯仰角速度过大导致前翻。
     ang_vel_xy_l2 = RewTerm(
         func=mdp.ang_vel_xy_l2,
@@ -284,33 +284,33 @@ class BiShePitRewardsCfg(RewardsCfg):
         weight=-1.0,  # 原来(父类): 0.0
     )
     # 启用 gated 抬脚奖励，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去。
-    feet_height = RewTerm(
-        func=walk_mdp.feet_height_pit_gated,
-        weight=2.0,
-        params={
-            "command_name": "base_velocity",
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
-            "sensor_cfg": SceneEntityCfg("height_scanner"),
-            "target_height": 0.12,
-            "std": 0.05,
-            "tanh_mult": 2.0,
-            "obstacle_height_threshold": 0.10,
-            "min_obstacle_rays": 4,
-            "forward_min_x": 0.05,
-            "rear_max_x": -0.05,
-        },
-    )
-    calf_collision_penalty = RewTerm(
-        func=mdp.undesired_contacts,
-        weight=-0.8,  # 原来: -0.8（保持不变，小腿轻惩罚）
-        params={
-            # 同时兼容大小写命名，避免正则没命中导致该惩罚失效
-            "sensor_cfg": SceneEntityCfg(
-                "contact_forces", body_names=".*([Cc][Aa][Ll][Ff]).*"
-            ),
-            "threshold": 1.0,  # 原来: 1.0（保持不变）
-        },
-    )  # 小腿可触碰但给轻惩罚，避免把正常探坑动作误判为坏动作。
+    # feet_height = RewTerm(
+    #     func=walk_mdp.feet_height_pit_gated,
+    #     weight=2.0,
+    #     params={
+    #         "command_name": "base_velocity",
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
+    #         "sensor_cfg": SceneEntityCfg("height_scanner"),
+    #         "target_height": 0.12,
+    #         "std": 0.05,
+    #         "tanh_mult": 2.0,
+    #         "obstacle_height_threshold": 0.10,
+    #         "min_obstacle_rays": 4,
+    #         "forward_min_x": 0.05,
+    #         "rear_max_x": -0.05,
+    #     },
+    # )
+    # calf_collision_penalty = RewTerm(
+    #     func=mdp.undesired_contacts,
+    #     weight=-0.8,  # 原来: -0.8（保持不变，小腿轻惩罚）
+    #     params={
+    #         # 同时兼容大小写命名，避免正则没命中导致该惩罚失效
+    #         "sensor_cfg": SceneEntityCfg(
+    #             "contact_forces", body_names=".*([Cc][Aa][Ll][Ff]).*"
+    #         ),
+    #         "threshold": 1.0,  # 原来: 1.0（保持不变）
+    #     },
+    # )  # 小腿可触碰但给轻惩罚，避免把正常探坑动作误判为坏动作。
 
     # # 论文风格的“头部碰撞”塑形：对 base/头部接触做惩罚，。髋关节和大腿部分，惩罚
     # head_collision_penalty = RewTerm(
