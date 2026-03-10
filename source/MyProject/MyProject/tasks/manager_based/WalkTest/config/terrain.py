@@ -131,32 +131,30 @@ MIXED_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
     slope_threshold=0.75,
     use_cache=False,
 
-    # 子地形配置 - 三个难度级别
+    # 子地形配置 - 三阶段 pit 课程
     sub_terrains={
-        # 1. 简单坑洞 (50%) - 入门训练
+        # 1. 简单坑洞 - 先学习稳定过坑，避免顶头和前扑
         "easy_pit": terrain_gen.MeshPitTerrainCfg(
             proportion=0.50,
-            pit_depth_range=(0.05, 0.20),      # 更浅的坑，易于学习
+            pit_depth_range=(0.05, 0.35),      # 从浅坑到目标坑深的过渡范围
             platform_width=3,                # 
             double_pit=False,
         ),
         
-        # 2. 中等坑洞 (30%) - 过渡训练
-        "medium_pit": terrain_gen.MeshPitTerrainCfg(
-            proportion=0.30,
-            pit_depth_range=(0.18, 0.30),      # 中等深度
-            platform_width=3,
-            double_pit=False,
-
-        ),
-        # 3. 困难坑洞 (20%) - 强化训练
-        "hard_pit": terrain_gen.MeshPitTerrainCfg(
-            proportion=0.20,
-            pit_depth_range=(0.25, 0.35),        # 最深坑洞
-            platform_width=3,                # 
-            double_pit=False,                   # 双层结构
-
-        ),
+        # # 2. 中等坑洞 - 过渡到目标坑深
+        # "medium_pit": terrain_gen.MeshPitTerrainCfg(
+        #     proportion=0.30,
+        #     pit_depth_range=(0.18, 0.30),
+        #     platform_width=3,
+        #     double_pit=False,
+        # ),
+        # # 3. 困难坑洞 - 覆盖 0.3+ 的目标坑深
+        # "hard_pit": terrain_gen.MeshPitTerrainCfg(
+        #     proportion=0.20,
+        #     pit_depth_range=(0.25, 0.35),
+        #     platform_width=3,
+        #     double_pit=False,
+        # ),
     },
 )
 

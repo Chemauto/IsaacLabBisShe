@@ -41,7 +41,7 @@ class Go2WalkRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
 class Go2WalkBiShePPORunnerCfg(Go2WalkRoughPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
-        self.max_iterations = 3000
+        self.max_iterations = 6000
         self.experiment_name = "go2_walk_bishe"
 
 

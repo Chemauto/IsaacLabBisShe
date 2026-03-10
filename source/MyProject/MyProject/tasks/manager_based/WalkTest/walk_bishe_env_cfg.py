@@ -283,26 +283,23 @@ class BiShePitRewardsCfg(RewardsCfg):
         func=mdp.flat_orientation_l2,
         weight=-1.0,  # 原来(父类): 0.0
     )
-    # # 新增：抬脚奖励（仅在 BiShe pit 配置中启用，且由 height_scanner 门控）。
-    # feet_height = RewTerm(
-    #     func=walk_mdp.feet_height_pit_gated,
-    #     weight=3.0,
-    #     params={
-    #         "command_name": "base_velocity",
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
-    #         "sensor_cfg": SceneEntityCfg("height_scanner"),
-    #         # 抬脚目标高度（不是台阶实际高度）。
-    #         "target_height": 0.15,
-    #         # Spot 风格奖励曲线宽度，越小越严格。
-    #         "std": 0.05,
-    #         "tanh_mult": 2.0,
-    #         # 门控参数：仅当前方存在遮挡物时触发。
-    #         "obstacle_height_threshold": 0.15,
-    #         "min_obstacle_rays": 6,
-    #         "forward_min_x": 0.05,
-    #         "rear_max_x": -0.05,
-    #     },
-    # )
+    # 启用 gated 抬脚奖励，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去。
+    feet_height = RewTerm(
+        func=walk_mdp.feet_height_pit_gated,
+        weight=2.0,
+        params={
+            "command_name": "base_velocity",
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
+            "sensor_cfg": SceneEntityCfg("height_scanner"),
+            "target_height": 0.12,
+            "std": 0.05,
+            "tanh_mult": 2.0,
+            "obstacle_height_threshold": 0.10,
+            "min_obstacle_rays": 4,
+            "forward_min_x": 0.05,
+            "rear_max_x": -0.05,
+        },
+    )
     calf_collision_penalty = RewTerm(
         func=mdp.undesired_contacts,
         weight=-0.8,  # 原来: -0.8（保持不变，小腿轻惩罚）
@@ -480,6 +477,15 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         self.scene.terrain.terrain_generator = MIXED_PIT_TERRAINS_CFG
         # 同时保留两套奖励配置，默认使用 pit 专用奖励。直接继承了
         self.rewards = self.pit_rewards
+        # 从最低课程等级开始，先学稳定跨坑，再逐步升难。
+        self.scene.terrain.max_init_terrain_level = 0
+        # # 将 pit 专项训练收窄为前向通过任务，减少侧移/转向干扰。
+        # self.commands.base_velocity.rel_standing_envs = 0.0
+        # self.commands.base_velocity.heading_command = False
+        # self.commands.base_velocity.ranges.lin_vel_x = (0.6, 1.0)
+        # self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        # self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        # self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         # 通用参数。
         self.decimation = 4
         self.episode_length_s = 20.0
