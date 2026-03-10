@@ -270,8 +270,18 @@ class BiShePitRewardsCfg(RewardsCfg):
 
     move_in_command_direction = RewTerm(
         func=walk_mdp.move_in_command_direction,
-        weight=0.5,
+        weight=0.45,  # 原来: 0.5（略降，避免下坑时为追求前进而前扑）
         params={"command_name": "base_velocity"},
+    )
+    # 增强机身姿态稳定性，抑制下坑时俯仰角速度过大导致前翻。
+    ang_vel_xy_l2 = RewTerm(
+        func=mdp.ang_vel_xy_l2,
+        weight=-0.12,  # 原来(父类): -0.05
+    )
+    # 原来为 0，不约束机身倾斜；这里开启后可明显减少“趴下再翻”的策略。
+    flat_orientation_l2 = RewTerm(
+        func=mdp.flat_orientation_l2,
+        weight=-1.0,  # 原来(父类): 0.0
     )
     # # 新增：抬脚奖励（仅在 BiShe pit 配置中启用，且由 height_scanner 门控）。
     # feet_height = RewTerm(
@@ -308,7 +318,7 @@ class BiShePitRewardsCfg(RewardsCfg):
     # 论文风格的“头部碰撞”塑形：对 base/头部接触做惩罚，。髋关节和大腿部分，惩罚
     head_collision_penalty = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-3.0,  # 原来: -3.0（保持不变）
+        weight=-4.0,  # 原来: -3.0（加重，抑制用腹部/机身“扑地过坑”）
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},  # 原来: 1.0
     )
     # 将原先合并的 thigh+hip 惩罚拆分为两项，便于独立调参。
