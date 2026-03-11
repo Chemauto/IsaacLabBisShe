@@ -332,9 +332,25 @@ class BiShePitRewardsCfg(RewardsCfg):
     )
     head_collision_penalty = RewTerm(
         func=mdp.undesired_contacts,
-        weight=-3.0,  # 原来: -3.0（加重，抑制用腹部/机身“扑地过坑”）
+        weight=-3.0,  # 原来: -3.0（加重，抑制用腹部/机身"扑地过坑"）
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="Head_.*"), "threshold": 1.0},  # 原来: 1.0
-    )    # 论文风格的“头部碰撞”塑形：对head接触做惩罚，。髋关节和大腿部分，惩罚
+    )    # 论文风格的"头部碰撞"塑形：对head接触做惩罚，。髋关节和大腿部分，惩罚
+    # 防止脚部撞击垂直表面（如墙面、障碍物侧面）
+    feet_stumble = RewTerm(
+        func=walk_mdp.feet_stumble,
+        weight=-2.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
+    )
+    # 防止后面两脚之间距离过近（避免腿部交叉或碰撞）
+    Behind_feet_too_near = RewTerm(
+        func=walk_mdp.feet_too_near,
+        weight=-1.0,
+        params={
+            "threshold": 0.20,
+            "asset_cfg": SceneEntityCfg("robot", body_names=["RL_foot", "RR_foot"]),
+        },
+    )
+
     # feet_slide = RewTerm(
     #     func=mdp.feet_slide,
     #     weight=-0.2,
