@@ -494,10 +494,10 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         self.events.reset_base.func = walk_mdp.reset_root_state_before_high_platform
         self.events.reset_base.params["pose_range"] = {"x": (-3.9, -3.5), "y": (-0.15, 0.15), "yaw": (-0.1, 0.1)}
         # 将任务收窄为纯前向 climb，减少侧移/转向绕平台。
-        self.commands.base_velocity.rel_standing_envs = 0.0
-        self.commands.base_velocity.rel_heading_envs = 0.0
-        self.commands.base_velocity.heading_command = False
-        self.commands.base_velocity.ranges.lin_vel_x = (0.5, 0.8)
+        # self.commands.base_velocity.rel_standing_envs = 0.0
+        # self.commands.base_velocity.rel_heading_envs = 0.0
+        # self.commands.base_velocity.heading_command = True
+        self.commands.base_velocity.ranges.lin_vel_x = (0.5, 1.0)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
@@ -567,9 +567,9 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
         # 固定在高台前方同一位置，方便稳定观察 climb 行为。
         self.events.reset_base.func = walk_mdp.reset_root_state_before_high_platform
         self.events.reset_base.params["pose_range"] = {"x": (-3.7, -3.7), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
-        self.commands.base_velocity.rel_standing_envs = 0.0
-        self.commands.base_velocity.rel_heading_envs = 0.0
-        self.commands.base_velocity.heading_command = False
+        # self.commands.base_velocity.rel_standing_envs = 0.0
+        # self.commands.base_velocity.rel_heading_envs = 0.0
+        # self.commands.base_velocity.heading_command = False
         self.commands.base_velocity.ranges.lin_vel_x = (0.6, 0.6)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
