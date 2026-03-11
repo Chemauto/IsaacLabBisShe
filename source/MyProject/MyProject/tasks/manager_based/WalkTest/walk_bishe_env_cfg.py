@@ -25,7 +25,10 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 import MyProject.tasks.manager_based.WalkTest.mdp as walk_mdp
-from MyProject.tasks.manager_based.WalkTest.config.terrain import MIXED_PIT_TERRAINS_PLAY_CFG,MIXED_PIT_TERRAINS_CFG, STAIR_TERRAINS_CFG
+from MyProject.tasks.manager_based.WalkTest.config.terrain import (
+    HIGH_PLATFORM_TERRAINS_CFG,
+    HIGH_PLATFORM_TERRAINS_PLAY_CFG,
+)
 ##
 # Pre-defined configs
 ##
@@ -467,8 +470,8 @@ class VelocityGo2WalkRoughEnvCfg_Play(VelocityGo2WalkRoughEnvCfg):
 @configclass
 class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
     """
-    Configuration for the locomotion environment specialized for pit traversal.
-    专门用于跨越坑洞地形的动作训练
+    Configuration for the locomotion environment specialized for high-platform climbing.
+    这里保留类名兼容原有 task 注册，但实际内容已经切换为高台 climb 训练。
     """
     scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
     observations: ObservationsCfg = ObservationsCfg()
@@ -481,18 +484,20 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
     curriculum: CurriculumCfg = CurriculumCfg()
 
     def __post_init__(self):
-        """后初始化：覆盖为坑洞训练配置。"""
-        # 覆盖地形为坑洞主导混合地形。
-        self.scene.terrain.terrain_generator = STAIR_TERRAINS_CFG
-        # 修改成楼梯奖励
-        # 同时保留两套奖励配置，默认使用 pit 专用奖励。直接继承了
+        """后初始化：覆盖为高台 climb 训练配置。"""
+        # 使用高台地形。地形课程对应的是平台高度，而不是 pit 深度。
+        self.scene.terrain.terrain_generator = HIGH_PLATFORM_TERRAINS_CFG
         self.rewards = self.pit_rewards
-        # 从最低课程等级开始，先学稳定跨坑，再逐步升难。
+        # 从最低课程等级开始，逐步提高平台高度。
         self.scene.terrain.max_init_terrain_level = 0
-        # # 将 pit 专项训练收窄为前向通过任务，减少侧移/转向干扰。
-        # self.commands.base_velocity.rel_standing_envs = 0.0
-        # self.commands.base_velocity.heading_command = False
-        self.commands.base_velocity.ranges.lin_vel_x = (0.6, 1.0)
+        # 每次 reset 都放到高台前面的低地面上，避免出生就在平台顶。
+        self.events.reset_base.func = walk_mdp.reset_root_state_before_high_platform
+        self.events.reset_base.params["pose_range"] = {"x": (-3.9, -3.5), "y": (-0.15, 0.15), "yaw": (-0.1, 0.1)}
+        # 将任务收窄为纯前向 climb，减少侧移/转向绕平台。
+        self.commands.base_velocity.rel_standing_envs = 0.0
+        self.commands.base_velocity.rel_heading_envs = 0.0
+        self.commands.base_velocity.heading_command = False
+        self.commands.base_velocity.ranges.lin_vel_x = (0.5, 0.8)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
@@ -530,12 +535,12 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
 
 @configclass
 class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
-    """Play configuration for pit-traversal environment."""
+    """Play configuration for high-platform climb environment."""
 
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()
-        self.scene.terrain.terrain_generator = MIXED_PIT_TERRAINS_PLAY_CFG
+        self.scene.terrain.terrain_generator = HIGH_PLATFORM_TERRAINS_PLAY_CFG
         # make a smaller scene for play
         self.scene.num_envs = 50
         self.scene.env_spacing = 4
@@ -559,14 +564,16 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
             self.scene.height_scanner.visualizer_cfg.markers["hit"].radius = 0.06
 
 
-        # Use a fixed velocity command for pit-traversal evaluation.
-        self.events.reset_base.params["pose_range"] = {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (0, 0)}
+        # 固定在高台前方同一位置，方便稳定观察 climb 行为。
+        self.events.reset_base.func = walk_mdp.reset_root_state_before_high_platform
+        self.events.reset_base.params["pose_range"] = {"x": (-3.7, -3.7), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
         self.commands.base_velocity.rel_standing_envs = 0.0
-        self.commands.base_velocity.heading_command = True
-        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)  #
-        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)  # 
-        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)  # 
-        self.commands.base_velocity.ranges.heading = (0.0, 0.0)  # fixed heading target when heading_command is True
+        self.commands.base_velocity.rel_heading_envs = 0.0
+        self.commands.base_velocity.heading_command = False
+        self.commands.base_velocity.ranges.lin_vel_x = (0.6, 0.6)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
 
 
 

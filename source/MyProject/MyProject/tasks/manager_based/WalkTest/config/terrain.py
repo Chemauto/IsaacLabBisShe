@@ -80,11 +80,11 @@ HIGH_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
     sub_terrains={
         "high_platform": terrain_gen.MeshBoxTerrainCfg(
             proportion=1.0,
-            # difficulty=0 时约 0.08m，difficulty=1 时约 0.30m。
+            # difficulty=0 时约 0.10m，difficulty=1 时约 0.26m。
             # 适合作为 easy -> medium -> hard 的高度课程。
-            box_height_range=(0.08, 0.30),
-            # 平台顶部宽度。过小会导致落脚和稳定站立都太难。
-            platform_width=1.8,
+            box_height_range=(0.06, 0.34),
+            # 顶面尽量做宽，减少机器人从两侧绕开的空间。
+            platform_width=3.0,
             # 论文语义更接近“单高台”，因此不使用双层箱体。
             double_box=False,
             size=(8.0, 8.0),
@@ -106,8 +106,8 @@ HIGH_PLATFORM_TERRAINS_PLAY_CFG = TerrainGeneratorCfg(
         "high_platform": terrain_gen.MeshBoxTerrainCfg(
             proportion=1.0,
             # 固定在较高但仍可训练/评估的高度。
-            box_height_range=(0.24, 0.24),
-            platform_width=1.8,
+            box_height_range=(0.30, 0.30),
+            platform_width=3.0,
             double_box=False,
             size=(8.0, 8.0),
         ),
