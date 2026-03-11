@@ -65,6 +65,55 @@ BISHE_CLIMB_BOX_TERRAINS_CFG = TerrainGeneratorCfg(
     },
 )
 
+# 高台/高障碍攀爬地形：中心为单个抬高平台，适合训练 climb skill。
+# 这里使用 MeshBoxTerrainCfg，因为它生成的是“中心单个平台”，
+# 比连续楼梯或 pit 更接近论文里的 high hurdle / platform climb 语义。
+HIGH_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    sub_terrains={
+        "high_platform": terrain_gen.MeshBoxTerrainCfg(
+            proportion=1.0,
+            # difficulty=0 时约 0.08m，difficulty=1 时约 0.30m。
+            # 适合作为 easy -> medium -> hard 的高度课程。
+            box_height_range=(0.08, 0.30),
+            # 平台顶部宽度。过小会导致落脚和稳定站立都太难。
+            platform_width=1.8,
+            # 论文语义更接近“单高台”，因此不使用双层箱体。
+            double_box=False,
+            size=(8.0, 8.0),
+        ),
+    },
+)
+
+# 固定难度的高台评估地形。
+HIGH_PLATFORM_TERRAINS_PLAY_CFG = TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    sub_terrains={
+        "high_platform": terrain_gen.MeshBoxTerrainCfg(
+            proportion=1.0,
+            # 固定在较高但仍可训练/评估的高度。
+            box_height_range=(0.24, 0.24),
+            platform_width=1.8,
+            double_box=False,
+            size=(8.0, 8.0),
+        ),
+    },
+)
+
 # 简单坑洞（训练初期）
 EASY_PIT_TERRAINS_CFG = TerrainGeneratorCfg(
     size=(8.0, 8.0),
@@ -318,7 +367,7 @@ STAIR_TERRAINS_CFG = TerrainGeneratorCfg(
     sub_terrains={
         "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
             proportion=0.5,  # 50% 正向楼梯
-            step_height_range=(0.05, 0.23),
+            step_height_range=(0.05, 0.35),
             step_width=0.3,
             platform_width=3.0,
             border_width=1.0,
@@ -326,7 +375,7 @@ STAIR_TERRAINS_CFG = TerrainGeneratorCfg(
         ),
         "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
             proportion=0.5,  # 50% 反向楼梯
-            step_height_range=(0.05, 0.23),
+            step_height_range=(0.05, 0.35),
             step_width=0.3,
             platform_width=3.0,
             border_width=1.0,

@@ -25,7 +25,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 import MyProject.tasks.manager_based.WalkTest.mdp as walk_mdp
-from MyProject.tasks.manager_based.WalkTest.config.terrain import MIXED_PIT_TERRAINS_PLAY_CFG,MIXED_PIT_TERRAINS_CFG
+from MyProject.tasks.manager_based.WalkTest.config.terrain import MIXED_PIT_TERRAINS_PLAY_CFG,MIXED_PIT_TERRAINS_CFG, STAIR_TERRAINS_CFG
 ##
 # Pre-defined configs
 ##
@@ -268,15 +268,24 @@ class RewardsCfg:
 class BiShePitRewardsCfg(RewardsCfg):
     """用于跨越坑洞技能训练的奖励项。"""
 
-    # move_in_command_direction = RewTerm(
-    #     func=walk_mdp.move_in_command_direction,
-    #     weight=0.45,  # 原来: 0.5（略降，避免下坑时为追求前进而前扑）
-    #     params={"command_name": "base_velocity"},
-    # )
+    move_in_command_direction = RewTerm(
+        func=walk_mdp.move_in_command_direction,
+        weight=0.3,  # 原来: 0.5（略降，避免下坑时为追求前进而前扑）
+        params={"command_name": "base_velocity"},
+    )
     # 增强机身姿态稳定性，抑制下坑时俯仰角速度过大导致前翻。
+    track_lin_vel_xy_exp = RewTerm(
+        func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    )
+    #速度追踪奖励略降，避免下坑时为追求速度而前扑；同时保留一定奖励，鼓励学会在坑洞中保持一定前进速度，而不是过于保守地停在坑边。
+    track_ang_vel_z_exp = RewTerm(
+        func=mdp.track_ang_vel_z_exp, weight=0.50, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+    )
+    # -- penalties
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-1.0) # 原来: -2.0 防止上下惩罚的速度
     ang_vel_xy_l2 = RewTerm(
         func=mdp.ang_vel_xy_l2,
-        weight=-0.12,  # 原来(父类): -0.05
+        weight=-0.10,  # 原来(父类): -0.05
     )
     # 原来为 0，不约束机身倾斜；这里开启后可明显减少“趴下再翻”的策略。
     flat_orientation_l2 = RewTerm(
@@ -312,12 +321,12 @@ class BiShePitRewardsCfg(RewardsCfg):
     #     },
     # )  # 小腿可触碰但给轻惩罚，避免把正常探坑动作误判为坏动作。
 
-    # # 论文风格的“头部碰撞”塑形：对 base/头部接触做惩罚，。髋关节和大腿部分，惩罚
-    # head_collision_penalty = RewTerm(
-    #     func=mdp.undesired_contacts,
-    #     weight=-4.0,  # 原来: -3.0（加重，抑制用腹部/机身“扑地过坑”）
-    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},  # 原来: 1.0
-    # )
+    # 论文风格的“头部碰撞”塑形：对 base/头部接触做惩罚，。髋关节和大腿部分，惩罚
+    head_collision_penalty = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-3.0,  # 原来: -3.0（加重，抑制用腹部/机身“扑地过坑”）
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},  # 原来: 1.0
+    )
     # # 将原先合并的 thigh+hip 惩罚拆分为两项，便于独立调参。
     # thigh_collision_penalty = RewTerm(
     #     func=mdp.undesired_contacts,
@@ -474,7 +483,8 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """后初始化：覆盖为坑洞训练配置。"""
         # 覆盖地形为坑洞主导混合地形。
-        self.scene.terrain.terrain_generator = MIXED_PIT_TERRAINS_CFG
+        self.scene.terrain.terrain_generator = STAIR_TERRAINS_CFG
+        # 修改成楼梯奖励
         # 同时保留两套奖励配置，默认使用 pit 专用奖励。直接继承了
         self.rewards = self.pit_rewards
         # 从最低课程等级开始，先学稳定跨坑，再逐步升难。
@@ -482,10 +492,10 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         # # 将 pit 专项训练收窄为前向通过任务，减少侧移/转向干扰。
         # self.commands.base_velocity.rel_standing_envs = 0.0
         # self.commands.base_velocity.heading_command = False
-        # self.commands.base_velocity.ranges.lin_vel_x = (0.6, 1.0)
-        # self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
-        # self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
-        # self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.6, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
         # 通用参数。
         self.decimation = 4
         self.episode_length_s = 20.0
