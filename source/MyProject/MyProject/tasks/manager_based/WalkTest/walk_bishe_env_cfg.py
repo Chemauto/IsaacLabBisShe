@@ -378,7 +378,7 @@ class BiShePitRewardsCfg(RewardsCfg):
         func=walk_mdp.feet_too_near,
         weight=-1.0,
         params={
-            "threshold": 0.15,
+            "threshold": 0.20,
             "asset_cfg": SceneEntityCfg("robot", body_names=["RL_foot", "RR_foot"]),
         },
     )
