@@ -375,56 +375,56 @@ class VelocityGo2WalkRoughEnvCfg_Play(VelocityGo2WalkRoughEnvCfg):
         self.events.push_robot = None
 
 
-@configclass
-class LocomotionClimbEnvCfg(VelocityGo2WalkRoughEnvCfg):
-    """
-    Configuration for the navigation environment specialized for stair climbing.
-    专门用来爬楼梯的动作训练导航,只使用正向和反向楼梯地形
-    """
+# @configclass
+# class LocomotionClimbEnvCfg(VelocityGo2WalkRoughEnvCfg):
+#     """
+#     Configuration for the navigation environment specialized for stair climbing.
+#     专门用来爬楼梯的动作训练导航,只使用正向和反向楼梯地形
+#     """
 
-    def __post_init__(self):
-        """Post initialization to override terrain configuration."""
-        # Call parent post init first
-        super().__post_init__()
+#     def __post_init__(self):
+#         """Post initialization to override terrain configuration."""
+#         # Call parent post init first
+#         super().__post_init__()
 
-        # Override terrain to use only stairs
-        # 覆盖地形配置,只使用楼梯
-        self.scene.terrain.terrain_generator = STAIR_TERRAINS_CFG
-        # 使用爬楼梯专用奖励配置
-        # self.rewards = StairClimbingRewardsCfg()
+#         # Override terrain to use only stairs
+#         # 覆盖地形配置,只使用楼梯
+#         self.scene.terrain.terrain_generator = STAIR_TERRAINS_CFG
+#         # 使用爬楼梯专用奖励配置
+#         # self.rewards = StairClimbingRewardsCfg()
 
 
-@configclass
-class LocomotionClimbEnvCfg_Play(LocomotionClimbEnvCfg):
-    """Play configuration for stair climbing environment."""
+# @configclass
+# class LocomotionClimbEnvCfg_Play(LocomotionClimbEnvCfg):
+#     """Play configuration for stair climbing environment."""
 
-    def __post_init__(self) -> None:
-        # post init of parent
-        super().__post_init__()
+#     def __post_init__(self) -> None:
+#         # post init of parent
+#         super().__post_init__()
 
-        # make a smaller scene for play
-        self.scene.num_envs = 50
-        self.scene.env_spacing = 4
-        # spawn the robot randomly in the grid (instead of their terrain levels)
-        self.scene.terrain.max_init_terrain_level = None
-        # reduce the number of terrains to save memory
-        if self.scene.terrain.terrain_generator is not None:
-            self.scene.terrain.terrain_generator.num_rows = 5
-            self.scene.terrain.terrain_generator.num_cols = 5
-            self.scene.terrain.terrain_generator.curriculum = False
-        # disable randomization for play
-        self.observations.policy.enable_corruption = False
-        # remove random pushes for deterministic evaluation
-        self.events.base_external_force_torque = None
-        self.events.push_robot = None
+#         # make a smaller scene for play
+#         self.scene.num_envs = 50
+#         self.scene.env_spacing = 4
+#         # spawn the robot randomly in the grid (instead of their terrain levels)
+#         self.scene.terrain.max_init_terrain_level = None
+#         # reduce the number of terrains to save memory
+#         if self.scene.terrain.terrain_generator is not None:
+#             self.scene.terrain.terrain_generator.num_rows = 5
+#             self.scene.terrain.terrain_generator.num_cols = 5
+#             self.scene.terrain.terrain_generator.curriculum = False
+#         # disable randomization for play
+#         self.observations.policy.enable_corruption = False
+#         # remove random pushes for deterministic evaluation
+#         self.events.base_external_force_torque = None
+#         self.events.push_robot = None
 
-        # Use a fixed velocity command for stair-climbing evaluation.
-        self.commands.base_velocity.rel_standing_envs = 0.0
-        self.commands.base_velocity.heading_command = True
-        self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)  #
-        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)  # 
-        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)  # 
-        self.commands.base_velocity.ranges.heading = (0.0, 0.0)  # unused when heading_command is False
+#         # Use a fixed velocity command for stair-climbing evaluation.
+#         self.commands.base_velocity.rel_standing_envs = 0.0
+#         self.commands.base_velocity.heading_command = True
+#         self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)  #
+#         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)  # 
+#         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)  # 
+#         self.commands.base_velocity.ranges.heading = (0.0, 0.0)  # unused when heading_command is False
 
 
 @configclass

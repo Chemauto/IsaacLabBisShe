@@ -1,40 +1,44 @@
-## Pit 测试现象分析（2026-03-10）
+- 先别一上来就用现在 STAIR_TERRAINS_CFG 里的 0.05~0.23m 台阶高度，再加正反楼梯
+    50/50。这个对 Go2 初期太激进。
+  - 如果你是想复现论文，climb 更像“上/下 0.3m 高台/障碍”，不完全是连续楼梯。更贴
+    近论文的做法是先做“单高台/单边沿/平台障碍”，不是 full stairs。
+  - 如果你坚持做楼梯，建议拆三档课程：easy (0.03~0.08)，mid (0.08~0.14)，hard
+    (0.14~0.20)；先只训练上楼，再加下楼。
+  - step_width 建议先放宽到 0.30~0.35，平台宽度保留 2.5~3.0，先让它学“抬脚踩
+    稳”，不是学极限跨越。
+  - reset 不要像现在一样 yaw 全随机。爬升训练初期应该让机器人正对障碍，yaw 只给
+    小扰动，y 也只给小扰动。
+  - 命令也先收窄：lin_vel_x 固定前进，lin_vel_y=0，ang_vel_z=0。等会爬了再放开。
+  - 你如果在 climb env 里后置替换 terrain_generator，记得重新把 curriculum 和
+    max_init_terrain_level 配上；只换地形对象不够。
 
-### 1. 现象
+  奖励怎么做
 
-- 上 pit 时机器人倾向于用头部 / 机身前部顶着坑沿上去。
-- 下 pit 时机器人容易前扑，出现向前栽倒。
+  - 不要只保留 walk 的速度奖励。那样很容易学成“冲上去、扑上去、蹭上去”。
+  - 最核心的正奖励应该是“进展奖励”。有两条路线：
+  - 路线 1，最贴论文：把 climb 改成 pose_command/目标点任务，用
+    position_tracking + climb_progress + heading/direction alignment。
+  - 路线 2，改动最小：继续用 base_velocity，但自己写一个 forward_progress /
+    height_gain 奖励，再加 move_in_command_direction。
+  - climb_progress_reward 现在是按目标点距离算的，适合 pose_command，不适合直接
+    喂 base_velocity。
+  - 头部/机身接触建议“软惩罚 + 硬终止”一起上。论文强调 head collision penalty，
+    所以不要只靠 base_contact 硬终止，否则信号太稀。
+  - lin_vel_z_l2 现在太像平地约束了，爬升时应明显减弱，不然会抑制抬身。
+  - flat_orientation_l2 要有，但别太重。太重会把前抬身姿态也打死。
+  - 可以复用你现有的 feet_height_pit_gated 思路，改成“前方检测到台阶时才激活抬脚
+    奖励”，这个对 climb 很有用。
+  - 大腿/髋/小腿接触适合轻惩罚，不适合一碰就终止；真正该严打的是 base/head。
 
-### 2. 原因分析
+  我建议你先这样起步
 
-- 当前策略的主要正向驱动之一是 `move_in_command_direction`，它鼓励机器人尽量沿着指令方向前进，但不区分动作是否“干净”。
-- 头部、髋部、小腿碰撞虽然有惩罚，但大多还是软惩罚，不是强约束；因此策略会学到“偶尔碰一下换取前进收益”这种投机解。
-- `feet_height_pit_gated` 抬脚奖励目前没有启用，策略缺少“主动抬脚跨越坑沿”的正向塑形，于是更容易学出“身体前探、顶着过去”的模式。
-- 下坑阶段缺少专门的减速 / 控俯仰塑形，前进奖励仍然存在，因此策略会通过把质心甩向前方来换取速度一致性，导致前扑。
-- 当前 pit 训练地形虽然只保留了 `easy_pit`，但其 `pit_depth_range=(0.05, 0.35)` 仍然过宽，训练初期就可能见到偏深坑，容易过早形成粗糙动作。
-- 当前 `max_init_terrain_level=5`，意味着训练开始时并不是从最低难度起步，课程学习前期不够“温和”。
-- 当前速度命令范围是全向的（前后、左右、转向都有），这会把“过坑技能学习”与“全向移动”耦合起来，增加训练难度，也更容易诱导出侧扭和前扑。
+  - 地形：单向上台阶或单高台，easy 档先训。
+  - reset：正对障碍，yaw 小扰动。
+  - 命令：只给前进。
+  - 奖励：progress 主导，direction alignment 次之，head/base collision penalty
+    明确加上，lin_vel_z_l2 降低，flat_orientation_l2 中等，保留小的 action_rate/
+    torque 正则。
+  - 随机化：前期先关掉 push_robot、减弱质量和 COM 随机化，等策略成形后再加。
 
-### 3. 关于课程学习是否只留 `easy_pit`
-
-- 只留一个 `easy_pit` 也可以做 curriculum，因为 terrain curriculum 会基于 terrain level 自动升降难度。
-- 但是 curriculum 只会在当前这个地形配置的参数空间内升难，不会自动变出新的坑型家族。
-- 因此：
-  - 如果当前目标是“先学稳定过坑”，只保留一个 `easy_pit` 是合理的；
-  - 但这个 `easy_pit` 的参数范围应当更窄，先保证动作稳定；
-  - 后续如果要覆盖更深坑、更窄平台、双坑等结构变化，再引入 `medium_pit` / `hard_pit` 会更有价值。
-
-### 4. 实现建议
-
-- 训练阶段先把 `easy_pit` 深度范围缩小到更入门的区间，例如 `0.05 ~ 0.20`。
-- 将 pit 训练环境的 `max_init_terrain_level` 降到 0，从最简单 level 起步。
-- 启用 `feet_height_pit_gated`，给“抬脚跨坑沿”一个明确的正向奖励。
-- 将 pit 专项训练命令先收窄到“只向前走”，暂时关闭侧移和转向干扰。
-- 保留现有姿态稳定相关惩罚，先观察是否还能出现明显头顶和前扑，再决定是否进一步加硬终止。
-
-### 5. 本次准备实施的改动
-
-- 缩小 `MIXED_PIT_TERRAINS_CFG` 中 `easy_pit` 的深度范围。
-- 在 `LocomotionBiShePitEnvCfg` 中从最低 terrain level 开始训练。
-- 在 `BiShePitRewardsCfg` 中启用 `feet_height_pit_gated`。
-- 在 `LocomotionBiShePitEnvCfg` 中将训练命令改为前向专项训练配置。
+  如果你愿意，我下一步可以直接按这个思路帮你在 WalkTest 里补一版
+  LocomotionBiSheClimbEnvCfg + ClimbRewardsCfg，尽量少改你现有结构。
