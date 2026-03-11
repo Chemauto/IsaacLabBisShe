@@ -14,7 +14,7 @@ from isaaclab.app import AppLauncher
 # Editable defaults (model_trans_rough.py style)
 # =============================
 TASK_NAME = "Template-Velocity-Go2-Walk-BiShe-Pit-Play-v0"
-CHECKPOINT_PATH = "/home/robot/work/IsaacLabBisShe/ModelBackup/BiShePolicy/BiSheClimbPitPolicy.pt"
+CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/BiShePolicy/BiSheClimbPolicy.pt"
 VIDEO_OUTPUT_DIR = "videos/play"
 
 # =============================
