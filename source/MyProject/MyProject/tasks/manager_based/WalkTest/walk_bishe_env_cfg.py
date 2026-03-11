@@ -324,12 +324,25 @@ class BiShePitRewardsCfg(RewardsCfg):
     #     },
     # )  # 小腿可触碰但给轻惩罚，避免把正常探坑动作误判为坏动作。
 
-    # 论文风格的“头部碰撞”塑形：对 base/头部接触做惩罚，。髋关节和大腿部分，惩罚
-    head_collision_penalty = RewTerm(
+    # 论文风格的“头部碰撞”塑形：对 base接触做惩罚，。髋关节和大腿部分，惩罚
+    base_collision_penalty = RewTerm(
         func=mdp.undesired_contacts,
         weight=-3.0,  # 原来: -3.0（加重，抑制用腹部/机身“扑地过坑”）
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},  # 原来: 1.0
     )
+    head_collision_penalty = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-3.0,  # 原来: -3.0（加重，抑制用腹部/机身“扑地过坑”）
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="Head_.*"), "threshold": 1.0},  # 原来: 1.0
+    )    # 论文风格的“头部碰撞”塑形：对head接触做惩罚，。髋关节和大腿部分，惩罚
+    # feet_slide = RewTerm(
+    #     func=mdp.feet_slide,
+    #     weight=-0.2,
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*ankle_roll.*"),
+    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*ankle_roll.*"),
+    #     },
+    # )防止腿打滑
     # # 将原先合并的 thigh+hip 惩罚拆分为两项，便于独立调参。
     # thigh_collision_penalty = RewTerm(
     #     func=mdp.undesired_contacts,
