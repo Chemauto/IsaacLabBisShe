@@ -114,6 +114,8 @@ class ActionsCfg:
         low_level_decimation=4,
         low_level_actions=LOW_LEVEL_ENV_CFG.actions.joint_pos,
         low_level_observations=LOW_LEVEL_ENV_CFG.observations.policy,
+        action_scale=(0.5, 0.25, 0.4),
+        action_clip=((-0.5, 0.5), (-0.25, 0.25), (-0.4, 0.4)),
     )
 
 
@@ -207,8 +209,18 @@ class RewardsCfg:
         weight=10.0,
         params={"command_name": "box_goal", "distance_threshold": 0.08},
     )
-    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
+    upright_posture = RewTerm(
+        func=mdp.orientation_l2,
+        weight=1.0,
+        params={"desired_gravity": [0.0, 0.0, -1.0]},
+    )
+    base_height = RewTerm(
+        func=mdp.base_height_l2,
+        weight=-10.0,
+        params={"target_height": 0.34},
+    )
+    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-0.5)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.08)
 
 
 @configclass

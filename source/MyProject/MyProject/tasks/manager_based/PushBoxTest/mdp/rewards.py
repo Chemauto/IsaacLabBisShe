@@ -93,3 +93,22 @@ def box_goal_success_bonus(
     """Sparse bonus when the box reaches the placement zone."""
     _, distance = _box_goal_delta(env, command_name, box_cfg)
     return (distance < distance_threshold).float()
+
+
+def orientation_l2(
+    env: ManagerBasedRLEnv,
+    desired_gravity: list[float],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward the robot for keeping the body aligned with the desired gravity direction.
+
+    This follows the same idea as the reference unitree locomotion rewards, but uses
+    desired gravity ``[0, 0, -1]`` for an upright Go2 on flat ground.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    desired_gravity_tensor = torch.tensor(
+        desired_gravity, device=env.device, dtype=asset.data.projected_gravity_b.dtype
+    )
+    cos_dist = torch.sum(asset.data.projected_gravity_b * desired_gravity_tensor, dim=-1)
+    normalized = 0.5 * cos_dist + 0.5
+    return torch.square(normalized)
