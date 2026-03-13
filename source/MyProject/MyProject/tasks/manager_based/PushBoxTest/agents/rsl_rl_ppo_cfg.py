@@ -9,11 +9,11 @@ from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, R
 
 
 @configclass
-class BiSheRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 8
-    max_iterations = 1500
+class PushBoxPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+    num_steps_per_env = 16
+    max_iterations = 2000
     save_interval = 50
-    experiment_name = "bishe_rough"
+    experiment_name = "push_box"
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=0.5,
         actor_obs_normalization=False,
@@ -36,11 +36,3 @@ class BiSheRoughPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
-
-# @configclass
-# class BiSheFlatPPORunnerCfg(BiSheRoughPPORunnerCfg):
-#     def __post_init__(self):
-#         super().__post_init__()
-
-#         self.experiment_name = "bishe_flat"
-
