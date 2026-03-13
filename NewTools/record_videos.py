@@ -18,7 +18,7 @@ from isaaclab.app import AppLauncher
 # VIDEO_OUTPUT_DIR = "videos/play"
 
 TASK_NAME = "Template-Push-Box-Go2-Play-v0"
-CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/scripts/rsl_rl/logs/rsl_rl/push_box/2026-03-13_12-20-18/model_1999.pt"
+CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/scripts/rsl_rl/logs/rsl_rl/push_box/2026-03-13_17-48-16/model_1500.pt"
 VIDEO_OUTPUT_DIR = "videos/play"
 
 # =============================
