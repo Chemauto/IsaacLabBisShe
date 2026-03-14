@@ -54,7 +54,7 @@ class MySceneCfg(InteractiveSceneCfg):
     box = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Box",
         spawn=sim_utils.CuboidCfg(
-            size=(0.2, 0.2, 0.2),
+            size=(0.4, 0.8, 0.2),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 rigid_body_enabled=True,
                 max_linear_velocity=10.0,
@@ -98,7 +98,7 @@ class CommandsCfg:
         resampling_time_range=(12.0, 12.0),
         debug_vis=True,
         ranges=mdp.BoxGoalCommandCfg.Ranges(
-            pos_x=(1.8, 2.4),
+            pos_x=(1.2, 3.0),
             pos_y=(-0.35, 0.35),
         ),
     )
