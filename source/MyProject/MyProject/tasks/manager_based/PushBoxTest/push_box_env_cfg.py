@@ -135,12 +135,12 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
-        projected_gravity = ObsTerm(func=mdp.projected_gravity)
-        box_position = ObsTerm(func=mdp.box_pose)
-        robot_position = ObsTerm(func=mdp.robot_position)
-        goal_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "box_goal"})
-        actions = ObsTerm(func=mdp.last_action)
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)  # 3
+        projected_gravity = ObsTerm(func=mdp.projected_gravity)  # 3
+        box_position = ObsTerm(func=mdp.box_pose)  # 7
+        robot_position = ObsTerm(func=mdp.robot_position)  # 3
+        goal_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "box_goal"})  # 3
+        actions = ObsTerm(func=mdp.last_action)  # 3
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -305,7 +305,7 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-        self.decimation = LOW_LEVEL_ENV_CFG.decimation *1
+        # self.decimation = LOW_LEVEL_ENV_CFG.decimation *1
         self.scene.num_envs = 50
         self.scene.env_spacing = 4.0
         self.observations.policy.enable_corruption = False

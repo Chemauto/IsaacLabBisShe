@@ -419,7 +419,14 @@ class VelocityGo2WalkRoughEnvCfg_Play(VelocityGo2WalkRoughEnvCfg):
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()
+        # self.scene.terrain.terrain_type = "plane"
+        # self.scene.terrain.terrain_generator = None
+        # self.curriculum.terrain_levels = None
 
+#         self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)  #
+#         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)  # 
+#         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)  # 
+#         self.commands.base_velocity.ranges.heading = (0.0, 0.0)  # unused when heading_command is False
         # make a smaller scene for play
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
