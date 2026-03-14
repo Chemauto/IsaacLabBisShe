@@ -169,21 +169,19 @@ PushBoxTest/
 
 - `base_lin_vel`
 - `projected_gravity`
-- `box_position_in_robot_frame`
-- `goal_position_in_robot_frame`
-- `goal_position_in_box_frame`
-- `box_lin_vel`
+- `box_pose`
+- `robot_position`
+- `goal_command`
 - `last_action`
 
 这套观测的含义是：
 
 - 机器人当前在怎么运动
-- 箱子相对我在哪里
-- 目标相对我在哪里
-- 目标相对箱子在哪里
-- 箱子当前被推得怎么样
+- 箱子在环境坐标系下的位置和姿态
+- 机器人在环境坐标系下的位置
+- 目标点在环境坐标系下的位置
 
-这里我刻意没有直接上高度图或更复杂点云观测，因为这个技能的第一版目标只是平地推箱子，低维相对状态更容易先训稳。
+这里我刻意没有直接上高度图或更复杂点云观测。`box_lin_vel` 也没有放进策略输入，因为这个量在真实系统里通常不容易稳定获得。当前版本优先使用更容易从定位和感知中构造出来的低维相对状态。
 
 ## 9. 奖励设计
 
@@ -193,7 +191,6 @@ PushBoxTest/
 - `termination_penalty`
 - `box_goal_distance`
 - `box_goal_progress`
-- `box_velocity_toward_goal`
 - `robot_box_distance`
 - `box_goal_success`
 - `flat_orientation`
@@ -211,12 +208,7 @@ PushBoxTest/
 - 奖励箱子相对上一步更接近目标
 - 能明显提高训练初期的学习信号密度
 
-3. `box_velocity_toward_goal`
-
-- 奖励箱子速度与目标方向一致
-- 有助于减少无效侧推
-
-4. `box_goal_success`
+3. `box_goal_success`
 
 - 当箱子进入成功区域时给额外奖励
 - 当前成功阈值：`distance < 0.08`
@@ -380,7 +372,5 @@ walk(goal_pose)
 如果后面训练时出现“只靠近箱子但不持续推”、“把箱子推偏”、“自己绕箱子打转”这三类问题，优先去调：
 
 - `box_goal_progress`
-- `box_velocity_toward_goal`
 - `robot_box_distance`
 - reset 分布范围
-

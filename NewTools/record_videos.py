@@ -16,10 +16,12 @@ from isaaclab.app import AppLauncher
 # TASK_NAME = "Template-Velocity-Go2-Walk-BiShe-Pit-Play-v0"
 # CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/BiShePolicy/BiSheClimbPolicy.pt"
 # VIDEO_OUTPUT_DIR = "videos/play"
+# FPS = 50  # 行走任务的默认帧率
 
 TASK_NAME = "Template-Push-Box-Go2-Play-v0"
-CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/scripts/rsl_rl/logs/rsl_rl/push_box/2026-03-13_17-48-16/model_1500.pt"
+CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/scripts/rsl_rl/logs/rsl_rl/push_box/2026-03-14_14-22-27/model_1600.pt"
 VIDEO_OUTPUT_DIR = "videos/play"
+FPS = 50  # Play 配置：decimation=8，录制帧率 = 1/(8*0.005) = 25 fps，用 25 fps 播放是正常速度且流畅
 
 # =============================
 # 1. args (optional overrides)
@@ -40,7 +42,7 @@ parser.add_argument(
 )
 parser.add_argument("--video_output_dir", type=str, default=VIDEO_OUTPUT_DIR)
 parser.add_argument("--video_name", type=str, default="")
-parser.add_argument("--fps", type=int, default=50)
+parser.add_argument("--fps", type=int, default=FPS)
 parser.add_argument(
     "--stop_on_episode",
     action=argparse.BooleanOptionalAction,

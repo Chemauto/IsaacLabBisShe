@@ -17,18 +17,19 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import ContactSensorCfg
+from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 import MyProject.tasks.manager_based.PushBoxTest.mdp as mdp
-from MyProject.tasks.manager_based.WalkTest.walk_flat_env_cfg import VelocityGo2WalkFlatEnvCfg
+from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo2WalkRoughTestEnvCfg
 
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
-LOW_LEVEL_ENV_CFG = VelocityGo2WalkFlatEnvCfg()
-LOW_LEVEL_POLICY_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/WalkFlatNewTransfer.pt"
+LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughTestEnvCfg()
+LOW_LEVEL_POLICY_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt"
+#低层的环境和策略配置，推箱子这个技能是基于之前训练好的走路技能进行训练的，所以这里直接引用之前走路技能的环境配置和策略路径
 
 
 @configclass
@@ -50,6 +51,15 @@ class MySceneCfg(InteractiveSceneCfg):
     )
 
     robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
+    height_scanner = RayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/base",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
 
     box = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Box",
@@ -127,10 +137,9 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
         projected_gravity = ObsTerm(func=mdp.projected_gravity)
-        box_position = ObsTerm(func=mdp.box_position_in_robot_frame)
-        goal_in_robot = ObsTerm(func=mdp.goal_position_in_robot_frame, params={"command_name": "box_goal"})
-        goal_in_box = ObsTerm(func=mdp.goal_position_in_box_frame, params={"command_name": "box_goal"})
-        box_lin_vel = ObsTerm(func=mdp.root_lin_vel_w, params={"asset_cfg": SceneEntityCfg("box")})
+        box_position = ObsTerm(func=mdp.box_pose)
+        robot_position = ObsTerm(func=mdp.robot_position)
+        goal_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "box_goal"})
         actions = ObsTerm(func=mdp.last_action)
 
         def __post_init__(self):
@@ -183,7 +192,11 @@ class RewardsCfg:
     """Rewards for pushing the box to the target pose."""
 
     is_alive = RewTerm(func=mdp.is_alive, weight=0.2)
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-200.0)
+    termination_penalty = RewTerm(
+        func=mdp.is_terminated_term,
+        weight=-200.0,
+        params={"term_keys": ["base_contact", "box_out_of_bounds"]},
+    )
     box_goal_distance = RewTerm(
         func=mdp.box_goal_distance_tanh,
         weight=3.0,
@@ -194,11 +207,6 @@ class RewardsCfg:
         weight=8.0,
         params={"command_name": "box_goal"},
     )
-    box_velocity_toward_goal = RewTerm(
-        func=mdp.box_velocity_toward_goal,
-        weight=1.0,
-        params={"command_name": "box_goal"},
-    )
     robot_box_distance = RewTerm(
         func=mdp.robot_box_distance_tanh,
         weight=0.4,
@@ -207,7 +215,12 @@ class RewardsCfg:
     box_goal_success = RewTerm(
         func=mdp.box_goal_success_bonus,
         weight=10.0,
-        params={"command_name": "box_goal", "distance_threshold": 0.08},
+        params={
+            "command_name": "box_goal",
+            "distance_threshold": 0.08,
+            "box_speed_threshold": 0.05,
+            "robot_speed_threshold": 0.08,
+        },
     )
     upright_posture = RewTerm(
         func=mdp.orientation_l2,
@@ -228,6 +241,16 @@ class TerminationsCfg:
     """Termination terms."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    goal_reached = DoneTerm(
+        func=mdp.goal_reached,
+        params={
+            "command_name": "box_goal",
+            "distance_threshold": 0.08,
+            "box_speed_threshold": 0.05,
+            "robot_speed_threshold": 0.08,
+            "settle_steps": 12,
+        },
+    )
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
@@ -244,7 +267,7 @@ class CurriculumCfg:
 class LocomotionPushBoxEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the Go2 push-box skill."""
 
-    scene: MySceneCfg = MySceneCfg(num_envs=2048, env_spacing=4.0)
+    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=4.0)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     commands: CommandsCfg = CommandsCfg()
@@ -260,6 +283,9 @@ class LocomotionPushBoxEnvCfg(ManagerBasedRLEnvCfg):
         self.episode_length_s = self.commands.box_goal.resampling_time_range[1]
         self.sim.physics_material = self.scene.terrain.physics_material
 
+        if self.scene.height_scanner is not None:
+            self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = self.sim.dt
 
@@ -269,7 +295,7 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
-
+        self.decimation = LOW_LEVEL_ENV_CFG.decimation *1
         self.scene.num_envs = 50
         self.scene.env_spacing = 4.0
         self.observations.policy.enable_corruption = False

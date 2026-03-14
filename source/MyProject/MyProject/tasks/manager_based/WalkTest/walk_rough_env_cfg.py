@@ -498,3 +498,21 @@ class VelocityGo2WalkRoughEnvCfg_Ros(VelocityGo2WalkRoughEnvCfg_Play):
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()
+
+
+@configclass
+class VelocityGo2WalkRoughTestEnvCfg(VelocityGo2WalkRoughEnvCfg):
+    """Configuration for the locomotion velocity-tracking environment."""
+
+    def __post_init__(self):
+         # post init of parent
+        super().__post_init__()
+        # change terrain to flat
+        self.scene.terrain.terrain_type = "plane"
+        self.scene.terrain.terrain_generator = None
+        # # no height scan
+        # self.scene.height_scanner = None
+        # self.observations.policy.height_scan = None
+        # 这样的时候sim2real的时候由于数据一直在发，没必要去改观测了，保持和训练环境一致就好
+        # no terrain curriculum
+        self.curriculum.terrain_levels = None
