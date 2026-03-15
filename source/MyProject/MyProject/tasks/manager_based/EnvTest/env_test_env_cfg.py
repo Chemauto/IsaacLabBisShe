@@ -19,6 +19,7 @@ from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.sensors import CameraCfg
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
@@ -231,6 +232,31 @@ class MySceneCfg(InteractiveSceneCfg):
 
     # 机器人主体。
     robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
+    # 机器人前视相机。
+    # 这里使用 USD Camera，挂在 Go2 的 base 上，
+    # 后续可以直接通过 env.unwrapped.scene["front_camera"] 读取图像。
+    front_camera = CameraCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/base/front_camera",
+        # 设为 0.0 表示每个仿真步都更新，取图最直接。
+        update_period=0.0,
+        height=480,
+        width=640,
+        # 同时提供 RGB 和深度图，后面做导航判断时会更方便。
+        data_types=["rgb", "distance_to_image_plane"],
+        spawn=sim_utils.PinholeCameraCfg(
+            focal_length=18.0,
+            focus_distance=400.0,
+            horizontal_aperture=20.955,
+            clipping_range=(0.05, 20.0),
+        ),
+        offset=CameraCfg.OffsetCfg(
+            # 相机略微前伸并抬高，尽量看到前方走廊与障碍物。
+            pos=(0.34, 0.0, 0.12),
+            rot=(0.5, -0.5, 0.5, -0.5),
+            convention="ros",
+        ),
+    )
 
     # 基础环境光，便于 GUI 里观察地形和障碍物。
     sky_light = AssetBaseCfg(
