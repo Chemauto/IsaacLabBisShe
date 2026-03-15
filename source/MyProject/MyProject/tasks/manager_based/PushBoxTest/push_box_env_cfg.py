@@ -10,6 +10,7 @@ from __future__ import annotations
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
@@ -108,8 +109,8 @@ class CommandsCfg:
         resampling_time_range=(12.0, 12.0),
         debug_vis=True,
         ranges=mdp.BoxGoalCommandCfg.Ranges(
-            pos_x=(1.2, 3.0),
-            pos_y=(-0.35, 0.35),
+            pos_x=(0.5, 3.5),
+            pos_y=(-1.0, 1.0),
         ),
     )
 
@@ -234,12 +235,12 @@ class RewardsCfg:
     #     weight=1.0,
     #     params={"desired_gravity": [0.0, 0.0, -1.0]},
     # )
-    # 约束机身高度不要抬得过高，避免推箱子时重心过高、姿态发飘。
-    base_height = RewTerm(
-        func=mdp.base_height_l2,
-        weight=-10.0,
-        params={"target_height": 0.30},
-    )
+    # # 约束机身高度不要抬得过高，避免推箱子时重心过高、姿态发飘。
+    # base_height = RewTerm(
+    #     func=mdp.base_height_l2,
+    #     weight=-10.0,
+    #     params={"target_height": 0.30},
+    # )
     # 惩罚横滚和俯仰，让机器人身体更平稳，减少接触时侧翻风险。
     flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
     # 惩罚裁剪后高层命令变化过快，避免原始大动作数值爆炸污染训练。
@@ -274,7 +275,16 @@ class TerminationsCfg:
 
 @configclass
 class CurriculumCfg:
-    """No curriculum terms in the first push skill version."""
+    """Curriculum terms for expanding the box-goal range."""
+
+    goal_range = CurrTerm(
+        func=mdp.box_goal_progress_curriculum,
+        params={
+            # 课程值 A = clamp(1 - final_distance / initial_distance, 0, 1)。
+            # A 越大，说明这一回合把箱子推得越接近目标，下一回合采样范围也越大。
+            "command_name": "box_goal",
+        },
+    )
 
 
 @configclass
@@ -313,6 +323,7 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
         self.scene.num_envs = 50
         self.scene.env_spacing = 4.0
         self.observations.policy.enable_corruption = False
+        self.curriculum.goal_range = None
         self.commands.box_goal.ranges.pos_x = (2.0, 2.0)
         self.commands.box_goal.ranges.pos_y = (0.0, 0.0)
         self.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}

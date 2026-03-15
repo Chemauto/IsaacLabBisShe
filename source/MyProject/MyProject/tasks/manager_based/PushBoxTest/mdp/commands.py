@@ -32,6 +32,7 @@ class BoxGoalCommand(CommandTerm):
         self.pos_command_e = torch.zeros(self.num_envs, 3, device=self.device)
         self.pos_command_w = torch.zeros_like(self.pos_command_e)
         self.metrics["error_pos"] = torch.zeros(self.num_envs, device=self.device)
+        self.initial_error_pos = torch.zeros(self.num_envs, device=self.device)
 
     @property
     def command(self) -> torch.Tensor:
@@ -47,6 +48,9 @@ class BoxGoalCommand(CommandTerm):
         self.pos_command_e[env_ids, 1] = r.uniform_(*self.cfg.ranges.pos_y)
         self.pos_command_e[env_ids, 2] = self.box.data.default_root_state[env_ids, 2]
         self.pos_command_w[env_ids] = self.pos_command_e[env_ids] + self._env.scene.env_origins[env_ids]
+        self.initial_error_pos[env_ids] = torch.norm(
+            self.pos_command_w[env_ids, :2] - self.box.data.root_pos_w[env_ids, :2], dim=1
+        )
 
     def _update_command(self):
         pass
