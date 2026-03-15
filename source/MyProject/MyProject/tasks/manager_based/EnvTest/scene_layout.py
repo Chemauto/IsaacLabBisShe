@@ -39,21 +39,12 @@ ACTIVE_LAYOUT_POSITIONS = {
     "support_box": (BOX_CENTER_X, BOX_CENTER_Y, 0.5 * BOX_SIZE[2]),
 }
 
-# 各类物体在“隐藏状态”下的位置。
-# 不参与当前 case 的物体会被移到走廊外的远处。
-HIDDEN_LAYOUT_POSITIONS = {
-    "left_low_obstacle": (-2.0, 3.0, 0.5 * LOW_OBSTACLE_SIZE[2]),
-    "right_low_obstacle": (-0.2, 3.0, 0.5 * LOW_OBSTACLE_SIZE[2]),
-    "left_high_obstacle": (-2.0, 4.4, 0.5 * HIGH_OBSTACLE_SIZE[2]),
-    "right_high_obstacle": (-0.2, 4.4, 0.5 * HIGH_OBSTACLE_SIZE[2]),
-    "support_box": (-2.0, -3.0, 0.5 * BOX_SIZE[2]),
-}
-
-# 5 个 case 的布尔开关表。
-# True 表示该场景需要这个物体，False 表示把它隐藏掉。
-CASE_LAYOUTS = (
+# 5 个固定场景的布尔开关表。
+# True 表示该场景需要这个物体，False 表示该物体根本不生成。
+SCENE_LAYOUTS = (
     {
         "name": "case_1_clear",
+        "name_zh": "场景1_双侧无障碍",
         "left_low_obstacle": False,
         "right_low_obstacle": False,
         "left_high_obstacle": False,
@@ -62,6 +53,7 @@ CASE_LAYOUTS = (
     },
     {
         "name": "case_2_left_low_right_clear",
+        "name_zh": "场景2_左低障碍右侧畅通",
         "left_low_obstacle": True,
         "right_low_obstacle": False,
         "left_high_obstacle": False,
@@ -70,6 +62,7 @@ CASE_LAYOUTS = (
     },
     {
         "name": "case_3_both_low",
+        "name_zh": "场景3_左右均为低障碍",
         "left_low_obstacle": True,
         "right_low_obstacle": True,
         "left_high_obstacle": False,
@@ -78,6 +71,7 @@ CASE_LAYOUTS = (
     },
     {
         "name": "case_4_left_low_right_high",
+        "name_zh": "场景4_左低障碍右高障碍",
         "left_low_obstacle": True,
         "right_low_obstacle": False,
         "left_high_obstacle": False,
@@ -86,6 +80,7 @@ CASE_LAYOUTS = (
     },
     {
         "name": "case_5_both_high_with_box",
+        "name_zh": "场景5_双高障碍加可推动箱子",
         "left_low_obstacle": False,
         "right_low_obstacle": False,
         "left_high_obstacle": True,

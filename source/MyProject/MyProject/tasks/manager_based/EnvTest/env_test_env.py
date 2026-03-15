@@ -14,6 +14,8 @@ from isaacsim.core.version import get_version
 from isaaclab.envs import ManagerBasedEnv
 from isaaclab.envs.manager_based_env_cfg import ManagerBasedEnvCfg
 
+from .env_test_env_cfg import build_scene_cfg
+
 
 class EnvTestEnv(ManagerBasedEnv, gym.Env):
     """给 EnvTest 使用的轻量 Gym 包装器。
@@ -34,6 +36,10 @@ class EnvTestEnv(ManagerBasedEnv, gym.Env):
     def __init__(self, cfg: ManagerBasedEnvCfg, render_mode: str | None = None, **kwargs):
         # `env_cfg_entry_point` 这类注册参数会通过 kwargs 传进来，
         # 这里不需要用它们，所以直接忽略即可。
+        # 由于 scene_id 可能在 parse_env_cfg 之后又被启动脚本覆盖，
+        # 因此这里在真正创建环境前，再按最终 scene_id 重建一次 scene。
+        if hasattr(cfg, "scene_id"):
+            cfg.scene = build_scene_cfg(cfg.scene.num_envs, cfg.scene.env_spacing, cfg.scene_id)
         super().__init__(cfg=cfg)
         self.render_mode = render_mode
         # 让录视频或显示时使用和环境步长一致的帧率。

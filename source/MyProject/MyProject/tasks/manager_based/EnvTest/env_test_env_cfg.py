@@ -25,10 +25,11 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 import MyProject.tasks.manager_based.EnvTest.mdp as mdp
 from MyProject.tasks.manager_based.EnvTest.scene_layout import (
+    ACTIVE_LAYOUT_POSITIONS,
     BOX_SIZE,
     HIGH_OBSTACLE_SIZE,
-    HIDDEN_LAYOUT_POSITIONS,
     LOW_OBSTACLE_SIZE,
+    SCENE_LAYOUTS,
     WALL_CENTER_X,
     WALL_CENTER_Y,
     WALL_HEIGHT,
@@ -84,7 +85,8 @@ def _dynamic_box_cfg(
 ) -> RigidObjectCfg:
     """创建可推动箱子的方块配置。
 
-    这里只有 case 5 会真正启用它，其它 case 会被 reset 逻辑移动到隐藏区域。
+    这里只有 case 5 会真正启用它；
+    其它场景下，这个资产会在 scene 构建阶段直接被裁剪掉。
     """
     return RigidObjectCfg(
         prim_path=prim_path,
@@ -113,6 +115,42 @@ def _dynamic_box_cfg(
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=pos),
     )
+
+
+def _get_scene_layout(scene_id: int) -> dict:
+    """根据 scene_id 获取固定场景定义。"""
+
+    if not 0 <= scene_id < len(SCENE_LAYOUTS):
+        raise ValueError(f"scene_id must be in [0, {len(SCENE_LAYOUTS) - 1}], but received {scene_id}.")
+    return SCENE_LAYOUTS[scene_id]
+
+
+def _apply_scene_layout(scene_cfg: "MySceneCfg", scene_id: int):
+    """按场景编号裁剪可选障碍物。
+
+    这里不再使用“隐藏位置”。
+    不需要的障碍物会直接被设为 None，InteractiveScene 解析时会自动跳过。
+    """
+
+    layout = _get_scene_layout(scene_id)
+    optional_assets = (
+        "left_low_obstacle",
+        "right_low_obstacle",
+        "left_high_obstacle",
+        "right_high_obstacle",
+        "support_box",
+    )
+    for asset_name in optional_assets:
+        if not layout[asset_name]:
+            setattr(scene_cfg, asset_name, None)
+
+
+def build_scene_cfg(num_envs: int, env_spacing: float, scene_id: int) -> "MySceneCfg":
+    """根据场景编号重新创建一份完整的 scene 配置。"""
+
+    scene_cfg = MySceneCfg(num_envs=num_envs, env_spacing=env_spacing)
+    _apply_scene_layout(scene_cfg, scene_id)
+    return scene_cfg
 
 
 @configclass
@@ -156,38 +194,38 @@ class MySceneCfg(InteractiveSceneCfg):
         color=(0.55, 0.55, 0.58),
     )
 
-    # 左右低障碍：尺寸为 1.5 x 1.0 x 0.3。
+    # 左右低障碍：尺寸由 LOW_OBSTACLE_SIZE 定义。
     left_low_obstacle = _kinematic_box_cfg(
         prim_path="{ENV_REGEX_NS}/LeftLowObstacle",
         size=LOW_OBSTACLE_SIZE,
-        pos=HIDDEN_LAYOUT_POSITIONS["left_low_obstacle"],
+        pos=ACTIVE_LAYOUT_POSITIONS["left_low_obstacle"],
         color=(0.22, 0.64, 0.34),
     )
     right_low_obstacle = _kinematic_box_cfg(
         prim_path="{ENV_REGEX_NS}/RightLowObstacle",
         size=LOW_OBSTACLE_SIZE,
-        pos=HIDDEN_LAYOUT_POSITIONS["right_low_obstacle"],
+        pos=ACTIVE_LAYOUT_POSITIONS["right_low_obstacle"],
         color=(0.22, 0.64, 0.34),
     )
-    # 左右高障碍：尺寸为 1.5 x 1.0 x 0.5。
+    # 左右高障碍：尺寸由 HIGH_OBSTACLE_SIZE 定义。
     left_high_obstacle = _kinematic_box_cfg(
         prim_path="{ENV_REGEX_NS}/LeftHighObstacle",
         size=HIGH_OBSTACLE_SIZE,
-        pos=HIDDEN_LAYOUT_POSITIONS["left_high_obstacle"],
+        pos=ACTIVE_LAYOUT_POSITIONS["left_high_obstacle"],
         color=(0.76, 0.24, 0.20),
     )
     right_high_obstacle = _kinematic_box_cfg(
         prim_path="{ENV_REGEX_NS}/RightHighObstacle",
         size=HIGH_OBSTACLE_SIZE,
-        pos=HIDDEN_LAYOUT_POSITIONS["right_high_obstacle"],
+        pos=ACTIVE_LAYOUT_POSITIONS["right_high_obstacle"],
         color=(0.76, 0.24, 0.20),
     )
 
-    # 可推动箱子：尺寸为 0.8 x 0.4 x 0.2，质量在 helper 中配置为 1kg。
+    # 可推动箱子：尺寸由 BOX_SIZE 定义，质量在 helper 中配置为 1kg。
     support_box = _dynamic_box_cfg(
         prim_path="{ENV_REGEX_NS}/SupportBox",
         size=BOX_SIZE,
-        pos=HIDDEN_LAYOUT_POSITIONS["support_box"],
+        pos=ACTIVE_LAYOUT_POSITIONS["support_box"],
         color=(0.85, 0.52, 0.18),
     )
 
@@ -256,8 +294,7 @@ class EventCfg:
 
     reset 顺序是：
     1. reset_scene：把所有对象恢复到默认状态；
-    2. reset_layout：根据场景编号重新摆放障碍和箱子；
-    3. reset_base：把机器人固定回初始起点。
+    2. reset_base：把机器人固定回初始起点。
     """
 
     # 把整个 scene 恢复到默认状态。
@@ -265,12 +302,6 @@ class EventCfg:
         func=mdp.reset_scene_to_default,
         mode="reset",
         params={"reset_joint_targets": True},
-    )
-
-    # 根据 scene_id 或 env_id 选择对应 case 的障碍布局。
-    reset_layout = EventTerm(
-        func=mdp.reset_structured_navigation_scene,
-        mode="reset",
     )
 
     # 固定机器人起点和初速度，避免随机 reset 干扰看场景。
@@ -295,21 +326,22 @@ class EventCfg:
 class LocomotionEnvTestEnvCfg(ManagerBasedEnvCfg):
     """EnvTest 主配置。
 
-    默认批量模式下：
-    - num_envs=5
-    - scene_id=None
-    这样会按 env_id 自动对应 case1~case5。
+    现在采用“单次启动只生成一个固定场景”的方式：
+    - scene_id=0~4 对应 5 个固定 case
+    - 不再使用隐藏位置
+    - 不再在同一个任务里混排 5 个不同 case
     """
 
-    scene: MySceneCfg = MySceneCfg(num_envs=5, env_spacing=8.0)
-    # None 表示按 env_id 自动轮换 5 个场景；
-    # 0~4 表示强制固定成某一个场景。
-    scene_id: int | None = None
+    scene: MySceneCfg = MySceneCfg(num_envs=1, env_spacing=8.0)
+    # 0~4 对应 5 个固定场景。
+    scene_id: int = 0
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     events: EventCfg = EventCfg()
 
     def __post_init__(self):
+        # 根据 scene_id 直接重建一份 scene，只保留当前 case 需要的障碍物。
+        self.scene = build_scene_cfg(self.scene.num_envs, self.scene.env_spacing, self.scene_id)
         # 这组参数只需要保证场景稳定运行，不追求训练环境那种大吞吐。
         self.sim.dt = 0.005
         self.sim.render_interval = 4
@@ -320,18 +352,16 @@ class LocomotionEnvTestEnvCfg(ManagerBasedEnvCfg):
 class LocomotionEnvTestEnvCfg_Play(LocomotionEnvTestEnvCfg):
     """Play 模式配置。
 
-    你当前把它改成了 5 个环境同时显示，
-    并将 `scene_id=None`，因此会在 GUI 里一次看到 case1~case5。
+    Play 模式默认只开 1 个环境，
+    通过 `scene_id` 选择当前要查看的固定场景。
     """
 
     def __post_init__(self):
         super().__post_init__()
-        # Play 模式下也展开 5 个环境，方便并排看 5 个 case。
-        self.scene.num_envs = 5
+        # Play 模式默认只显示一个场景，便于单独检查。
+        self.scene.num_envs = 1
         self.scene.env_spacing = 8.0
-        # None 表示按 env_id 自动分配场景；
-        # 如果改成 0~4，则 5 个环境都会变成同一个 case。
-        self.scene_id = None
+        # 保留父类中已经设置好的固定 scene_id。
 
 
 EnvTestEnvCfg = LocomotionEnvTestEnvCfg
