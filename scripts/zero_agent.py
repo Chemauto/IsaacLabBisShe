@@ -18,6 +18,8 @@ parser.add_argument(
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+# EnvTest 专用参数：传 1~5，对应 case1~case5。
+parser.add_argument("--scene_id", type=int, default=None, help="Scene id for EnvTest play mode. Valid values: 1-5.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -44,6 +46,12 @@ def main():
     env_cfg = parse_env_cfg(
         args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
     )
+    if args_cli.scene_id is not None:
+        if not 1 <= args_cli.scene_id <= 5:
+            raise ValueError("--scene_id must be in [1, 5].")
+        if hasattr(env_cfg, "scene_id"):
+            # 命令行里用 1~5 更直观，内部仍然使用 0~4 编号。
+            env_cfg.scene_id = args_cli.scene_id - 1
     # create environment
     env = gym.make(args_cli.task, cfg=env_cfg)
 
