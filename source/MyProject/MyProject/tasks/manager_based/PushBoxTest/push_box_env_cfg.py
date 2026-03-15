@@ -140,7 +140,7 @@ class ObservationsCfg:
         box_position = ObsTerm(func=mdp.box_pose)  # 7
         robot_position = ObsTerm(func=mdp.robot_position)  # 3
         goal_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "box_goal"})  # 3
-        actions = ObsTerm(func=mdp.last_action)  # 3
+        actions = ObsTerm(func=mdp.processed_last_action, params={"action_name": "pre_trained_policy_action"})  # 3
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -242,8 +242,12 @@ class RewardsCfg:
     )
     # 惩罚横滚和俯仰，让机器人身体更平稳，减少接触时侧翻风险。
     flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
-    # 惩罚高层动作变化过快，减少突然发力和不稳定的推箱动作。
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.08)
+    # 惩罚裁剪后高层命令变化过快，避免原始大动作数值爆炸污染训练。
+    action_rate = RewTerm(
+        func=mdp.processed_action_rate_l2,
+        weight=-0.08,
+        params={"action_name": "pre_trained_policy_action"},
+    )
 
 
 @configclass

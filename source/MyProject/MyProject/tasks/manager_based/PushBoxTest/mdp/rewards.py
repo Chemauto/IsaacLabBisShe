@@ -15,6 +15,34 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+def processed_action_rate_l2(
+    env: ManagerBasedRLEnv,
+    action_name: str = "pre_trained_policy_action",
+) -> torch.Tensor:
+    """惩罚裁剪后高层动作的变化率 / Penalize the rate of change of processed high-level actions.
+
+    这里使用的是缩放并裁剪后的动作，而不是 PPO actor 的原始输出。
+    这样可以让正则项约束真实执行到低层 walking policy 的速度命令，避免原始动作数值爆炸时把训练直接拖崩。
+    """
+    action_term = env.action_manager.get_term(action_name)
+    current_action = action_term.processed_actions
+
+    buffer_name = f"_push_box_prev_processed_action_{action_name}"
+    if not hasattr(env, buffer_name):
+        setattr(env, buffer_name, current_action.clone())
+
+    previous_action = getattr(env, buffer_name)
+
+    if hasattr(env, "episode_length_buf"):
+        reset_ids = env.episode_length_buf == 0
+        previous_action = previous_action.clone()
+        previous_action[reset_ids] = current_action[reset_ids]
+
+    action_delta = current_action - previous_action
+    setattr(env, buffer_name, current_action.clone())
+    return torch.sum(torch.square(action_delta), dim=1)
+
+
 def _box_goal_delta(
     env: ManagerBasedRLEnv,
     command_name: str,

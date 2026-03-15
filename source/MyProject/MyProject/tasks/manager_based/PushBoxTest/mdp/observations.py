@@ -17,6 +17,19 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+def processed_last_action(
+    env: ManagerBasedRLEnv,
+    action_name: str = "pre_trained_policy_action",
+) -> torch.Tensor:
+    """返回高层动作项实际执行的裁剪后动作 / Return the processed high-level action after scaling and clipping.
+
+    对于 PushBoxTest，高层策略的原始输出会先经过缩放和裁剪，再作为低层 walking policy 的速度命令。
+    训练时这里返回裁剪后的动作，避免策略观测读到未约束的原始大动作，导致观测和真实执行不一致。
+    """
+    action_term = env.action_manager.get_term(action_name)
+    return action_term.processed_actions
+
+
 def box_pose(
     env: ManagerBasedRLEnv,
     box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
