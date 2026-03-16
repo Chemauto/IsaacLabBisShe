@@ -24,9 +24,7 @@ import argparse
 import math
 import os
 import re
-import socket
 import sys
-import threading
 import time
 from dataclasses import dataclass
 
@@ -79,14 +77,6 @@ parser.add_argument(
     default=False,
     help="若启用，则脚本启动后立即执行策略；否则默认先静止待机。",
 )
-parser.add_argument("--socket_host", type=str, default="0.0.0.0", help="内置 UDP 控制监听地址。")
-parser.add_argument("--socket_port", type=int, default=5566, help="内置 UDP 控制监听端口。")
-parser.add_argument(
-    "--disable_socket_listener",
-    action="store_true",
-    default=False,
-    help="禁用内置 UDP 监听。若关闭，外部 client 发送的 Socket 消息不会生效。",
-)
 parser.add_argument("--real-time", action="store_true", default=False, help="尽量按实时速度运行。")
 parser.add_argument("--max_steps", type=int, default=0, help="最大仿真步数；0 表示一直运行。")
 AppLauncher.add_app_launcher_args(parser)
@@ -129,9 +119,6 @@ PUSH_HIGH_LEVEL_OBS_TERMS = (
     "push_actions",
 )
 LOW_LEVEL_OBS_DIM = 235
-SKILL_NAME_TO_ID = {"idle": 0, "walk": 1, "climb": 2, "push": 3, "push_box": 3}
-BOOL_TRUE = {"1", "true", "on", "run", "start", "yes", "y"}
-BOOL_FALSE = {"0", "false", "off", "stop", "idle", "no", "n"}
 
 
 @dataclass(frozen=True)
@@ -269,146 +256,40 @@ def _write_text_file(file_path: str, content: str):
 
 
 def _initialize_control_files():
-    """把控制文件初始化成当前脚本启动时的默认状态。"""
+    """启动时重置控制文件，避免读取到上一次运行残留的旧值。"""
 
     _write_text_file(args_cli.model_use_file, str(args_cli.model_use))
     _write_text_file(
         args_cli.velocity_command_file,
         f"{args_cli.lin_vel_x} {args_cli.lin_vel_y} {args_cli.ang_vel_z}",
     )
-    _write_text_file(args_cli.goal_command_file, "0.0 0.0 0.0")
+    # push_box 默认使用场景自动推导的目标点，不直接写死成 0 0 0。
+    _write_text_file(args_cli.goal_command_file, "auto")
     _write_text_file(args_cli.start_file, "1" if args_cli.auto_start else "0")
 
 
-def _parse_named_int(text: str, field_name: str) -> int | None:
-    """解析形如 `field=1` 的整数。"""
+def _read_goal_command_file(file_path: str, fallback: torch.Tensor) -> torch.Tensor:
+    """读取 push_box 目标点。
 
-    match = re.search(rf"\b{field_name}\b\s*[:=]\s*(-?\d+)", text, flags=re.IGNORECASE)
-    if match is None:
-        return None
-    return int(match.group(1))
+    行为：
+    - 文件不存在：使用场景自动目标
+    - 内容是 `auto` / `scene` / 空：使用场景自动目标
+    - 内容是三个数：使用显式目标点
+    """
 
-
-def _parse_named_vector(text: str, field_name: str) -> tuple[float, float, float] | None:
-    """解析形如 `field=0.6,0,0` 的三维向量。"""
-
-    pattern = (
-        rf"\b{field_name}\b\s*[:=]\s*"
-        r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)"
-        r"[\s,]+"
-        r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)"
-        r"[\s,]+"
-        r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)"
-    )
-    match = re.search(pattern, text, flags=re.IGNORECASE)
-    if match is None:
-        return None
-    return float(match.group(1)), float(match.group(2)), float(match.group(3))
-
-
-def _parse_start_value(text: str) -> bool | None:
-    """解析 `start=1` / `start=0` / `run=true`。"""
-
-    match = re.search(r"\b(start|run)\b\s*[:=]\s*([A-Za-z0-9_]+)", text, flags=re.IGNORECASE)
-    if match is None:
-        return None
-    token = match.group(2).strip().lower()
-    if token in BOOL_TRUE:
-        return True
-    if token in BOOL_FALSE:
-        return False
-    raise ValueError(f"无法识别 start 值: {token}")
-
-
-def _parse_skill_name(text: str) -> int | None:
-    """解析 `idle / walk / climb / push_box` 这类纯文本技能名。"""
-
-    return SKILL_NAME_TO_ID.get(text.strip().lower())
-
-
-def _apply_socket_message(text: str) -> list[str]:
-    """把一条 UDP 消息写入对应控制文件。"""
-
-    updates: list[str] = []
-    normalized = text.strip()
-    if not normalized:
-        raise ValueError("收到空消息。")
-
-    model_use = _parse_named_int(normalized, "model_use")
-    if model_use is None:
-        model_use = _parse_named_int(normalized, "skill")
-    if model_use is None:
-        model_use = _parse_skill_name(normalized)
-    if model_use is not None:
-        if model_use not in (0, 1, 2, 3):
-            raise ValueError(f"model_use 必须是 0/1/2/3，收到: {model_use}")
-        _write_text_file(args_cli.model_use_file, str(model_use))
-        updates.append(f"model_use={model_use}")
-
-    velocity = _parse_named_vector(normalized, "velocity")
-    if velocity is None:
-        velocity = _parse_named_vector(normalized, "vel")
-    if velocity is not None:
-        _write_text_file(args_cli.velocity_command_file, f"{velocity[0]} {velocity[1]} {velocity[2]}")
-        updates.append(f"velocity={velocity}")
-
-    goal = _parse_named_vector(normalized, "goal")
-    if goal is None:
-        goal = _parse_named_vector(normalized, "position")
-    if goal is None:
-        goal = _parse_named_vector(normalized, "pos")
-    if goal is None:
-        goal = _parse_named_vector(normalized, "target")
-    if goal is not None:
-        _write_text_file(args_cli.goal_command_file, f"{goal[0]} {goal[1]} {goal[2]}")
-        updates.append(f"goal={goal}")
-
-    start_value = _parse_start_value(normalized)
-    if start_value is not None:
-        _write_text_file(args_cli.start_file, "1" if start_value else "0")
-        updates.append(f"start={int(start_value)}")
-
-    if not updates:
-        raise ValueError(
-            "未识别到有效字段。支持：model_use / skill / velocity / goal / start，"
-            "例如 `model_use=3; goal=1.8,0,0.1; start=1`。"
-        )
-    return updates
-
-
-def _start_embedded_socket_listener():
-    """启动内置 UDP 控制监听。"""
-
-    if args_cli.disable_socket_listener:
-        print("[INFO] Embedded UDP control listener disabled.")
-        return None
+    if not file_path or not os.path.isfile(file_path):
+        return fallback
 
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind((args_cli.socket_host, args_cli.socket_port))
-    except OSError as err:
-        print(
-            "[WARN] Embedded UDP control listener failed to bind "
-            f"{args_cli.socket_host}:{args_cli.socket_port}: {err}"
-        )
-        return None
+        with open(file_path, "r", encoding="utf-8") as file:
+            text = file.read().strip().lower()
+    except OSError:
+        return fallback
 
-    def _listen():
-        while True:
-            try:
-                data, address = sock.recvfrom(2048)
-                message = data.decode("utf-8", errors="ignore").strip()
-                updates = _apply_socket_message(message)
-                print(f"[INFO] UDP {address[0]}:{address[1]} -> " + ", ".join(updates))
-            except ValueError as err:
-                print(f"[WARN] Ignore invalid UDP message ({err})")
-            except OSError:
-                break
+    if text in ("", "auto", "scene", "default"):
+        return fallback
 
-    thread = threading.Thread(target=_listen, daemon=True)
-    thread.start()
-    print(f"[INFO] Embedded UDP control listener: {args_cli.socket_host}:{args_cli.socket_port}")
-    return sock
+    return _read_float_vector_file(file_path, 3, fallback)
 
 
 def _build_default_velocity_commands(num_envs: int, device: torch.device | str) -> torch.Tensor:
@@ -492,7 +373,6 @@ def main():
         raise ValueError(f"--model_use must be one of {[0, *sorted(SKILL_REGISTRY)]}.")
 
     _initialize_control_files()
-    listener_socket = _start_embedded_socket_listener()
 
     env_cfg = parse_env_cfg(
         args_cli.task,
@@ -517,6 +397,7 @@ def main():
     term_slices = _build_obs_slices(env.unwrapped)
     _validate_required_terms(term_slices)
     _print_obs_layout(term_slices)
+    print("[INFO] Control files have been reset at startup.")
     print(f"[INFO] model_use file: {args_cli.model_use_file}")
     print(f"[INFO] velocity command file: {args_cli.velocity_command_file}")
     print(f"[INFO] goal command file: {args_cli.goal_command_file}")
@@ -578,7 +459,7 @@ def main():
                 actions = policies[current_model_use](policy_obs)
             else:
                 scene_push_goal = envtest_mdp.compute_push_goal_from_scene(env.unwrapped)
-                push_goal_command = _read_float_vector_file(args_cli.goal_command_file, 3, scene_push_goal)
+                push_goal_command = _read_goal_command_file(args_cli.goal_command_file, scene_push_goal)
 
                 # 先用“上一步高层动作”构造高层 push_box 观测。
                 env.unwrapped.set_runtime_observation_buffers(
@@ -640,8 +521,6 @@ def main():
         if args_cli.real_time and sleep_time > 0:
             time.sleep(sleep_time)
 
-    if listener_socket is not None:
-        listener_socket.close()
     env.close()
 
 

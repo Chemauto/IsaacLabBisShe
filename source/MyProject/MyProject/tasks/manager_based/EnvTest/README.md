@@ -81,10 +81,9 @@ python NewTools/envtest_model_use_player.py --scene_id 4
 推荐直接用 `Socket` 目录里的 UDP 控制：
 
 ```bash
+python Socket/envtest_socket_server.py
 python Socket/envtest_socket_client.py --model_use 1 --velocity 0.6 0.0 0.0
 ```
-
-`envtest_model_use_player.py` 已经内置监听 `0.0.0.0:5566`，不需要再单独启动 server。
 
 开始执行：
 
@@ -104,3 +103,5 @@ python Socket/envtest_socket_client.py --model_use 3
 ```bash
 python Socket/envtest_socket_client.py --goal 1.8 0.0 0.1
 ```
+
+如果你不手动发 `goal`，`model_use=3` 默认会自动使用程序根据当前高台位置计算出的目标点，也就是把箱子推到高台前方便后续爬上去。

@@ -24,6 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model_use", type=int, choices=(0, 1, 2, 3), help="技能编号：0/1/2/3。")
     parser.add_argument("--velocity", type=float, nargs=3, metavar=("VX", "VY", "WZ"), help="速度指令。")
     parser.add_argument("--goal", type=float, nargs=3, metavar=("X", "Y", "Z"), help="位置指令。")
+    parser.add_argument("--goal_auto", action="store_true", default=False, help="把 goal 切回自动场景目标。")
     parser.add_argument("--start", type=int, choices=(0, 1), help="启动开关：0=待机，1=开始。")
     parser.add_argument("--text", type=str, default="", help="直接发送原始文本，不走字段拼接。")
     return parser.parse_args()
@@ -41,6 +42,8 @@ def build_message(args: argparse.Namespace) -> str:
     if args.velocity is not None:
         vx, vy, wz = args.velocity
         fields.append(f"velocity={vx},{vy},{wz}")
+    if args.goal_auto:
+        fields.append("goal=auto")
     if args.goal is not None:
         x, y, z = args.goal
         fields.append(f"goal={x},{y},{z}")
