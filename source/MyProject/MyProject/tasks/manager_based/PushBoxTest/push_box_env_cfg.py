@@ -280,9 +280,11 @@ class CurriculumCfg:
     goal_range = CurrTerm(
         func=mdp.box_goal_progress_curriculum,
         params={
-            # 课程值 A = clamp(1 - final_distance / initial_distance, 0, 1)。
-            # A 越大，说明这一回合把箱子推得越接近目标，下一回合采样范围也越大。
+            # 先计算当前 batch 的平均推进比例 progress，再用
+            # A <- (1 - beta) * A + beta * progress_mean
+            # 做平滑更新，避免某一批 env 偶然推得好就让课程范围放大过快。
             "command_name": "box_goal",
+            "progress_beta": 0.02,
         },
     )
 
