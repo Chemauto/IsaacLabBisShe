@@ -22,6 +22,7 @@ from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import MyProject.tasks.manager_based.PushBoxTest.mdp as mdp
 from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo2WalkRoughTestEnvCfg
@@ -136,15 +137,19 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)  # 3
-        projected_gravity = ObsTerm(func=mdp.projected_gravity)  # 3
-        box_position = ObsTerm(func=mdp.box_pose)  # 7
-        robot_position = ObsTerm(func=mdp.robot_position)  # 3
-        goal_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "box_goal"})  # 3
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))  # 3
+        projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))  # 3
+        box_position = ObsTerm(func=mdp.box_pose, noise=Unoise(n_min=-0.01, n_max=0.01))  # 7
+        robot_position = ObsTerm(func=mdp.robot_position, noise=Unoise(n_min=-0.02, n_max=0.02))  # 3
+        goal_command = ObsTerm(
+            func=mdp.generated_commands,
+            params={"command_name": "box_goal"},
+            noise=Unoise(n_min=-0.02, n_max=0.02),
+        )  # 3
         actions = ObsTerm(func=mdp.processed_last_action, params={"action_name": "pre_trained_policy_action"})  # 3
 
         def __post_init__(self):
-            self.enable_corruption = False
+            self.enable_corruption = True
             self.concatenate_terms = True
 
     policy: PolicyCfg = PolicyCfg()
