@@ -47,3 +47,68 @@ python NewTools/envtest_model_use_player.py --scene_id 4 --model_use 3
 echo 1 > /tmp/model_use.txt
 python NewTools/envtest_model_use_player.py --scene_id 4 --model_use_file /tmp/model_use.txt
 ```
+
+
+AI 生成的 
+• 可以，而且你现在这条脚本已经是按这个思路写的。
+
+  关键点是：
+
+  - --scene_id 只在启动时决定场景
+  - --model_use 只是当前激活的策略编号
+  - 真正想“运行中切换”，不要改命令行参数，而是让脚本每一步去读一个外部信号
+
+  你现在这版 envtest_model_use_player.py 已经支持最简单的动态切换方式：--model_use_file。
+
+  直接这样用：
+
+  终端 1：
+
+  echo 1 > /tmp/model_use.txt
+  python NewTools/envtest_model_use_player.py --scene_id 4 --model_use_file /tmp/model_use.txt
+
+  终端 2 里随时切：
+
+  echo 2 > /tmp/model_use.txt
+
+  或者：
+
+  echo 3 > /tmp/model_use.txt
+
+  这样同一个场景不会重启，只是当前执行策略在变。
+
+  你可以把它理解成：
+
+  - scene_id=4 固定场景
+  - model_use.txt 是“当前技能开关”
+  - LLM 后面只要输出 1/2/3 到这个文件，就完成切换
+
+  当前对应关系是：
+
+  - 1: walk
+  - 2: climb
+  - 3: push_box
+
+  补充两点现实限制：
+
+  1. --model_use 3 本身只决定初始策略
+     如果你只写：
+
+  python NewTools/envtest_model_use_player.py --scene_id 4 --model_use 3
+
+  那它会一直保持 3，不会自己变。
+
+  2. 动态切换会有“动作突变”
+     我已经在脚本里做了切换时清空历史动作，但不同技能之间还是可能有一两帧不平滑。这是正常的。
+
+  如果你后面 LLM 已经写好了，我建议最省事的接法就是：
+
+  - LLM 输出一个整数
+  - 写入 /tmp/model_use.txt
+  - 当前仿真脚本持续轮询这个文件
+
+  如果你愿意，我下一步可以继续帮你把这个“文件切换”升级成：
+
+  - socket 切换
+  - ROS topic 切换
+  - 或者键盘按 1/2/3 直接切换
