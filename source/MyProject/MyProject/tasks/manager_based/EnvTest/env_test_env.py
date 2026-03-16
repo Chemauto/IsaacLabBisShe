@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import gymnasium as gym
 import numpy as np
+import torch
 from typing import Any, ClassVar
 
 from isaacsim.core.version import get_version
@@ -44,6 +45,8 @@ class EnvTestEnv(ManagerBasedEnv, gym.Env):
         self.render_mode = render_mode
         # 让录视频或显示时使用和环境步长一致的帧率。
         self.metadata["render_fps"] = 1 / self.step_dt
+        # 初始化统一观测中的运行时缓冲，方便外部控制器直接写值。
+        self._ensure_runtime_observation_buffers()
         # 手动配置 Gym 所需的空间定义。
         self._configure_gym_env_spaces()
         print("[INFO]: Completed setting up the EnvTest environment...")
@@ -76,3 +79,35 @@ class EnvTestEnv(ManagerBasedEnv, gym.Env):
         # 再把单环境空间批量化成向量环境空间。
         self.observation_space = gym.vector.utils.batch_space(self.single_observation_space, self.num_envs)
         self.action_space = gym.vector.utils.batch_space(self.single_action_space, self.num_envs)
+
+    def _ensure_runtime_observation_buffers(self):
+        """确保统一观测里用到的运行时缓冲已经存在。"""
+
+        if not hasattr(self, "_envtest_velocity_commands"):
+            self._envtest_velocity_commands = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
+        if not hasattr(self, "_envtest_push_goal_command"):
+            self._envtest_push_goal_command = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
+        if not hasattr(self, "_envtest_push_actions"):
+            self._envtest_push_actions = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
+
+    def set_runtime_observation_buffers(
+        self,
+        velocity_commands: torch.Tensor | None = None,
+        push_goal_command: torch.Tensor | None = None,
+        push_actions: torch.Tensor | None = None,
+    ):
+        """更新 EnvTest 统一观测中需要的运行时指令槽位。"""
+
+        self._ensure_runtime_observation_buffers()
+        updates = (
+            ("_envtest_velocity_commands", velocity_commands),
+            ("_envtest_push_goal_command", push_goal_command),
+            ("_envtest_push_actions", push_actions),
+        )
+        for attr_name, value in updates:
+            if value is None:
+                continue
+            buffer = getattr(self, attr_name)
+            if value.shape != buffer.shape:
+                raise ValueError(f"{attr_name} shape mismatch: expected {tuple(buffer.shape)}, got {tuple(value.shape)}.")
+            buffer.copy_(value.to(device=self.device, dtype=torch.float32))

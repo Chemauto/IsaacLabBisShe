@@ -7,30 +7,30 @@
 
 设计目标：
 - 场景始终使用 EnvTest；
-- 策略选择不再由 scene_id 决定，而是由 model_use 决定；
-- 这样后续 LLM 只需要输出 model_use，即可切换 walk / climb。
+- EnvTest 的 policy 观测改成三个技能的并集；
+- 本脚本每步先取统一大观测，再按 `model_use` 切出当前技能真正需要的输入；
+- 后续 LLM 只需要改 `model_use`，不需要再关心底层观测拼接逻辑。
 
-当前支持：
-- model_use=1: 平地行走策略
-- model_use=2: 攀爬策略
-- model_use=3: 推箱子策略
-
-说明：
-- 这里直接加载导出的 TorchScript 策略，而不是训练 checkpoint。
-- climb 所需的 height_scan 采用结构化场景几何直接构造，
-  这样不需要把 EnvTest 改成带多 mesh RayCaster 的复杂版本。
+当前约定：
+- model_use=0: idle，机器人保持静止
+- model_use=1: walk（按 walk_rough 的 235 维观测接口）
+- model_use=2: climb（235 维观测接口）
+- model_use=3: push_box（22 维高层观测 + 235 维低层 walk 观测）
 """
 
 from __future__ import annotations
 
 import argparse
+import math
 import os
+import re
+import socket
 import sys
+import threading
 import time
 from dataclasses import dataclass
 
 
-# 把仓库根目录加入 Python 路径，避免直接运行脚本时出现导入问题。
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
@@ -38,31 +38,63 @@ if REPO_ROOT not in sys.path:
 from isaaclab.app import AppLauncher
 
 
-parser = argparse.ArgumentParser(description="Run EnvTest with switchable walk/climb policies.")
+parser = argparse.ArgumentParser(description="Run EnvTest with switchable walk / climb / push_box policies.")
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
 parser.add_argument("--task", type=str, default="Template-EnvTest-Go2-Play-v0", help="EnvTest 任务名。")
 parser.add_argument("--scene_id", type=int, default=0, help="EnvTest 场景编号，使用 0~4。")
-parser.add_argument("--model_use", type=int, default=1, help="技能编号：1=walk，2=climb，3=push_box。")
+parser.add_argument("--model_use", type=int, default=0, help="技能编号：0=idle，1=walk，2=climb，3=push_box。")
 parser.add_argument(
     "--model_use_file",
     type=str,
-    default="",
+    default="/tmp/model_use.txt",
     help="可选文本文件路径；若提供，则每步从文件读取 model_use，便于后续接 LLM。",
 )
 parser.add_argument("--num_envs", type=int, default=1, help="环境数量。通常建议先用 1。")
-parser.add_argument("--lin_vel_x", type=float, default=0.6, help="给低层策略的前向速度命令。")
-parser.add_argument("--lin_vel_y", type=float, default=0.0, help="给低层策略的侧向速度命令。")
-parser.add_argument("--ang_vel_z", type=float, default=0.0, help="给低层策略的偏航角速度命令。")
+parser.add_argument("--lin_vel_x", type=float, default=0.0, help="walk / climb 的前向速度命令。")
+parser.add_argument("--lin_vel_y", type=float, default=0.0, help="walk / climb 的侧向速度命令。")
+parser.add_argument("--ang_vel_z", type=float, default=0.0, help="walk / climb 的偏航角速度命令。")
+parser.add_argument(
+    "--velocity_command_file",
+    type=str,
+    default="/tmp/envtest_velocity_command.txt",
+    help="速度指令文件，支持 3 个数：vx vy wz。",
+)
+parser.add_argument(
+    "--goal_command_file",
+    type=str,
+    default="/tmp/envtest_goal_command.txt",
+    help="位置指令文件，支持 3 个数：x y z。push_box 会优先使用它。",
+)
+parser.add_argument(
+    "--start_file",
+    type=str,
+    default="/tmp/envtest_start.txt",
+    help="启动开关文件。写入 1 表示开始执行策略，写入 0 表示待机静止。",
+)
+parser.add_argument(
+    "--auto_start",
+    action="store_true",
+    default=False,
+    help="若启用，则脚本启动后立即执行策略；否则默认先静止待机。",
+)
+parser.add_argument("--socket_host", type=str, default="0.0.0.0", help="内置 UDP 控制监听地址。")
+parser.add_argument("--socket_port", type=int, default=5566, help="内置 UDP 控制监听端口。")
+parser.add_argument(
+    "--disable_socket_listener",
+    action="store_true",
+    default=False,
+    help="禁用内置 UDP 监听。若关闭，外部 client 发送的 Socket 消息不会生效。",
+)
 parser.add_argument("--real-time", action="store_true", default=False, help="尽量按实时速度运行。")
 parser.add_argument("--max_steps", type=int, default=0, help="最大仿真步数；0 表示一直运行。")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
+
 # EnvTest 里固定挂了前视相机，因此这里默认强制开启相机渲染。
 args_cli.enable_cameras = True
 
-# 启动 Isaac Sim。
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
@@ -71,12 +103,35 @@ simulation_app = app_launcher.app
 import gymnasium as gym
 import torch
 
-import isaaclab.utils.math as math_utils
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
 
 import MyProject.tasks  # noqa: F401
-from MyProject.tasks.manager_based.EnvTest.scene_layout import BOX_SIZE, HIGH_OBSTACLE_SIZE, LOW_OBSTACLE_SIZE
+import MyProject.tasks.manager_based.EnvTest.mdp as envtest_mdp
+
+
+LOW_LEVEL_OBS_TERMS = (
+    "base_lin_vel",
+    "base_ang_vel",
+    "projected_gravity",
+    "velocity_commands",
+    "joint_pos",
+    "joint_vel",
+    "actions",
+    "height_scan",
+)
+PUSH_HIGH_LEVEL_OBS_TERMS = (
+    "base_lin_vel",
+    "projected_gravity",
+    "box_pose",
+    "robot_position",
+    "goal_command",
+    "push_actions",
+)
+LOW_LEVEL_OBS_DIM = 235
+SKILL_NAME_TO_ID = {"idle": 0, "walk": 1, "climb": 2, "push": 3, "push_box": 3}
+BOOL_TRUE = {"1", "true", "on", "run", "start", "yes", "y"}
+BOOL_FALSE = {"0", "false", "off", "stop", "idle", "no", "n"}
 
 
 @dataclass(frozen=True)
@@ -85,107 +140,39 @@ class SkillSpec:
 
     name: str
     policy_path: str
+    obs_terms: tuple[str, ...]
     obs_dim: int
-    use_height_scan: bool
 
 
 SKILL_REGISTRY: dict[int, SkillSpec] = {
     1: SkillSpec(
         name="walk",
-        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "WalkPolicy", "exported", "policy.pt"),
-        obs_dim=48,
-        use_height_scan=False,
+        # walk 这里明确对齐 walk_rough 的 235 维接口，直接使用 rough 低层策略。
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkRoughNewTransfer.pt"),
+        obs_terms=LOW_LEVEL_OBS_TERMS,
+        obs_dim=LOW_LEVEL_OBS_DIM,
     ),
     2: SkillSpec(
         name="climb",
         policy_path=os.path.join(REPO_ROOT, "ModelBackup", "BiShePolicy", "exported", "policy.pt"),
-        obs_dim=235,
-        use_height_scan=True,
+        obs_terms=LOW_LEVEL_OBS_TERMS,
+        obs_dim=LOW_LEVEL_OBS_DIM,
     ),
     3: SkillSpec(
         name="push_box",
-        policy_path=os.path.join(
-            REPO_ROOT, "scripts", "rsl_rl", "logs", "rsl_rl", "push_box", "2026-03-15_10-14-05", "exported", "policy.pt"
-        ),
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "PushPolicy", "exported", "policy.pt"),
+        obs_terms=PUSH_HIGH_LEVEL_OBS_TERMS,
         obs_dim=22,
-        use_height_scan=False,
     ),
 }
 
 PUSH_LOW_LEVEL_POLICY_PATH = os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkRoughNewTransfer.pt")
-PUSH_LOW_LEVEL_OBS_DIM = 235
 PUSH_ACTION_SCALE = (0.4, 0.2, 0.3)
 PUSH_ACTION_CLIP = ((-0.4, 0.4), (-0.2, 0.2), (-0.3, 0.3))
 
 
-class StructuredHeightScanBuilder:
-    """针对 EnvTest 规则化障碍的高度扫描构造器。
-
-    训练中的 climb 策略需要 187 维 height_scan。
-    这里直接对当前场景中的长方体障碍做几何投影，生成同尺寸的局部高度图。
-    """
-
-    def __init__(self, device: torch.device | str):
-        self.device = device
-        self.offset = 0.5
-        self.local_points = self._build_local_points()
-        self.asset_specs = {
-            "left_low_obstacle": LOW_OBSTACLE_SIZE,
-            "right_low_obstacle": LOW_OBSTACLE_SIZE,
-            "left_high_obstacle": HIGH_OBSTACLE_SIZE,
-            "right_high_obstacle": HIGH_OBSTACLE_SIZE,
-            "support_box": BOX_SIZE,
-        }
-
-    def _build_local_points(self) -> torch.Tensor:
-        """构造与训练中 GridPatternCfg 一致的 17x11 网格。"""
-
-        x = torch.arange(start=-0.8, end=0.8 + 1.0e-9, step=0.1, device=self.device)
-        y = torch.arange(start=-0.5, end=0.5 + 1.0e-9, step=0.1, device=self.device)
-        grid_x, grid_y = torch.meshgrid(x, y, indexing="xy")
-        local_points = torch.zeros(grid_x.numel(), 3, device=self.device)
-        local_points[:, 0] = grid_x.flatten()
-        local_points[:, 1] = grid_y.flatten()
-        return local_points
-
-    def compute(self, scene, robot) -> torch.Tensor:
-        """根据当前机器人姿态和障碍物位置计算 height_scan。"""
-
-        num_envs = robot.data.root_pos_w.shape[0]
-        num_points = self.local_points.shape[0]
-
-        # 网格点跟随机器人位置和平面偏航角一起变换。
-        local_points = self.local_points.unsqueeze(0).expand(num_envs, -1, -1)
-        quat_yaw = robot.data.root_quat_w.unsqueeze(1).expand(-1, num_points, -1).reshape(-1, 4)
-        world_points = math_utils.quat_apply_yaw(quat_yaw, local_points.reshape(-1, 3)).view(num_envs, num_points, 3)
-        world_points = world_points + robot.data.root_pos_w.unsqueeze(1)
-
-        # 默认地面高度为 0。
-        max_heights = torch.zeros(num_envs, num_points, device=self.device)
-
-        for asset_name, size in self.asset_specs.items():
-            try:
-                asset = scene[asset_name]
-            except KeyError:
-                continue
-
-            centers = asset.data.root_pos_w
-            half_x = 0.5 * size[0]
-            half_y = 0.5 * size[1]
-            top_height = centers[:, 2].unsqueeze(1) + 0.5 * size[2]
-
-            inside_x = torch.abs(world_points[..., 0] - centers[:, 0].unsqueeze(1)) <= half_x
-            inside_y = torch.abs(world_points[..., 1] - centers[:, 1].unsqueeze(1)) <= half_y
-            inside = inside_x & inside_y
-
-            max_heights = torch.where(inside, torch.maximum(max_heights, top_height), max_heights)
-
-        # 与 IsaacLab 原始 height_scan 定义保持一致：base_z - hit_z - offset。
-        return robot.data.root_pos_w[:, 2].unsqueeze(1) - max_heights - self.offset
-
-
 def _load_policies(device: torch.device | str) -> dict[int, torch.jit.ScriptModule]:
-    """加载所有支持的技能策略。"""
+    """加载所有高层技能策略。"""
 
     policies: dict[int, torch.jit.ScriptModule] = {}
     for model_use, spec in SKILL_REGISTRY.items():
@@ -206,132 +193,231 @@ def _load_push_low_level_policy(device: torch.device | str) -> torch.jit.ScriptM
 def _resolve_model_use(current_model_use: int) -> int:
     """从 CLI 或外部文件中决定当前 model_use。"""
 
-    if args_cli.model_use_file:
-        if os.path.isfile(args_cli.model_use_file):
-            try:
-                with open(args_cli.model_use_file, "r", encoding="utf-8") as file:
-                    file_value = int(file.read().strip())
-            except (OSError, ValueError):
-                file_value = current_model_use
-            if file_value in SKILL_REGISTRY:
-                return file_value
+    if args_cli.model_use_file and os.path.isfile(args_cli.model_use_file):
+        try:
+            with open(args_cli.model_use_file, "r", encoding="utf-8") as file:
+                file_value = int(file.read().strip())
+        except (OSError, ValueError):
+            file_value = current_model_use
+        if file_value == 0 or file_value in SKILL_REGISTRY:
+            return file_value
     return current_model_use
 
 
-def _build_command_tensor(num_envs: int, device: torch.device | str) -> torch.Tensor:
-    """构造低层策略使用的速度命令。"""
+def _read_float_vector_file(file_path: str, expected_dim: int, fallback: torch.Tensor) -> torch.Tensor:
+    """从文本文件里读取定长浮点向量。
+
+    支持：
+    - `0.6 0.0 0.0`
+    - `0.6,0.0,0.0`
+    - `vx=0.6 vy=0.0 wz=0.0`
+    """
+
+    if not file_path or not os.path.isfile(file_path):
+        return fallback
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            text = file.read()
+    except OSError:
+        return fallback
+
+    values = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", text)
+    if len(values) < expected_dim:
+        return fallback
+
+    try:
+        parsed = [float(value) for value in values[:expected_dim]]
+    except ValueError:
+        return fallback
+
+    vector = torch.tensor(parsed, dtype=fallback.dtype, device=fallback.device)
+    return vector.unsqueeze(0).repeat(fallback.shape[0], 1)
+
+
+def _resolve_start_flag() -> bool:
+    """决定当前是否进入执行阶段。"""
+
+    if args_cli.auto_start:
+        return True
+    if not args_cli.start_file or not os.path.isfile(args_cli.start_file):
+        return False
+
+    try:
+        with open(args_cli.start_file, "r", encoding="utf-8") as file:
+            text = file.read().strip().lower()
+    except OSError:
+        return False
+
+    return text in ("1", "true", "run", "start", "yes", "y")
+
+
+def _ensure_parent_dir(file_path: str):
+    """确保控制文件父目录存在。"""
+
+    parent = os.path.dirname(file_path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
+def _write_text_file(file_path: str, content: str):
+    """写入控制文件。"""
+
+    _ensure_parent_dir(file_path)
+    with open(file_path, "w", encoding="utf-8") as file:
+        file.write(content.strip() + "\n")
+
+
+def _initialize_control_files():
+    """把控制文件初始化成当前脚本启动时的默认状态。"""
+
+    _write_text_file(args_cli.model_use_file, str(args_cli.model_use))
+    _write_text_file(
+        args_cli.velocity_command_file,
+        f"{args_cli.lin_vel_x} {args_cli.lin_vel_y} {args_cli.ang_vel_z}",
+    )
+    _write_text_file(args_cli.goal_command_file, "0.0 0.0 0.0")
+    _write_text_file(args_cli.start_file, "1" if args_cli.auto_start else "0")
+
+
+def _parse_named_int(text: str, field_name: str) -> int | None:
+    """解析形如 `field=1` 的整数。"""
+
+    match = re.search(rf"\b{field_name}\b\s*[:=]\s*(-?\d+)", text, flags=re.IGNORECASE)
+    if match is None:
+        return None
+    return int(match.group(1))
+
+
+def _parse_named_vector(text: str, field_name: str) -> tuple[float, float, float] | None:
+    """解析形如 `field=0.6,0,0` 的三维向量。"""
+
+    pattern = (
+        rf"\b{field_name}\b\s*[:=]\s*"
+        r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)"
+        r"[\s,]+"
+        r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)"
+        r"[\s,]+"
+        r"([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)"
+    )
+    match = re.search(pattern, text, flags=re.IGNORECASE)
+    if match is None:
+        return None
+    return float(match.group(1)), float(match.group(2)), float(match.group(3))
+
+
+def _parse_start_value(text: str) -> bool | None:
+    """解析 `start=1` / `start=0` / `run=true`。"""
+
+    match = re.search(r"\b(start|run)\b\s*[:=]\s*([A-Za-z0-9_]+)", text, flags=re.IGNORECASE)
+    if match is None:
+        return None
+    token = match.group(2).strip().lower()
+    if token in BOOL_TRUE:
+        return True
+    if token in BOOL_FALSE:
+        return False
+    raise ValueError(f"无法识别 start 值: {token}")
+
+
+def _parse_skill_name(text: str) -> int | None:
+    """解析 `idle / walk / climb / push_box` 这类纯文本技能名。"""
+
+    return SKILL_NAME_TO_ID.get(text.strip().lower())
+
+
+def _apply_socket_message(text: str) -> list[str]:
+    """把一条 UDP 消息写入对应控制文件。"""
+
+    updates: list[str] = []
+    normalized = text.strip()
+    if not normalized:
+        raise ValueError("收到空消息。")
+
+    model_use = _parse_named_int(normalized, "model_use")
+    if model_use is None:
+        model_use = _parse_named_int(normalized, "skill")
+    if model_use is None:
+        model_use = _parse_skill_name(normalized)
+    if model_use is not None:
+        if model_use not in (0, 1, 2, 3):
+            raise ValueError(f"model_use 必须是 0/1/2/3，收到: {model_use}")
+        _write_text_file(args_cli.model_use_file, str(model_use))
+        updates.append(f"model_use={model_use}")
+
+    velocity = _parse_named_vector(normalized, "velocity")
+    if velocity is None:
+        velocity = _parse_named_vector(normalized, "vel")
+    if velocity is not None:
+        _write_text_file(args_cli.velocity_command_file, f"{velocity[0]} {velocity[1]} {velocity[2]}")
+        updates.append(f"velocity={velocity}")
+
+    goal = _parse_named_vector(normalized, "goal")
+    if goal is None:
+        goal = _parse_named_vector(normalized, "position")
+    if goal is None:
+        goal = _parse_named_vector(normalized, "pos")
+    if goal is None:
+        goal = _parse_named_vector(normalized, "target")
+    if goal is not None:
+        _write_text_file(args_cli.goal_command_file, f"{goal[0]} {goal[1]} {goal[2]}")
+        updates.append(f"goal={goal}")
+
+    start_value = _parse_start_value(normalized)
+    if start_value is not None:
+        _write_text_file(args_cli.start_file, "1" if start_value else "0")
+        updates.append(f"start={int(start_value)}")
+
+    if not updates:
+        raise ValueError(
+            "未识别到有效字段。支持：model_use / skill / velocity / goal / start，"
+            "例如 `model_use=3; goal=1.8,0,0.1; start=1`。"
+        )
+    return updates
+
+
+def _start_embedded_socket_listener():
+    """启动内置 UDP 控制监听。"""
+
+    if args_cli.disable_socket_listener:
+        print("[INFO] Embedded UDP control listener disabled.")
+        return None
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind((args_cli.socket_host, args_cli.socket_port))
+    except OSError as err:
+        print(
+            "[WARN] Embedded UDP control listener failed to bind "
+            f"{args_cli.socket_host}:{args_cli.socket_port}: {err}"
+        )
+        return None
+
+    def _listen():
+        while True:
+            try:
+                data, address = sock.recvfrom(2048)
+                message = data.decode("utf-8", errors="ignore").strip()
+                updates = _apply_socket_message(message)
+                print(f"[INFO] UDP {address[0]}:{address[1]} -> " + ", ".join(updates))
+            except ValueError as err:
+                print(f"[WARN] Ignore invalid UDP message ({err})")
+            except OSError:
+                break
+
+    thread = threading.Thread(target=_listen, daemon=True)
+    thread.start()
+    print(f"[INFO] Embedded UDP control listener: {args_cli.socket_host}:{args_cli.socket_port}")
+    return sock
+
+
+def _build_default_velocity_commands(num_envs: int, device: torch.device | str) -> torch.Tensor:
+    """构造 walk / climb 使用的默认速度命令。"""
 
     single_command = torch.tensor(
         [args_cli.lin_vel_x, args_cli.lin_vel_y, args_cli.ang_vel_z], dtype=torch.float32, device=device
     )
     return single_command.unsqueeze(0).repeat(num_envs, 1)
-
-
-def _build_walk_obs(robot, last_actions: torch.Tensor, commands: torch.Tensor) -> torch.Tensor:
-    """构造平地行走策略所需观测。"""
-
-    return torch.cat(
-        (
-            robot.data.root_lin_vel_b,
-            robot.data.root_ang_vel_b,
-            robot.data.projected_gravity_b,
-            commands,
-            robot.data.joint_pos - robot.data.default_joint_pos,
-            robot.data.joint_vel - robot.data.default_joint_vel,
-            last_actions,
-        ),
-        dim=-1,
-    )
-
-
-def _build_climb_obs(
-    robot,
-    last_actions: torch.Tensor,
-    commands: torch.Tensor,
-    height_scan: torch.Tensor,
-) -> torch.Tensor:
-    """构造攀爬策略所需观测。"""
-
-    return torch.cat(
-        (
-            robot.data.root_lin_vel_b,
-            robot.data.root_ang_vel_b,
-            robot.data.projected_gravity_b,
-            commands,
-            robot.data.joint_pos - robot.data.default_joint_pos,
-            robot.data.joint_vel - robot.data.default_joint_vel,
-            last_actions,
-            height_scan,
-        ),
-        dim=-1,
-    )
-
-
-def _build_push_high_obs(env, push_last_processed_actions: torch.Tensor) -> torch.Tensor:
-    """构造推箱子高层策略所需观测。"""
-
-    robot = env.unwrapped.scene["robot"]
-    try:
-        box = env.unwrapped.scene["support_box"]
-    except KeyError as err:
-        raise RuntimeError("当前 EnvTest 场景中没有 support_box，无法执行 push_box 策略。") from err
-
-    env_origins = env.unwrapped.scene.env_origins
-    box_position = box.data.root_pos_w[:, :3] - env_origins
-    box_quat = math_utils.quat_unique(box.data.root_quat_w)
-    box_pose = torch.cat((box_position, box_quat), dim=-1)
-    robot_position = robot.data.root_pos_w[:, :3] - env_origins
-    goal_command = _compute_push_goal(env)
-
-    return torch.cat(
-        (
-            robot.data.root_lin_vel_b,
-            robot.data.projected_gravity_b,
-            box_pose,
-            robot_position,
-            goal_command,
-            push_last_processed_actions,
-        ),
-        dim=-1,
-    )
-
-
-def _compute_push_goal(env) -> torch.Tensor:
-    """根据当前障碍物位置，生成一个把箱子推到障碍物前方的目标点。"""
-
-    scene = env.unwrapped.scene
-    env_origins = scene.env_origins
-    box = scene["support_box"]
-    box_pos_e = box.data.root_pos_w[:, :3] - env_origins
-
-    candidates: list[torch.Tensor] = []
-    candidate_sizes = (
-        ("left_high_obstacle", HIGH_OBSTACLE_SIZE),
-        ("right_high_obstacle", HIGH_OBSTACLE_SIZE),
-        ("left_low_obstacle", LOW_OBSTACLE_SIZE),
-        ("right_low_obstacle", LOW_OBSTACLE_SIZE),
-    )
-    for asset_name, size in candidate_sizes:
-        try:
-            asset = scene[asset_name]
-        except KeyError:
-            continue
-        obstacle_pos_e = asset.data.root_pos_w[:, :3] - env_origins
-        goal = torch.zeros_like(obstacle_pos_e)
-        # 把箱子目标点放在障碍物前沿，便于后续从箱子爬上去。
-        goal[:, 0] = obstacle_pos_e[:, 0] - 0.5 * size[0] - 0.5 * BOX_SIZE[0] - 0.02
-        goal[:, 1] = obstacle_pos_e[:, 1]
-        goal[:, 2] = 0.5 * BOX_SIZE[2]
-        candidates.append(goal)
-
-    if not candidates:
-        raise RuntimeError("当前场景中没有可供 push_box 使用的目标障碍物。")
-
-    candidate_tensor = torch.stack(candidates, dim=1)
-    distances = torch.linalg.norm(candidate_tensor[..., :2] - box_pos_e[:, None, :2], dim=-1)
-    best_indices = torch.argmin(distances, dim=1)
-    selected_goals = candidate_tensor[torch.arange(env.unwrapped.num_envs, device=box_pos_e.device), best_indices]
-    return selected_goals
 
 
 def _process_push_actions(raw_actions: torch.Tensor) -> torch.Tensor:
@@ -346,28 +432,55 @@ def _process_push_actions(raw_actions: torch.Tensor) -> torch.Tensor:
     return processed_actions
 
 
-def _build_policy_obs(model_use: int, env, last_actions: torch.Tensor, height_scan_builder) -> torch.Tensor:
-    """根据当前技能编号生成对应观测。"""
+def _build_obs_slices(env, group_name: str = "policy") -> dict[str, slice]:
+    """把统一观测中的每个 term 映射到切片区间。"""
 
-    robot = env.unwrapped.scene["robot"]
-    commands = _build_command_tensor(env.unwrapped.num_envs, env.unwrapped.device)
-    skill_spec = SKILL_REGISTRY[model_use]
+    obs_manager = env.observation_manager
+    term_names = obs_manager.active_terms[group_name]
+    term_dims = obs_manager.group_obs_term_dim[group_name]
 
-    if model_use == 3:
-        raise RuntimeError("push_box 观测请使用 _build_push_high_obs，不要走通用分支。")
+    slices: dict[str, slice] = {}
+    start = 0
+    for term_name, term_dim in zip(term_names, term_dims):
+        flat_dim = math.prod(term_dim)
+        slices[term_name] = slice(start, start + flat_dim)
+        start += flat_dim
+    return slices
 
-    if skill_spec.use_height_scan:
-        height_scan = height_scan_builder.compute(env.unwrapped.scene, robot)
-        obs = _build_climb_obs(robot, last_actions, commands, height_scan)
-    else:
-        obs = _build_walk_obs(robot, last_actions, commands)
 
-    if obs.shape[1] != skill_spec.obs_dim:
+def _slice_observation(unified_obs: torch.Tensor, term_slices: dict[str, slice], term_names: tuple[str, ...]) -> torch.Tensor:
+    """按给定 term 名称顺序，从统一观测中拼出某个技能需要的输入。"""
+
+    parts = [unified_obs[:, term_slices[term_name]] for term_name in term_names]
+    return torch.cat(parts, dim=-1)
+
+
+def _validate_required_terms(term_slices: dict[str, slice]):
+    """确保统一观测中已经包含各技能需要的全部 term。"""
+
+    required_terms = set(LOW_LEVEL_OBS_TERMS) | set(PUSH_HIGH_LEVEL_OBS_TERMS)
+    missing_terms = sorted(required_terms.difference(term_slices))
+    if missing_terms:
+        raise RuntimeError(f"EnvTest unified observation is missing terms: {missing_terms}")
+
+
+def _print_obs_layout(term_slices: dict[str, slice]):
+    """打印统一观测的 term 切片布局，便于后续排查。"""
+
+    print("[INFO] EnvTest unified observation layout:")
+    for term_name, term_slice in term_slices.items():
+        print(f"  - {term_name:<18} -> [{term_slice.start:>3}, {term_slice.stop:>3})")
+
+
+def _check_obs_dim(model_use: int, obs: torch.Tensor):
+    """检查切片后的观测维度是否和策略要求一致。"""
+
+    expected_dim = SKILL_REGISTRY[model_use].obs_dim
+    if obs.shape[1] != expected_dim:
         raise RuntimeError(
             f"Observation dim mismatch for model_use={model_use}. "
-            f"Expected {skill_spec.obs_dim}, got {obs.shape[1]}."
+            f"Expected {expected_dim}, got {obs.shape[1]}."
         )
-    return obs
 
 
 def main():
@@ -375,8 +488,11 @@ def main():
 
     if not 0 <= args_cli.scene_id <= 4:
         raise ValueError("--scene_id must be in [0, 4].")
-    if args_cli.model_use not in SKILL_REGISTRY:
-        raise ValueError(f"--model_use must be one of {sorted(SKILL_REGISTRY)}.")
+    if args_cli.model_use != 0 and args_cli.model_use not in SKILL_REGISTRY:
+        raise ValueError(f"--model_use must be one of {[0, *sorted(SKILL_REGISTRY)]}.")
+
+    _initialize_control_files()
+    listener_socket = _start_embedded_socket_listener()
 
     env_cfg = parse_env_cfg(
         args_cli.task,
@@ -391,72 +507,130 @@ def main():
     env.reset()
 
     device = env.unwrapped.device
+    num_envs = env.unwrapped.num_envs
+    action_dim = env.unwrapped.scene["robot"].data.joint_pos.shape[1]
+    expected_action_shape = (num_envs, action_dim)
+
     policies = _load_policies(device)
     push_low_level_policy = _load_push_low_level_policy(device)
-    height_scan_builder = StructuredHeightScanBuilder(device)
 
-    action_dim = env.unwrapped.scene["robot"].data.joint_pos.shape[1]
-    last_joint_actions = torch.zeros(env.unwrapped.num_envs, action_dim, device=device)
-    push_last_processed_actions = torch.zeros(env.unwrapped.num_envs, 3, device=device)
+    term_slices = _build_obs_slices(env.unwrapped)
+    _validate_required_terms(term_slices)
+    _print_obs_layout(term_slices)
+    print(f"[INFO] model_use file: {args_cli.model_use_file}")
+    print(f"[INFO] velocity command file: {args_cli.velocity_command_file}")
+    print(f"[INFO] goal command file: {args_cli.goal_command_file}")
+    print(f"[INFO] start file: {args_cli.start_file} (auto_start={args_cli.auto_start})")
+
+    base_velocity_commands = _build_default_velocity_commands(num_envs, device)
+    zero_command = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
+    zero_actions = torch.zeros(expected_action_shape, dtype=torch.float32, device=device)
+    push_last_processed_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
+
     current_model_use = args_cli.model_use
     previous_model_use = None
+    previous_start_flag = None
     dt = env.unwrapped.step_dt
     step_count = 0
 
     while simulation_app.is_running():
         start_time = time.time()
         current_model_use = _resolve_model_use(current_model_use)
+        current_velocity_commands = _read_float_vector_file(args_cli.velocity_command_file, 3, base_velocity_commands)
+        start_flag = _resolve_start_flag()
+
+        if start_flag != previous_start_flag:
+            state_text = "RUN" if start_flag else "IDLE"
+            print(f"[INFO] 当前执行状态: {state_text}")
+            previous_start_flag = start_flag
 
         if current_model_use != previous_model_use:
-            skill_name = SKILL_REGISTRY[current_model_use].name
-            last_joint_actions.zero_()
-            push_last_processed_actions.zero_()
-            print(f"[INFO] 切换技能: model_use={current_model_use}, skill={skill_name}, scene_id={args_cli.scene_id}")
+            if current_model_use == 0:
+                push_last_processed_actions.zero_()
+                print(f"[INFO] 切换技能: model_use=0, skill=idle, scene_id={args_cli.scene_id}")
+            else:
+                push_last_processed_actions.zero_()
+                print(
+                    f"[INFO] 切换技能: model_use={current_model_use}, "
+                    f"skill={SKILL_REGISTRY[current_model_use].name}, scene_id={args_cli.scene_id}"
+                )
             previous_model_use = current_model_use
 
         with torch.inference_mode():
-            if current_model_use == 3:
-                push_high_obs = _build_push_high_obs(env, push_last_processed_actions)
-                if push_high_obs.shape[1] != SKILL_REGISTRY[3].obs_dim:
-                    raise RuntimeError(
-                        f"Observation dim mismatch for model_use=3. "
-                        f"Expected {SKILL_REGISTRY[3].obs_dim}, got {push_high_obs.shape[1]}."
-                    )
+            # 第一步：待机阶段。机器人保持静止，但仍然持续读取 model_use、速度指令和位置指令文件。
+            if not start_flag or current_model_use == 0:
+                env.unwrapped.set_runtime_observation_buffers(
+                    velocity_commands=current_velocity_commands,
+                    push_goal_command=zero_command,
+                    push_actions=zero_command,
+                )
+                policy_obs = env.unwrapped.observation_manager.compute_group("policy")
+                actions = zero_actions
+            elif current_model_use in (1, 2):
+                env.unwrapped.set_runtime_observation_buffers(
+                    velocity_commands=current_velocity_commands,
+                    push_goal_command=zero_command,
+                    push_actions=zero_command,
+                )
+                unified_obs = env.unwrapped.observation_manager.compute_group("policy")
+                policy_obs = _slice_observation(unified_obs, term_slices, SKILL_REGISTRY[current_model_use].obs_terms)
+                _check_obs_dim(current_model_use, policy_obs)
+                actions = policies[current_model_use](policy_obs)
+            else:
+                scene_push_goal = envtest_mdp.compute_push_goal_from_scene(env.unwrapped)
+                push_goal_command = _read_float_vector_file(args_cli.goal_command_file, 3, scene_push_goal)
+
+                # 先用“上一步高层动作”构造高层 push_box 观测。
+                env.unwrapped.set_runtime_observation_buffers(
+                    velocity_commands=current_velocity_commands,
+                    push_goal_command=push_goal_command,
+                    push_actions=push_last_processed_actions,
+                )
+                unified_obs = env.unwrapped.observation_manager.compute_group("policy")
+                push_high_obs = _slice_observation(unified_obs, term_slices, SKILL_REGISTRY[3].obs_terms)
+                _check_obs_dim(3, push_high_obs)
+
                 push_raw_actions = policies[3](push_high_obs)
                 if push_raw_actions.shape != push_last_processed_actions.shape:
                     raise RuntimeError(
                         f"Push high-level action dim mismatch. "
                         f"Expected {tuple(push_last_processed_actions.shape)}, got {tuple(push_raw_actions.shape)}."
                     )
+
                 push_processed_actions = _process_push_actions(push_raw_actions)
-                height_scan = height_scan_builder.compute(env.unwrapped.scene, env.unwrapped.scene["robot"])
-                policy_obs = _build_climb_obs(
-                    env.unwrapped.scene["robot"],
-                    last_joint_actions,
-                    push_processed_actions,
-                    height_scan,
+
+                # 再把裁剪后的高层动作写入低层速度命令槽位，供 rough-walk 低层策略执行。
+                env.unwrapped.set_runtime_observation_buffers(
+                    velocity_commands=push_processed_actions,
+                    push_goal_command=push_goal_command,
+                    push_actions=push_processed_actions,
                 )
-                if policy_obs.shape[1] != PUSH_LOW_LEVEL_OBS_DIM:
+                unified_obs = env.unwrapped.observation_manager.compute_group("policy")
+                policy_obs = _slice_observation(unified_obs, term_slices, LOW_LEVEL_OBS_TERMS)
+                if policy_obs.shape[1] != LOW_LEVEL_OBS_DIM:
                     raise RuntimeError(
                         f"Push low-level observation dim mismatch. "
-                        f"Expected {PUSH_LOW_LEVEL_OBS_DIM}, got {policy_obs.shape[1]}."
+                        f"Expected {LOW_LEVEL_OBS_DIM}, got {policy_obs.shape[1]}."
                     )
                 actions = push_low_level_policy(policy_obs)
                 push_last_processed_actions.copy_(push_processed_actions)
-            else:
-                policy_obs = _build_policy_obs(current_model_use, env, last_joint_actions, height_scan_builder)
-                actions = policies[current_model_use](policy_obs)
-            if actions.shape != last_joint_actions.shape:
+
+            if actions.shape != expected_action_shape:
                 raise RuntimeError(
                     f"Action dim mismatch for model_use={current_model_use}. "
-                    f"Expected {tuple(last_joint_actions.shape)}, got {tuple(actions.shape)}."
+                    f"Expected {expected_action_shape}, got {tuple(actions.shape)}."
                 )
+
             env.step(actions)
-            last_joint_actions.copy_(actions)
 
         step_count += 1
         if step_count == 1:
-            print(f"[INFO] 当前策略输入维度: {policy_obs.shape[1]}")
+            unified_dim = env.unwrapped.observation_manager.group_obs_dim["policy"][0]
+            print(f"[INFO] EnvTest unified observation dim: {unified_dim}")
+            if start_flag and current_model_use in SKILL_REGISTRY:
+                print(f"[INFO] 当前策略输入维度: {policy_obs.shape[1]}")
+            else:
+                print("[INFO] 当前处于待机阶段，机器人保持静止。")
             print(f"[INFO] 当前策略输出维度: {actions.shape[1]}")
 
         if args_cli.max_steps > 0 and step_count >= args_cli.max_steps:
@@ -466,6 +640,8 @@ def main():
         if args_cli.real_time and sleep_time > 0:
             time.sleep(sleep_time)
 
+    if listener_socket is not None:
+        listener_socket.close()
     env.close()
 
 

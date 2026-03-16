@@ -286,28 +286,54 @@ class ActionsCfg:
 
 @configclass
 class ObservationsCfg:
-    """最小观测配置。
+    """统一观测配置。
 
-    这里只保留机器人自身状态，不包含任务目标或奖励相关量。
+    这里不再只保留“最小状态”，而是直接做成 walk / climb / push_box 三个技能的观测并集。
+    统一后的 policy 向量按顺序包含：
+
+    - walk / climb 低层公共项
+    - 推箱子高层特有项
+
+    当前总维度为：
+    - 低层部分：235 维
+    - 推箱子额外部分：16 维
+    - 并集总计：251 维
+
+    后续 `envtest_model_use_player.py` 会按 `model_use` 从这 251 维里切出各技能真正需要的部分。
     """
 
     @configclass
     class PolicyCfg(ObsGroup):
-        # 机身线速度
+        # ===== walk / climb 低层公共观测 =====
+        # 机身线速度（3）
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
-        # 机身角速度
+        # 机身角速度（3）
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
-        # 重力在机体坐标系下的投影
+        # 重力在机体坐标系下的投影（3）
         projected_gravity = ObsTerm(func=mdp.projected_gravity)
-        # 相对默认姿态的关节位置
+        # 外部设置的低层速度命令（3）
+        velocity_commands = ObsTerm(func=mdp.velocity_commands)
+        # 相对默认姿态的关节位置（12）
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
-        # 关节速度
+        # 关节速度（12）
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        # 上一步动作
+        # 上一步关节动作（12）
         actions = ObsTerm(func=mdp.last_action)
+        # 结构化高度扫描（187）
+        height_scan = ObsTerm(func=mdp.structured_height_scan)
+
+        # ===== push_box 高层额外观测 =====
+        # support_box 的位姿；若当前场景没有箱子则返回 0（7）
+        box_pose = ObsTerm(func=mdp.box_pose)
+        # 机器人在环境坐标系中的位置（3）
+        robot_position = ObsTerm(func=mdp.robot_position)
+        # 推箱子目标点（3）
+        goal_command = ObsTerm(func=mdp.push_goal_command)
+        # 推箱子高层上一步裁剪后动作（3）
+        push_actions = ObsTerm(func=mdp.push_actions)
 
         def __post_init__(self):
-            # 这里只做场景测试，因此关闭噪声，并把各项观测拼成向量。
+            # EnvTest 的目标是稳定复现场景和统一接口，因此关闭噪声，并把各项观测拼成向量。
             self.enable_corruption = False
             self.concatenate_terms = True
 
