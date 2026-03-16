@@ -32,6 +32,11 @@ class BoxGoalCommand(CommandTerm):
         self.pos_command_e = torch.zeros(self.num_envs, 3, device=self.device)
         self.pos_command_w = torch.zeros_like(self.pos_command_e)
         self.metrics["error_pos"] = torch.zeros(self.num_envs, device=self.device)
+        # 诊断指标：用于区分“整体都差一点”还是“只有大侧向目标很难”。
+        self.metrics["error_pos_p50"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["error_pos_p90"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["error_pos_center"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["error_pos_side"] = torch.zeros(self.num_envs, device=self.device)
         self.initial_error_pos = torch.zeros(self.num_envs, device=self.device)
 
     @property
@@ -39,7 +44,26 @@ class BoxGoalCommand(CommandTerm):
         return self.pos_command_e
 
     def _update_metrics(self):
-        self.metrics["error_pos"] = torch.norm(self.pos_command_w[:, :2] - self.box.data.root_pos_w[:, :2], dim=1)
+        error_pos = torch.norm(self.pos_command_w[:, :2] - self.box.data.root_pos_w[:, :2], dim=1)
+        goal_abs_y = torch.abs(self.pos_command_e[:, 1])
+
+        self.metrics["error_pos"] = error_pos
+
+        # 分位数直接反映误差分布，避免只看均值掩盖难例。
+        error_pos_p50 = torch.quantile(error_pos, 0.50)
+        error_pos_p90 = torch.quantile(error_pos, 0.90)
+        self.metrics["error_pos_p50"].fill_(error_pos_p50)
+        self.metrics["error_pos_p90"].fill_(error_pos_p90)
+
+        # 按目标点侧向偏移划分样本：
+        # center 表示接近正前方的目标；side 表示大侧向目标。
+        center_mask = goal_abs_y < 0.2
+        side_mask = goal_abs_y > 0.6
+
+        center_error = error_pos[center_mask].mean() if torch.any(center_mask) else torch.tensor(0.0, device=self.device)
+        side_error = error_pos[side_mask].mean() if torch.any(side_mask) else torch.tensor(0.0, device=self.device)
+        self.metrics["error_pos_center"].fill_(center_error)
+        self.metrics["error_pos_side"].fill_(side_error)
 
     def _resample_command(self, env_ids: Sequence[int]):
         r = torch.empty(len(env_ids), device=self.device)
