@@ -18,7 +18,7 @@ parser.add_argument(
 )
 parser.add_argument("--num_envs", type=int, default=1, help="要启动的环境数量。")
 parser.add_argument("--task", type=str, default="Template-EnvTest-Go2-Play-v0", help="任务名。")
-parser.add_argument("--scene_id", type=int, default=1, help="EnvTest 场景编号，可选 1-5。")
+parser.add_argument("--scene_id", type=int, default=0, help="EnvTest 场景编号，可选 0-4。")
 parser.add_argument(
     "--max_steps",
     type=int,
@@ -65,15 +65,15 @@ def _save_rgb_frame(rgb_tensor: torch.Tensor, save_path: str):
 def main():
     """启动环境并持续读取前视相机图像。"""
 
-    if not 1 <= args_cli.scene_id <= 5:
-        raise ValueError("--scene_id must be in [1, 5].")
+    if not 0 <= args_cli.scene_id <= 4:
+        raise ValueError("--scene_id must be in [0, 4].")
 
     env_cfg = parse_env_cfg(
         args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs, use_fabric=not args_cli.disable_fabric
     )
     if hasattr(env_cfg, "scene_id"):
-        # 命令行里传 1~5，更符合实验编号习惯；内部仍然是 0~4。
-        env_cfg.scene_id = args_cli.scene_id - 1
+        # 这里直接使用 EnvTest 内部的 0~4 场景编号。
+        env_cfg.scene_id = args_cli.scene_id
 
     env = gym.make(args_cli.task, cfg=env_cfg)
     env.reset()

@@ -360,7 +360,7 @@ class LocomotionEnvTestEnvCfg(ManagerBasedEnvCfg):
 
     scene: MySceneCfg = MySceneCfg(num_envs=1, env_spacing=8.0)
     # 0~4 对应 5 个固定场景。
-    scene_id: int = 0
+    scene_id: int = 3
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     events: EventCfg = EventCfg()
