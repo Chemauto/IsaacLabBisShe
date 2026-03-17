@@ -16,6 +16,8 @@ from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
 from isaaclab.markers.config import FRAME_MARKER_CFG
 from isaaclab.utils import configclass
 
+from .goal_pose import quat_to_yaw, yaw_error_abs, yaw_to_quat
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
@@ -31,7 +33,9 @@ class BoxGoalCommand(CommandTerm):
         self.box: RigidObject = env.scene[cfg.asset_name]
         self.pos_command_e = torch.zeros(self.num_envs, 3, device=self.device)
         self.pos_command_w = torch.zeros_like(self.pos_command_e)
+        self.yaw_command_e = torch.zeros(self.num_envs, device=self.device)
         self.metrics["error_pos"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["error_yaw"] = torch.zeros(self.num_envs, device=self.device)
         # 诊断指标：用于区分“整体都差一点”还是“只有大侧向目标很难”。
         self.metrics["error_pos_p50"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["error_pos_p90"] = torch.zeros(self.num_envs, device=self.device)
@@ -41,13 +45,15 @@ class BoxGoalCommand(CommandTerm):
 
     @property
     def command(self) -> torch.Tensor:
-        return self.pos_command_e
+        return torch.cat((self.pos_command_e, self.yaw_command_e.unsqueeze(-1)), dim=-1)
 
     def _update_metrics(self):
         error_pos = torch.norm(self.pos_command_w[:, :2] - self.box.data.root_pos_w[:, :2], dim=1)
+        box_yaw = quat_to_yaw(self.box.data.root_quat_w)
         goal_abs_y = torch.abs(self.pos_command_e[:, 1])
 
         self.metrics["error_pos"] = error_pos
+        self.metrics["error_yaw"] = yaw_error_abs(box_yaw, self.yaw_command_e)
 
         # 分位数直接反映误差分布，避免只看均值掩盖难例。
         error_pos_p50 = torch.quantile(error_pos, 0.50)
@@ -71,6 +77,7 @@ class BoxGoalCommand(CommandTerm):
         self.pos_command_e[env_ids, 0] = r.uniform_(*self.cfg.ranges.pos_x)
         self.pos_command_e[env_ids, 1] = r.uniform_(*self.cfg.ranges.pos_y)
         self.pos_command_e[env_ids, 2] = self.box.data.default_root_state[env_ids, 2]
+        self.yaw_command_e[env_ids] = r.uniform_(*self.cfg.ranges.yaw)
         self.pos_command_w[env_ids] = self.pos_command_e[env_ids] + self._env.scene.env_origins[env_ids]
         self.initial_error_pos[env_ids] = torch.norm(
             self.pos_command_w[env_ids, :2] - self.box.data.root_pos_w[env_ids, :2], dim=1
@@ -89,8 +96,7 @@ class BoxGoalCommand(CommandTerm):
                 self.goal_pose_visualizer.set_visibility(False)
 
     def _debug_vis_callback(self, event):
-        marker_quat = torch.zeros(self.num_envs, 4, device=self.device)
-        marker_quat[:, 0] = 1.0
+        marker_quat = yaw_to_quat(self.yaw_command_e)
         self.goal_pose_visualizer.visualize(translations=self.pos_command_w, orientations=marker_quat)
 
 
@@ -106,6 +112,7 @@ class BoxGoalCommandCfg(CommandTermCfg):
     class Ranges:
         pos_x: tuple[float, float] = MISSING
         pos_y: tuple[float, float] = MISSING
+        yaw: tuple[float, float] = MISSING
 
     ranges: Ranges = MISSING
 

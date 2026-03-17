@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
 
+from .goal_pose import quat_to_yaw, split_box_goal_command, yaw_error_abs
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
@@ -76,7 +78,8 @@ def _box_goal_delta(
     """
     box: RigidObject = env.scene[box_cfg.name]
     # 从命令管理器获取目标点的环境坐标 / Get goal position in environment frame from command manager
-    goal_pos_e = env.command_manager.get_command(command_name)
+    goal_command = env.command_manager.get_command(command_name)
+    goal_pos_e, _ = split_box_goal_command(goal_command)
     # 转换到世界坐标系 / Convert to world frame
     goal_pos_w = goal_pos_e + env.scene.env_origins
     # 计算 xy 平面的差向量（目标点 - 箱子）/ Compute xy-plane delta (goal - box)
@@ -84,6 +87,19 @@ def _box_goal_delta(
     # 计算欧几里得距离 / Compute Euclidean distance
     distance = torch.norm(delta, dim=1)
     return delta, distance
+
+
+def box_goal_yaw_error(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """Compute the wrapped absolute yaw error between the box and its target yaw."""
+    box: RigidObject = env.scene[box_cfg.name]
+    goal_command = env.command_manager.get_command(command_name)
+    _, goal_yaw = split_box_goal_command(goal_command)
+    box_yaw = quat_to_yaw(box.data.root_quat_w)
+    return yaw_error_abs(box_yaw, goal_yaw)
 
 
 def box_goal_distance_tanh(
@@ -206,10 +222,22 @@ def box_goal_progress(
     return progress
 
 
+def box_goal_yaw_distance_tanh(
+    env: ManagerBasedRLEnv,
+    std: float,
+    command_name: str,
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """Reward the box for aligning its yaw with the target yaw."""
+    error_yaw = box_goal_yaw_error(env, command_name, box_cfg)
+    return 1.0 - torch.tanh(error_yaw / std)
+
+
 def box_goal_settled_mask(
     env: ManagerBasedRLEnv,
     command_name: str,
     distance_threshold: float = 0.08,
+    yaw_threshold: float = 0.2,
     box_speed_threshold: float = 0.05,
     robot_speed_threshold: float = 0.08,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -260,6 +288,7 @@ def box_goal_settled_mask(
 
     # 获取箱子到目标点的距离 / Get box-to-goal distance
     _, distance = _box_goal_delta(env, command_name, box_cfg)
+    error_yaw = box_goal_yaw_error(env, command_name, box_cfg)
 
     # 计算箱子速度（xy 平面的线速度）/ Compute box speed (xy-plane linear velocity)
     box_speed = torch.norm(box.data.root_lin_vel_w[:, :2], dim=1)
@@ -268,7 +297,12 @@ def box_goal_settled_mask(
     robot_speed = torch.norm(robot.data.root_lin_vel_b[:, :2], dim=1)
 
     # 三个条件同时满足才返回 True / All three conditions must be True
-    return (distance < distance_threshold) & (box_speed < box_speed_threshold) & (robot_speed < robot_speed_threshold)
+    return (
+        (distance < distance_threshold)
+        & (error_yaw < yaw_threshold)
+        & (box_speed < box_speed_threshold)
+        & (robot_speed < robot_speed_threshold)
+    )
 
 
 def robot_box_distance_tanh(
@@ -324,6 +358,7 @@ def box_goal_success_bonus(
     env: ManagerBasedRLEnv,
     command_name: str,
     distance_threshold: float = 0.08,
+    yaw_threshold: float = 0.2,
     box_speed_threshold: float = 0.05,
     robot_speed_threshold: float = 0.08,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -375,6 +410,7 @@ def box_goal_success_bonus(
         env,
         command_name=command_name,
         distance_threshold=distance_threshold,
+        yaw_threshold=yaw_threshold,
         box_speed_threshold=box_speed_threshold,
         robot_speed_threshold=robot_speed_threshold,
         robot_cfg=robot_cfg,

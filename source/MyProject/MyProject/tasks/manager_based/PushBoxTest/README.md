@@ -61,6 +61,7 @@ PushBoxTest/
     ├── commands.py
     ├── observations.py
     ├── rewards.py
+    ├── goal_pose.py
     └── terminations.py
 ```
 
@@ -127,16 +128,17 @@ PushBoxTest/
 
 ## 6. 命令设计
 
-当前任务不是给机器人一个“终点”，而是给箱子一个“目标位置”。
+当前任务不是给机器人一个“终点”，而是给箱子一个“目标位姿”。
 
 使用的命令项：
 
 - `box_goal = mdp.BoxGoalCommandCfg(...)`
 
-训练时目标位置采样范围：
+训练时目标位姿采样范围：
 
 - `pos_x = (1.8, 2.4)`
 - `pos_y = (-0.35, 0.35)`
+- `yaw = (-pi, pi)`
 
 这意味着：
 
@@ -179,7 +181,7 @@ PushBoxTest/
 - 机器人当前在怎么运动
 - 箱子在环境坐标系下的位置和姿态
 - 机器人在环境坐标系下的位置
-- 目标点在环境坐标系下的位置
+- 目标位姿在环境坐标系下的位置和 yaw
 
 这里我刻意没有直接上高度图或更复杂点云观测。`box_lin_vel` 也没有放进策略输入，因为这个量在真实系统里通常不容易稳定获得。当前版本优先使用更容易从定位和感知中构造出来的低维相对状态。
 
@@ -191,6 +193,7 @@ PushBoxTest/
 - `termination_penalty`
 - `box_goal_distance`
 - `box_goal_progress`
+- `box_goal_yaw`
 - `robot_box_distance`
 - `box_goal_success`
 - `flat_orientation`
@@ -211,7 +214,7 @@ PushBoxTest/
 3. `box_goal_success`
 
 - 当箱子进入成功区域时给额外奖励
-- 当前成功阈值：`distance < 0.08`
+- 当前成功阈值：`distance < 0.08` 且 `yaw_error < 0.2`
 
 ### 9.2 辅助奖励与惩罚
 
@@ -229,6 +232,7 @@ PushBoxTest/
 当前终止项：
 
 - `time_out`
+- `goal_reached`
 - `base_contact`
 - `box_out_of_bounds`
 
@@ -239,8 +243,8 @@ PushBoxTest/
 - `box_out_of_bounds`
   - 箱子被推太远或掉出地面有效范围时终止
 
-目前没有把“任务成功”作为提前终止条件，而是通过成功奖励体现。  
-这么做的原因是避免把成功也一并记入 `termination_penalty`。
+当前把“任务成功”作为提前终止条件。  
+这样可以在箱子到点且朝向对齐后尽早结束 episode，减少无效采样。
 
 ## 11. 训练配置
 
@@ -278,7 +282,7 @@ PPO 配置位于：
 
 Play 配置中：
 
-- 固定目标点为 `(2.0, 0.0)`
+- 固定目标位姿为 `(2.0, 0.0, yaw=0.0)`
 - 机器人和箱子都使用确定性重置
 
 这更适合观察策略行为是否合理。

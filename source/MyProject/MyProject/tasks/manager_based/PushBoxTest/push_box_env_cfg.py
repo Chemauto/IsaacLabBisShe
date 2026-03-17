@@ -30,7 +30,7 @@ from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughTestEnvCfg()
-LOW_LEVEL_POLICY_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt"
+LOW_LEVEL_POLICY_PATH = "/home/robot/work/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt"
 #低层的环境和策略配置，推箱子这个技能是基于之前训练好的走路技能进行训练的，所以这里直接引用之前走路技能的环境配置和策略路径
 
 
@@ -112,6 +112,7 @@ class CommandsCfg:
         ranges=mdp.BoxGoalCommandCfg.Ranges(
             pos_x=(0.5, 3.5),
             pos_y=(-1.0, 1.0),
+            yaw=(-3.1416/4, 3.1416/4),
         ),
     )
 
@@ -126,8 +127,8 @@ class ActionsCfg:
         low_level_decimation=4,
         low_level_actions=LOW_LEVEL_ENV_CFG.actions.joint_pos,
         low_level_observations=LOW_LEVEL_ENV_CFG.observations.policy,
-        action_scale=(0.4, 0.2, 0.3),
-        action_clip=((-0.4, 0.4), (-0.2, 0.2), (-0.3, 0.3)),
+        # action_scale=(0.4, 0.2, 0.3),
+        # action_clip=((-0.4, 0.4), (-0.2, 0.2), (-0.3, 0.3)),
     )
 
 
@@ -145,7 +146,7 @@ class ObservationsCfg:
             func=mdp.generated_commands,
             params={"command_name": "box_goal"},
             noise=Unoise(n_min=-0.02, n_max=0.02),
-        )  # 3
+        )  # 4
         actions = ObsTerm(func=mdp.processed_last_action, params={"action_name": "pre_trained_policy_action"})  # 3
 
         def __post_init__(self):
@@ -217,21 +218,28 @@ class RewardsCfg:
         weight=8.0,
         params={"command_name": "box_goal"},
     )
+    # 鼓励箱子最终朝向也与目标 yaw 对齐，避免只到点不转向。
+    box_goal_yaw = RewTerm(
+        func=mdp.box_goal_yaw_distance_tanh,
+        weight=0.5,
+        params={"std": 0.4, "command_name": "box_goal"},
+    )
     # 鼓励机器人保持在能持续接触箱子的距离内，避免离箱子太远推不到。
     robot_box_distance = RewTerm(
         func=mdp.robot_box_distance_tanh,
         weight=0.4,
         params={"std": 0.8},
     )
-    # 稀疏成功奖励，只有箱子到达目标且机器人和箱子都基本停稳时才触发。
+    # 稀疏成功奖励，只有箱子到达目标且机器人和箱子都基本停稳时才触发,奖励阈值降低
     box_goal_success = RewTerm(
         func=mdp.box_goal_success_bonus,
         weight=10.0,
         params={
             "command_name": "box_goal",
-            "distance_threshold": 0.08,
-            "box_speed_threshold": 0.05,
-            "robot_speed_threshold": 0.08,
+            "distance_threshold": 0.12,
+            "yaw_threshold": 0.3,
+            "box_speed_threshold": 0.10,
+            "robot_speed_threshold": 0.12,
         },
     )
     # 可选的额外姿态奖励；目前关闭，因为 flat_orientation 已经覆盖了相近作用。
@@ -266,6 +274,7 @@ class TerminationsCfg:
         params={
             "command_name": "box_goal",
             "distance_threshold": 0.08,
+            "yaw_threshold": 0.2,
             "box_speed_threshold": 0.05,
             "robot_speed_threshold": 0.08,
             "settle_steps": 12,
@@ -333,6 +342,7 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
         self.curriculum.goal_range = None
         self.commands.box_goal.ranges.pos_x = (2.8, 2.8)
         self.commands.box_goal.ranges.pos_y = (0.4, 0.4)
+        self.commands.box_goal.ranges.yaw = (3.14/6, 3.14/6)
         self.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
         self.events.reset_box.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
 

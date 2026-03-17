@@ -13,6 +13,8 @@ from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import subtract_frame_transforms
 
+from .goal_pose import split_box_goal_command
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
@@ -174,7 +176,8 @@ def goal_position_in_robot_frame(
     """
     robot: RigidObject = env.scene[robot_cfg.name]
     # 从命令管理器获取目标点的环境坐标 / Get goal position in environment frame from command manager
-    goal_pos_e = env.command_manager.get_command(command_name)
+    goal_command = env.command_manager.get_command(command_name)
+    goal_pos_e, _ = split_box_goal_command(goal_command)
     # 转换为世界坐标系（加上各环境的原点偏移）/ Convert to world frame (add environment origin offsets)
     goal_pos_w = goal_pos_e + env.scene.env_origins
     # 将目标点位置从世界坐标系转换到机器人局部坐标系 / Transform goal position from world frame to robot's local frame
@@ -222,7 +225,8 @@ def goal_position_in_box_frame(
     """
     box: RigidObject = env.scene[box_cfg.name]
     # 从命令管理器获取目标点的环境坐标 / Get goal position in environment frame from command manager
-    goal_pos_e = env.command_manager.get_command(command_name)
+    goal_command = env.command_manager.get_command(command_name)
+    goal_pos_e, _ = split_box_goal_command(goal_command)
     # 转换为世界坐标系（加上各环境的原点偏移）/ Convert to world frame (add environment origin offsets)
     goal_pos_w = goal_pos_e + env.scene.env_origins
     # 将目标点位置从世界坐标系转换到箱子局部坐标系 / Transform goal position from world frame to box's local frame
