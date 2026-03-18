@@ -8,11 +8,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_TASK = "Template-Velocity-Go2-Walk-BiShe-Pit-v0"
-DEFAULT_EXPERIMENT = "go2_walk_bishe"
-DEFAULT_RUN_NAME = "NewTest1"
-DEFAULT_LOAD_RUN = "^test5$"
-DEFAULT_CHECKPOINT_NAME = "WalkRoughNew.pt"
+DEFAULT_TASK = "Template-Push-Box-Go2-v0"
+DEFAULT_EXPERIMENT = "push_box"
+DEFAULT_RUN_NAME = "test"
+DEFAULT_LOAD_RUN = "^no_height_restrain$"
+DEFAULT_CHECKPOINT_NAME = "model_8099.pt"
 #文件夹形式” rsl_rl/logs/rsl_rl/DEFAULT_EXPERIMENT/DEFAULT_LOAD_RUN/DEFAULT_CHECKPOINT_NAME
 
 

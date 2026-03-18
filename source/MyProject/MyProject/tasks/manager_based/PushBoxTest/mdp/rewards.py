@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.utils.math import quat_apply, subtract_frame_transforms
 
 from .goal_pose import quat_to_yaw, split_box_goal_command, yaw_error_abs
 
@@ -352,6 +353,51 @@ def robot_box_distance_tanh(
 
     # 使用 tanh 核函数：距离越近，奖励越高 / Use tanh kernel: closer distance → higher reward
     return 1.0 - torch.tanh(distance / std)
+
+
+def head_point_in_box_penalty(
+    env: ManagerBasedRLEnv,
+    head_local_offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    footprint_margin: float = 0.02,
+    head_body_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names="Head_.*"),
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """Penalize the robot when a head proxy point projects inside the box top footprint.
+
+    几何规则 / Geometry:
+        1. 在机器人的头部刚体上取一个点（默认取 `Head_.*` 刚体原点） /
+           Take a point on the robot head rigid body (defaults to the `Head_.*` body origin)
+        2. 将该点转换到世界坐标，再投到箱子局部坐标系 / Transform the point to world, then into the box frame
+        3. 如果该点的 XY 投影落入箱子的矩形 footprint，就返回 1，否则返回 0 /
+           Return 1 if the XY projection falls inside the box rectangle footprint, otherwise 0
+
+    Note:
+        - 如果后续发现刚体原点不在你想要的位置，可以再加 `head_local_offset` 微调 / `head_local_offset` can be used later if the head body origin is not ideal
+        - 这正对应“头不要到箱子上方”的约束 / This directly matches the requirement that the head must not move above the box
+    """
+    robot: RigidObject = env.scene[head_body_cfg.name]
+    box: RigidObject = env.scene[box_cfg.name]
+
+    head_body_id = head_body_cfg.body_ids[0]
+    head_body_pos_w = robot.data.body_pos_w[:, head_body_id, :]
+    head_body_quat_w = robot.data.body_quat_w[:, head_body_id, :]
+    head_offset_b = torch.tensor(head_local_offset, device=env.device, dtype=head_body_pos_w.dtype).unsqueeze(0)
+    head_offset_b = head_offset_b.expand(env.num_envs, -1)
+    head_point_w = head_body_pos_w + quat_apply(head_body_quat_w, head_offset_b)
+
+    head_point_b, _ = subtract_frame_transforms(
+        box.data.root_pos_w[:, :3],
+        box.data.root_quat_w,
+        head_point_w,
+    )
+
+    box_scene_cfg = getattr(env.cfg.scene, box_cfg.name)
+    box_size = box_scene_cfg.spawn.size
+    half_size_x = 0.5 * box_size[0] + footprint_margin
+    half_size_y = 0.5 * box_size[1] + footprint_margin
+    inside_x = torch.abs(head_point_b[:, 0]) <= half_size_x
+    inside_y = torch.abs(head_point_b[:, 1]) <= half_size_y
+    return (inside_x & inside_y).float()
 
 
 def box_goal_success_bonus(

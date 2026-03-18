@@ -30,7 +30,7 @@ from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughTestEnvCfg()
-LOW_LEVEL_POLICY_PATH = "/home/robot/work/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt"
+LOW_LEVEL_POLICY_PATH = "/home/xcj/work/pushtest/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt"
 #低层的环境和策略配置，推箱子这个技能是基于之前训练好的走路技能进行训练的，所以这里直接引用之前走路技能的环境配置和策略路径
 
 
@@ -230,6 +230,16 @@ class RewardsCfg:
         weight=0.4,
         params={"std": 0.8},
     )
+    # 惩罚头部刚体的 xy 投影落到箱子顶面矩形范围内，避免头越到箱子上方。
+    head_over_box = RewTerm(
+        func=mdp.head_point_in_box_penalty,
+        weight=-3.0,
+        params={
+            "head_local_offset": (0.0, 0.0, 0.0),
+            "footprint_margin": 0.02,
+            "head_body_cfg": SceneEntityCfg("robot", body_names="Head_.*"),
+        },
+    )
     # 稀疏成功奖励，只有箱子到达目标且机器人和箱子都基本停稳时才触发,奖励阈值降低
     box_goal_success = RewTerm(
         func=mdp.box_goal_success_bonus,
@@ -248,12 +258,12 @@ class RewardsCfg:
     #     weight=1.0,
     #     params={"desired_gravity": [0.0, 0.0, -1.0]},
     # )
-    # # 约束机身高度不要抬得过高，避免推箱子时重心过高、姿态发飘。
-    # base_height = RewTerm(
-    #     func=mdp.base_height_l2,
-    #     weight=-10.0,
-    #     params={"target_height": 0.30},
-    # )
+    # 约束机身高度不要抬得过高，避免推箱子中后段为了拿进度奖励而抬身前探。
+    base_height = RewTerm(
+        func=mdp.base_height_l2,
+        weight=-15.0,
+        params={"target_height": 0.20},
+    )
     # 惩罚横滚和俯仰，让机器人身体更平稳，减少接触时侧翻风险。
     flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
     # 惩罚裁剪后高层命令变化过快，避免原始大动作数值爆炸污染训练。
@@ -340,8 +350,8 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
         self.scene.env_spacing = 4.0
         self.observations.policy.enable_corruption = False
         self.curriculum.goal_range = None
-        self.commands.box_goal.ranges.pos_x = (2.8, 2.8)
-        self.commands.box_goal.ranges.pos_y = (0.4, 0.4)
+        self.commands.box_goal.ranges.pos_x = (2.2, 2.2)
+        self.commands.box_goal.ranges.pos_y = (-0.4, -0.4)
         self.commands.box_goal.ranges.yaw = (3.14/6, 3.14/6)
         self.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
         self.events.reset_box.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
