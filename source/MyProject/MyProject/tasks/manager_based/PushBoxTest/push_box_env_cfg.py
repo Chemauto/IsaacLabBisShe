@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -30,7 +32,9 @@ from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughTestEnvCfg()
-LOW_LEVEL_POLICY_PATH = "/home/xcj/work/pushtest/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewTransfer.pt"
+_REPO_ROOT = Path(__file__).resolve().parents[6]
+LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/WalkRoughNewTransfer.pt")
+LOW_LEVEL_POLICY_PATH = str(_REPO_ROOT / LOW_LEVEL_POLICY_REL_PATH)
 #低层的环境和策略配置，推箱子这个技能是基于之前训练好的走路技能进行训练的，所以这里直接引用之前走路技能的环境配置和策略路径
 
 
@@ -233,10 +237,11 @@ class RewardsCfg:
     # 惩罚头部刚体的 xy 投影落到箱子顶面矩形范围内，避免头越到箱子上方。
     head_over_box = RewTerm(
         func=mdp.head_point_in_box_penalty,
-        weight=-3.0,
+        weight=-5.0,
         params={
-            "head_local_offset": (0.0, 0.0, 0.0),
+            "head_local_offset": (0.03, 0.0, 0.0),
             "footprint_margin": 0.02,
+            "top_surface_margin": 0.03,
             "head_body_cfg": SceneEntityCfg("robot", body_names="Head_.*"),
         },
     )

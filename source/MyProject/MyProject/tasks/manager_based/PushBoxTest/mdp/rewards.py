@@ -359,6 +359,7 @@ def head_point_in_box_penalty(
     env: ManagerBasedRLEnv,
     head_local_offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
     footprint_margin: float = 0.02,
+    top_surface_margin: float = 0.0,
     head_body_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names="Head_.*"),
     box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
 ) -> torch.Tensor:
@@ -368,8 +369,8 @@ def head_point_in_box_penalty(
         1. 在机器人的头部刚体上取一个点（默认取 `Head_.*` 刚体原点） /
            Take a point on the robot head rigid body (defaults to the `Head_.*` body origin)
         2. 将该点转换到世界坐标，再投到箱子局部坐标系 / Transform the point to world, then into the box frame
-        3. 如果该点的 XY 投影落入箱子的矩形 footprint，就返回 1，否则返回 0 /
-           Return 1 if the XY projection falls inside the box rectangle footprint, otherwise 0
+        3. 只有当该点的 XY 投影落入箱子的矩形 footprint，且 Z 严格高于箱子顶面，才返回 1 /
+           Return 1 only when the XY projection falls inside the box footprint and Z is strictly above the box top surface
 
     Note:
         - 如果后续发现刚体原点不在你想要的位置，可以再加 `head_local_offset` 微调 / `head_local_offset` can be used later if the head body origin is not ideal
@@ -395,9 +396,11 @@ def head_point_in_box_penalty(
     box_size = box_scene_cfg.spawn.size
     half_size_x = 0.5 * box_size[0] + footprint_margin
     half_size_y = 0.5 * box_size[1] + footprint_margin
+    top_surface_z = 0.5 * box_size[2] + top_surface_margin
     inside_x = torch.abs(head_point_b[:, 0]) <= half_size_x
     inside_y = torch.abs(head_point_b[:, 1]) <= half_size_y
-    return (inside_x & inside_y).float()
+    above_top_surface = head_point_b[:, 2] > top_surface_z
+    return (inside_x & inside_y & above_top_surface).float()
 
 
 def box_goal_success_bonus(
