@@ -176,12 +176,16 @@ def apply_message(text: str, output_paths: OutputPaths) -> list[str]:
         goal = _parse_named_vector(normalized, "pos")
     if goal is None:
         goal = _parse_named_vector(normalized, "target")
+    auto_goal_requested = _parse_auto_goal(normalized)
     if goal is not None:
         _write_text(output_paths.goal, _format_vector(goal))
         updates.append(f"goal={goal}")
-    elif _parse_auto_goal(normalized):
+    elif auto_goal_requested:
         _write_text(output_paths.goal, "auto")
         updates.append("goal=auto")
+    elif skill_id == 3:
+        _write_text(output_paths.goal, "auto")
+        updates.append("goal=auto(scene)")
 
     start = _parse_start(normalized)
     if start is not None:

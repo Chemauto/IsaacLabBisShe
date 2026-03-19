@@ -26,9 +26,9 @@ OBSTACLE_CENTER_X = 3.0
 # 左右两条通路中心线。
 LEFT_LANE_Y = 0.75
 RIGHT_LANE_Y = -0.75
-# 箱子默认放在机器人与障碍之间。
-BOX_CENTER_X = 2.0
-BOX_CENTER_Y = 0.5
+# 箱子默认放在与 PushBoxTest Play 相同的起点。
+BOX_CENTER_X = 1.0
+BOX_CENTER_Y = 0.0
 
 # 各类物体在“激活状态”下的摆放位置。
 ACTIVE_LAYOUT_POSITIONS = {

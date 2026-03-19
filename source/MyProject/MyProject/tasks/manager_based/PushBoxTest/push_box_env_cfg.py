@@ -264,11 +264,11 @@ class RewardsCfg:
     #     params={"desired_gravity": [0.0, 0.0, -1.0]},
     # )
     # 约束机身高度不要抬得过高，避免推箱子中后段为了拿进度奖励而抬身前探。
-    base_height = RewTerm(
-        func=mdp.base_height_l2,
-        weight=-15.0,
-        params={"target_height": 0.20},
-    )
+    # base_height = RewTerm(
+    #     func=mdp.base_height_l2,
+    #     weight=-15.0,
+    #     params={"target_height": 0.20},
+    # )
     # 惩罚横滚和俯仰，让机器人身体更平稳，减少接触时侧翻风险。
     flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
     # 惩罚裁剪后高层命令变化过快，避免原始大动作数值爆炸污染训练。
@@ -355,9 +355,9 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
         self.scene.env_spacing = 4.0
         self.observations.policy.enable_corruption = False
         self.curriculum.goal_range = None
-        self.commands.box_goal.ranges.pos_x = (2.2, 2.2)
-        self.commands.box_goal.ranges.pos_y = (-0.4, -0.4)
-        self.commands.box_goal.ranges.yaw = (3.14/6, 3.14/6)
+        self.commands.box_goal.ranges.pos_x = (2.27, 2.27)
+        self.commands.box_goal.ranges.pos_y = (0.5, 0.5)
+        self.commands.box_goal.ranges.yaw = (0, 0)
         self.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
         self.events.reset_box.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
 

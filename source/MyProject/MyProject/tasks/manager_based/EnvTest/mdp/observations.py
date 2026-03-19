@@ -16,6 +16,10 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
 
+GOAL_FRONT_GAP = 0.03
+GOAL_LATERAL_MARGIN = 0.03
+
+
 def _runtime_buffer(env: "ManagerBasedEnv", attr_name: str, dim: int) -> torch.Tensor:
     """获取 EnvTest 运行时缓冲；若不存在则自动创建。
 
@@ -34,76 +38,6 @@ def _runtime_buffer(env: "ManagerBasedEnv", attr_name: str, dim: int) -> torch.T
         buffer = torch.zeros(expected_shape, dtype=torch.float32, device=device)
         setattr(env, attr_name, buffer)
     return buffer
-
-
-class StructuredHeightScanHelper:
-    """按 EnvTest 规则化障碍构造 17x11 的局部高度图。"""
-
-    def __init__(self, device: torch.device | str):
-        self.device = device
-        self.offset = 0.5
-        self.local_points = self._build_local_points()
-        self.asset_specs = {
-            "left_low_obstacle": LOW_OBSTACLE_SIZE,
-            "right_low_obstacle": LOW_OBSTACLE_SIZE,
-            "left_high_obstacle": HIGH_OBSTACLE_SIZE,
-            "right_high_obstacle": HIGH_OBSTACLE_SIZE,
-            "support_box": BOX_SIZE,
-        }
-
-    def _build_local_points(self) -> torch.Tensor:
-        """构造与 walk/climb 训练时一致的 17x11 网格采样点。"""
-
-        x = torch.arange(start=-0.8, end=0.8 + 1.0e-9, step=0.1, device=self.device)
-        y = torch.arange(start=-0.5, end=0.5 + 1.0e-9, step=0.1, device=self.device)
-        grid_x, grid_y = torch.meshgrid(x, y, indexing="xy")
-        local_points = torch.zeros(grid_x.numel(), 3, device=self.device)
-        local_points[:, 0] = grid_x.flatten()
-        local_points[:, 1] = grid_y.flatten()
-        return local_points
-
-    def compute(self, env: "ManagerBasedEnv", robot_name: str = "robot") -> torch.Tensor:
-        """根据当前机器人姿态和 EnvTest 障碍布局计算高度扫描。"""
-
-        robot = env.scene[robot_name]
-        num_envs = robot.data.root_pos_w.shape[0]
-        num_points = self.local_points.shape[0]
-
-        local_points = self.local_points.unsqueeze(0).expand(num_envs, -1, -1)
-        quat_yaw = robot.data.root_quat_w.unsqueeze(1).expand(-1, num_points, -1).reshape(-1, 4)
-        world_points = math_utils.quat_apply_yaw(quat_yaw, local_points.reshape(-1, 3)).view(num_envs, num_points, 3)
-        world_points = world_points + robot.data.root_pos_w.unsqueeze(1)
-
-        max_heights = torch.zeros(num_envs, num_points, device=self.device)
-
-        for asset_name, size in self.asset_specs.items():
-            try:
-                asset = env.scene[asset_name]
-            except KeyError:
-                continue
-
-            centers = asset.data.root_pos_w
-            half_x = 0.5 * size[0]
-            half_y = 0.5 * size[1]
-            top_height = centers[:, 2].unsqueeze(1) + 0.5 * size[2]
-
-            inside_x = torch.abs(world_points[..., 0] - centers[:, 0].unsqueeze(1)) <= half_x
-            inside_y = torch.abs(world_points[..., 1] - centers[:, 1].unsqueeze(1)) <= half_y
-            inside = inside_x & inside_y
-            max_heights = torch.where(inside, torch.maximum(max_heights, top_height), max_heights)
-
-        return robot.data.root_pos_w[:, 2].unsqueeze(1) - max_heights - self.offset
-
-
-def structured_height_scan(env: "ManagerBasedEnv") -> torch.Tensor:
-    """返回 walk/climb 低层策略需要的 187 维高度扫描。"""
-
-    helper = getattr(env, "_envtest_height_scan_helper", None)
-    device = getattr(env, "device", env.cfg.sim.device)
-    if helper is None or str(helper.device) != str(device):
-        helper = StructuredHeightScanHelper(device)
-        setattr(env, "_envtest_height_scan_helper", helper)
-    return helper.compute(env)
 
 
 def velocity_commands(env: "ManagerBasedEnv") -> torch.Tensor:
@@ -178,8 +112,17 @@ def compute_push_goal_from_scene(env: "ManagerBasedEnv") -> torch.Tensor:
             continue
         obstacle_pos_e = asset.data.root_pos_w[:, :3] - env_origins
         goal = torch.zeros((env.num_envs, 4), dtype=obstacle_pos_e.dtype, device=obstacle_pos_e.device)
-        goal[:, 0] = obstacle_pos_e[:, 0] - 0.5 * size[0] - 0.5 * BOX_SIZE[0] - 0.02
-        goal[:, 1] = obstacle_pos_e[:, 1]
+        # x 方向：让箱子前表面尽量贴近障碍物前表面，但保留很小安全间隙。
+        goal[:, 0] = obstacle_pos_e[:, 0] - 0.5 * size[0] - 0.5 * BOX_SIZE[0] - GOAL_FRONT_GAP
+        # y 方向：不再强制对齐到障碍物中心，而是在“箱子仍能贴住障碍”的可行区间内，
+        # 选取距离当前箱子横向位置最近的中心点，减少无意义侧移。
+        lateral_half_range = 0.5 * (size[1] - BOX_SIZE[1]) - GOAL_LATERAL_MARGIN
+        if lateral_half_range > 0.0:
+            goal_y_min = obstacle_pos_e[:, 1] - lateral_half_range
+            goal_y_max = obstacle_pos_e[:, 1] + lateral_half_range
+            goal[:, 1] = torch.clamp(box_pos_e[:, 1], min=goal_y_min, max=goal_y_max)
+        else:
+            goal[:, 1] = obstacle_pos_e[:, 1]
         goal[:, 2] = 0.5 * BOX_SIZE[2]
         goal[:, 3] = 0.0
         candidates.append(goal)
@@ -188,6 +131,7 @@ def compute_push_goal_from_scene(env: "ManagerBasedEnv") -> torch.Tensor:
         raise RuntimeError("当前场景中没有可供 push_box 使用的目标障碍物。")
 
     candidate_tensor = torch.stack(candidates, dim=1)
+    # 选择“从当前箱子位姿移动量最小”的可行目标，而不是单纯最近障碍中心。
     distances = torch.linalg.norm(candidate_tensor[..., :2] - box_pos_e[:, None, :2], dim=-1)
     best_indices = torch.argmin(distances, dim=1)
     env_indices = torch.arange(env.num_envs, device=box_pos_e.device)

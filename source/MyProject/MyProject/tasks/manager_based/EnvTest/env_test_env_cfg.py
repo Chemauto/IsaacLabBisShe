@@ -18,8 +18,9 @@ from isaaclab.envs import ManagerBasedEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import CameraCfg
+from isaaclab.sensors import CameraCfg, RayCasterCfg, patterns
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
@@ -61,7 +62,7 @@ def _kinematic_box_cfg(
                 kinematic_enabled=True,
                 disable_gravity=True,
             ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+            mass_props=sim_utils.MassPropertiesCfg(mass=4.0),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             physics_material=sim_utils.RigidBodyMaterialCfg(
                 static_friction=1.0,
@@ -101,7 +102,7 @@ def _dynamic_box_cfg(
                 max_depenetration_velocity=5.0,
                 enable_gyroscopic_forces=True,
             ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+            mass_props=sim_utils.MassPropertiesCfg(mass=4.0),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             physics_material=sim_utils.RigidBodyMaterialCfg(
                 static_friction=0.8,
@@ -150,6 +151,10 @@ def build_scene_cfg(num_envs: int, env_spacing: float, scene_id: int) -> "MyScen
     """根据场景编号重新创建一份完整的 scene 配置。"""
 
     scene_cfg = MySceneCfg(num_envs=num_envs, env_spacing=env_spacing)
+    # EnvTest 里场景是手工裁剪过的异构资产组合，且 push_box 会访问动态 support_box。
+    # 对这种调试/演示环境，优先保证资产生命周期稳定，关闭 replicate_physics。
+    scene_cfg.replicate_physics = False
+    scene_cfg.clone_in_fabric = False
     _apply_scene_layout(scene_cfg, scene_id)
     return scene_cfg
 
@@ -222,7 +227,7 @@ class MySceneCfg(InteractiveSceneCfg):
         color=(0.76, 0.24, 0.20),
     )
 
-    # 可推动箱子：尺寸由 BOX_SIZE 定义，质量在 helper 中配置为 1kg。
+    # 可推动箱子：尺寸由 BOX_SIZE 定义，质量在 helper 中配置为 4kg（与 PushBoxTest 对齐）。
     support_box = _dynamic_box_cfg(
         prim_path="{ENV_REGEX_NS}/SupportBox",
         size=BOX_SIZE,
@@ -232,6 +237,16 @@ class MySceneCfg(InteractiveSceneCfg):
 
     # 机器人主体。
     robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+
+    # 与 walk / climb / push 训练保持一致的高度扫描器。
+    height_scanner = RayCasterCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/base",
+        offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
+        ray_alignment="yaw",
+        pattern_cfg=patterns.GridPatternCfg(resolution=0.1, size=[1.6, 1.0]),
+        debug_vis=False,
+        mesh_prim_paths=["/World/ground"],
+    )
 
     # 机器人前视相机。
     # 这里使用 USD Camera，挂在 Go2 的 base 上，
@@ -320,7 +335,7 @@ class ObservationsCfg:
         # 上一步关节动作（12）
         actions = ObsTerm(func=mdp.last_action)
         # 结构化高度扫描（187）
-        height_scan = ObsTerm(func=mdp.structured_height_scan)
+        height_scan = ObsTerm(func=mdp.height_scan, params={"sensor_cfg": SceneEntityCfg("height_scanner")})
 
         # ===== push_box 高层额外观测 =====
         # support_box 的位姿；若当前场景没有箱子则返回 0（7）
@@ -399,6 +414,8 @@ class LocomotionEnvTestEnvCfg(ManagerBasedEnvCfg):
         self.sim.render_interval = 4
         self.decimation = 4
         self.sim.physics_material = self.scene.terrain.physics_material
+        if self.scene.height_scanner is not None:
+            self.scene.height_scanner.update_period = self.decimation * self.sim.dt
 
 
 class LocomotionEnvTestEnvCfg_Play(LocomotionEnvTestEnvCfg):

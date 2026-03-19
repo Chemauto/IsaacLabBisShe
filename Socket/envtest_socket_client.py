@@ -6,6 +6,7 @@
 - `python Socket/envtest_socket_client.py --velocity 0.6 0 0`
 - `python Socket/envtest_socket_client.py --goal 1.8 0 0.1`
 - `python Socket/envtest_socket_client.py --model_use 3 --goal 1.8 0 0.1 --start 1`
+- `python Socket/envtest_socket_client.py --model_use 3 --start 1` 会自动切回场景推箱目标
 - `python Socket/envtest_socket_client.py --text "model_use=2; start=1"`
 """
 
@@ -42,6 +43,8 @@ def build_message(args: argparse.Namespace) -> str:
     if args.velocity is not None:
         vx, vy, wz = args.velocity
         fields.append(f"velocity={vx},{vy},{wz}")
+    if args.model_use == 3 and args.goal is None and not args.goal_auto:
+        fields.append("goal=auto")
     if args.goal_auto:
         fields.append("goal=auto")
     if args.goal is not None:
