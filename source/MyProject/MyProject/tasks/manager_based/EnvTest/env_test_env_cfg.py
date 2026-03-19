@@ -42,54 +42,15 @@ from MyProject.tasks.manager_based.EnvTest.scene_layout import (
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
 
-def _kinematic_box_cfg(
+def _box_cfg(
     prim_path: str,
     size: tuple[float, float, float],
     pos: tuple[float, float, float],
     color: tuple[float, float, float],
+    mass: float,
 ) -> RigidObjectCfg:
-    """创建不可推动的方块配置。
+    """创建与 PushBoxTest 风格一致的方块配置。"""
 
-    用于墙壁、低障碍和高障碍。
-    关键点是 `kinematic_enabled=True`，这样机器人碰到后不会把它撞走。
-    """
-    return RigidObjectCfg(
-        prim_path=prim_path,
-        spawn=sim_utils.CuboidCfg(
-            size=size,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                rigid_body_enabled=True,
-                kinematic_enabled=True,
-                disable_gravity=True,
-            ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=4.0),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=1.0,
-                dynamic_friction=1.0,
-                restitution=0.0,
-            ),
-            visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=color,
-                metallic=0.15,
-                roughness=0.8,
-            ),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=pos),
-    )
-
-
-def _dynamic_box_cfg(
-    prim_path: str,
-    size: tuple[float, float, float],
-    pos: tuple[float, float, float],
-    color: tuple[float, float, float],
-) -> RigidObjectCfg:
-    """创建可推动箱子的方块配置。
-
-    这里只有 case 5 会真正启用它；
-    其它场景下，这个资产会在 scene 构建阶段直接被裁剪掉。
-    """
     return RigidObjectCfg(
         prim_path=prim_path,
         spawn=sim_utils.CuboidCfg(
@@ -102,7 +63,7 @@ def _dynamic_box_cfg(
                 max_depenetration_velocity=5.0,
                 enable_gyroscopic_forces=True,
             ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=4.0),
+            mass_props=sim_utils.MassPropertiesCfg(mass=mass),
             collision_props=sim_utils.CollisionPropertiesCfg(),
             physics_material=sim_utils.RigidBodyMaterialCfg(
                 static_friction=0.8,
@@ -187,52 +148,59 @@ class MySceneCfg(InteractiveSceneCfg):
     )
 
     # 两侧墙壁：围出中间约 3m 宽的走廊。
-    left_wall = _kinematic_box_cfg(
+    left_wall = _box_cfg(
         prim_path="{ENV_REGEX_NS}/LeftWall",
         size=(WALL_LENGTH, WALL_THICKNESS, WALL_HEIGHT),
         pos=(WALL_CENTER_X, WALL_CENTER_Y, 0.5 * WALL_HEIGHT),
         color=(0.55, 0.55, 0.58),
+        mass=1000.0,
     )
-    right_wall = _kinematic_box_cfg(
+    right_wall = _box_cfg(
         prim_path="{ENV_REGEX_NS}/RightWall",
         size=(WALL_LENGTH, WALL_THICKNESS, WALL_HEIGHT),
         pos=(WALL_CENTER_X, -WALL_CENTER_Y, 0.5 * WALL_HEIGHT),
         color=(0.55, 0.55, 0.58),
+        mass=1000.0,
     )
 
     # 左右低障碍：尺寸由 LOW_OBSTACLE_SIZE 定义。
-    left_low_obstacle = _kinematic_box_cfg(
+    left_low_obstacle = _box_cfg(
         prim_path="{ENV_REGEX_NS}/LeftLowObstacle",
         size=LOW_OBSTACLE_SIZE,
         pos=ACTIVE_LAYOUT_POSITIONS["left_low_obstacle"],
         color=(0.22, 0.64, 0.34),
+        mass=1000.0,
     )
-    right_low_obstacle = _kinematic_box_cfg(
+    right_low_obstacle = _box_cfg(
         prim_path="{ENV_REGEX_NS}/RightLowObstacle",
         size=LOW_OBSTACLE_SIZE,
         pos=ACTIVE_LAYOUT_POSITIONS["right_low_obstacle"],
         color=(0.22, 0.64, 0.34),
+        mass=1000.0,
     )
     # 左右高障碍：尺寸由 HIGH_OBSTACLE_SIZE 定义。
-    left_high_obstacle = _kinematic_box_cfg(
+    left_high_obstacle = _box_cfg(
         prim_path="{ENV_REGEX_NS}/LeftHighObstacle",
         size=HIGH_OBSTACLE_SIZE,
         pos=ACTIVE_LAYOUT_POSITIONS["left_high_obstacle"],
         color=(0.76, 0.24, 0.20),
+        mass=1000.0,
     )
-    right_high_obstacle = _kinematic_box_cfg(
+    right_high_obstacle = _box_cfg(
         prim_path="{ENV_REGEX_NS}/RightHighObstacle",
         size=HIGH_OBSTACLE_SIZE,
         pos=ACTIVE_LAYOUT_POSITIONS["right_high_obstacle"],
         color=(0.76, 0.24, 0.20),
+        mass=1000.0,
     )
 
-    # 可推动箱子：尺寸由 BOX_SIZE 定义，质量在 helper 中配置为 4kg（与 PushBoxTest 对齐）。
-    support_box = _dynamic_box_cfg(
+    # 可推动箱子：完全对齐 PushBoxTest 的箱子基础物理参数，只保留 prim 名称为 support_box。
+    support_box = _box_cfg(
         prim_path="{ENV_REGEX_NS}/SupportBox",
         size=BOX_SIZE,
         pos=ACTIVE_LAYOUT_POSITIONS["support_box"],
-        color=(0.85, 0.52, 0.18),
+        color=(0.82, 0.47, 0.22),
+        mass=4.0,
     )
 
     # 机器人主体。

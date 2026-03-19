@@ -26,7 +26,6 @@ import os
 import re
 import sys
 import time
-from copy import deepcopy
 from dataclasses import dataclass
 
 
@@ -78,13 +77,19 @@ parser.add_argument(
     default=False,
     help="若启用，则脚本启动后立即执行策略；否则默认先静止待机。",
 )
+parser.add_argument(
+    "--enable_front_camera",
+    action="store_true",
+    default=False,
+    help="是否启用 EnvTest 前视相机。默认关闭以减少显存占用。",
+)
 parser.add_argument("--real-time", action="store_true", default=False, help="尽量按实时速度运行。")
 parser.add_argument("--max_steps", type=int, default=0, help="最大仿真步数；0 表示一直运行。")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
-# EnvTest 里固定挂了前视相机，因此这里默认强制开启相机渲染。
-args_cli.enable_cameras = True
+# 仅在需要时启用前视相机，默认关闭以避免 RTX 渲染占用过多显存。
+args_cli.enable_cameras = args_cli.enable_front_camera
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -96,13 +101,10 @@ import torch
 import torch.nn as nn
 
 import isaaclab_tasks  # noqa: F401
-from isaaclab.managers import ObservationManager, SceneEntityCfg
 from isaaclab_tasks.utils import parse_env_cfg
 
 import MyProject.tasks  # noqa: F401
 import MyProject.tasks.manager_based.EnvTest.mdp as envtest_mdp
-from MyProject.tasks.manager_based.PushBoxTest.push_box_env_cfg import ObservationsCfg as PushBoxObservationsCfg
-from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo2WalkRoughTestEnvCfg
 
 
 LOW_LEVEL_OBS_TERMS = (
@@ -169,8 +171,6 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
 }
 
 PUSH_LOW_LEVEL_POLICY_PATH = os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkRoughNewTransfer.pt")
-PUSH_ACTION_SCALE = (0.4, 0.2, 0.3)
-PUSH_ACTION_CLIP = ((-0.4, 0.4), (-0.2, 0.2), (-0.3, 0.3))
 PUSH_HIGH_LEVEL_DECIMATION = 10
 PUSHBOX_PLAY_DEFAULT_GOAL = (2.27, 0.5, 0.1, 0.0)
 
@@ -384,39 +384,6 @@ def _build_default_velocity_commands(num_envs: int, device: torch.device | str) 
     return single_command.unsqueeze(0).repeat(num_envs, 1)
 
 
-def _build_push_observation_managers(
-    env,
-    push_goal_command_buffer: torch.Tensor,
-    push_last_processed_actions: torch.Tensor,
-    push_current_processed_actions: torch.Tensor,
-    push_low_level_last_actions: torch.Tensor,
-) -> tuple[ObservationManager, ObservationManager]:
-    """构造与 PushBoxTest 原始实现一致的高层/低层观测管理器。"""
-
-    push_high_obs_cfg = deepcopy(PushBoxObservationsCfg().policy)
-    push_high_obs_cfg.enable_corruption = False
-    push_high_obs_cfg.box_position.params = {"box_cfg": SceneEntityCfg("support_box")}
-    push_high_obs_cfg.goal_command.func = lambda dummy_env: push_goal_command_buffer
-    push_high_obs_cfg.goal_command.params = {}
-    push_high_obs_cfg.actions.func = lambda dummy_env: push_last_processed_actions
-    push_high_obs_cfg.actions.params = {}
-    push_high_obs_manager = ObservationManager({"push_policy": push_high_obs_cfg}, env)
-
-    push_low_obs_cfg = deepcopy(VelocityGo2WalkRoughTestEnvCfg().observations.policy)
-
-    def low_level_last_actions(dummy_env):
-        if hasattr(env, "episode_length_buf"):
-            push_low_level_last_actions[env.episode_length_buf == 0, :] = 0
-        return push_low_level_last_actions
-
-    push_low_obs_cfg.actions.func = low_level_last_actions
-    push_low_obs_cfg.actions.params = {}
-    push_low_obs_cfg.velocity_commands.func = lambda dummy_env: push_current_processed_actions
-    push_low_obs_cfg.velocity_commands.params = {}
-    push_low_obs_manager = ObservationManager({"push_low_level": push_low_obs_cfg}, env)
-    return push_high_obs_manager, push_low_obs_manager
-
-
 def _default_push_goal(env) -> torch.Tensor:
     """优先对齐 PushBoxTest Play 的固定 goal。"""
 
@@ -427,23 +394,54 @@ def _default_push_goal(env) -> torch.Tensor:
 
 
 def _process_push_actions(raw_actions: torch.Tensor) -> torch.Tensor:
-    """对推箱子高层动作做与训练时一致的缩放和裁剪。"""
+    """对齐当前 `PushBoxTest` 配置：高层动作不再额外缩放或裁剪。"""
 
-    action_scale = torch.tensor(PUSH_ACTION_SCALE, dtype=torch.float32, device=raw_actions.device).view(1, 3)
-    clip_tensor = torch.tensor(PUSH_ACTION_CLIP, dtype=torch.float32, device=raw_actions.device)
-    clip_min = clip_tensor[:, 0].view(1, 3)
-    clip_max = clip_tensor[:, 1].view(1, 3)
-    processed_actions = raw_actions * action_scale
-    processed_actions = torch.max(torch.min(processed_actions, clip_max), clip_min)
-    return processed_actions
+    return raw_actions
 
 
 def _align_push_low_level_obs_to_training(
-    policy_obs: torch.Tensor, unified_obs: torch.Tensor, term_slices: dict[str, slice]
+    env,
+    policy_obs: torch.Tensor,
+    term_slices: dict[str, slice],
+    push_low_level_last_actions: torch.Tensor,
 ) -> torch.Tensor:
-    """所有任务共用同一套 height_scan 后，这里不再做运行时覆盖。"""
+    """把切片后的低层观测对齐到 `PushBoxTest` 内部 low-level ObservationManager 的行为。"""
 
-    return policy_obs
+    aligned_obs = policy_obs.clone()
+    local_slices: dict[str, slice] = {}
+    start = 0
+    for term_name in LOW_LEVEL_OBS_TERMS:
+        term_slice = term_slices[term_name]
+        term_dim = term_slice.stop - term_slice.start
+        local_slices[term_name] = slice(start, start + term_dim)
+        start += term_dim
+
+    if hasattr(env, "episode_length_buf"):
+        push_low_level_last_actions[env.episode_length_buf == 0, :] = 0.0
+
+    aligned_obs[:, local_slices["actions"]] = push_low_level_last_actions
+    aligned_obs[:, local_slices["base_lin_vel"]] += torch.empty_like(
+        aligned_obs[:, local_slices["base_lin_vel"]]
+    ).uniform_(-0.1, 0.1)
+    aligned_obs[:, local_slices["base_ang_vel"]] += torch.empty_like(
+        aligned_obs[:, local_slices["base_ang_vel"]]
+    ).uniform_(-0.2, 0.2)
+    aligned_obs[:, local_slices["projected_gravity"]] += torch.empty_like(
+        aligned_obs[:, local_slices["projected_gravity"]]
+    ).uniform_(-0.05, 0.05)
+    aligned_obs[:, local_slices["joint_pos"]] += torch.empty_like(
+        aligned_obs[:, local_slices["joint_pos"]]
+    ).uniform_(-0.01, 0.01)
+    aligned_obs[:, local_slices["joint_vel"]] += torch.empty_like(
+        aligned_obs[:, local_slices["joint_vel"]]
+    ).uniform_(-1.5, 1.5)
+    aligned_obs[:, local_slices["height_scan"]] += torch.empty_like(
+        aligned_obs[:, local_slices["height_scan"]]
+    ).uniform_(-0.1, 0.1)
+    aligned_obs[:, local_slices["height_scan"]] = torch.clamp(
+        aligned_obs[:, local_slices["height_scan"]], min=-1.0, max=1.0
+    )
+    return aligned_obs
 
 
 def _build_obs_slices(env, group_name: str = "policy") -> dict[str, slice]:
@@ -515,6 +513,8 @@ def main():
     )
     if hasattr(env_cfg, "scene_id"):
         env_cfg.scene_id = args_cli.scene_id
+    if not args_cli.enable_front_camera and hasattr(env_cfg.scene, "front_camera"):
+        env_cfg.scene.front_camera = None
 
     env = gym.make(args_cli.task, cfg=env_cfg)
     env.reset()
@@ -540,18 +540,10 @@ def main():
     zero_push_goal_command = torch.zeros((num_envs, 4), dtype=torch.float32, device=device)
     zero_push_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
     zero_actions = torch.zeros(expected_action_shape, dtype=torch.float32, device=device)
-    push_goal_command_buffer = torch.zeros((num_envs, 4), dtype=torch.float32, device=device)
     push_last_processed_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
     push_current_processed_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
     push_low_level_last_actions = torch.zeros(expected_action_shape, dtype=torch.float32, device=device)
     push_high_level_counter = 0
-    push_high_obs_manager, push_low_obs_manager = _build_push_observation_managers(
-        env.unwrapped,
-        push_goal_command_buffer,
-        push_last_processed_actions,
-        push_current_processed_actions,
-        push_low_level_last_actions,
-    )
 
     current_model_use = args_cli.model_use
     previous_model_use = None
@@ -575,11 +567,13 @@ def main():
             if current_model_use == 0:
                 push_last_processed_actions.zero_()
                 push_current_processed_actions.zero_()
+                push_low_level_last_actions.zero_()
                 push_high_level_counter = 0
                 print(f"[INFO] 切换技能: model_use=0, skill=idle, scene_id={args_cli.scene_id}")
             else:
                 push_last_processed_actions.zero_()
                 push_current_processed_actions.zero_()
+                push_low_level_last_actions.zero_()
                 push_high_level_counter = 0
                 print(
                     f"[INFO] 切换技能: model_use={current_model_use}, "
@@ -590,7 +584,6 @@ def main():
         with torch.inference_mode():
             # 第一步：待机阶段。机器人保持静止，但仍然持续读取 model_use、速度指令和位置指令文件。
             if not start_flag or current_model_use == 0:
-                push_goal_command_buffer.zero_()
                 push_last_processed_actions.zero_()
                 push_current_processed_actions.zero_()
                 push_low_level_last_actions.zero_()
@@ -615,20 +608,23 @@ def main():
             else:
                 scene_push_goal = _default_push_goal(env.unwrapped)
                 push_goal_command = _read_goal_command_file(args_cli.goal_command_file, scene_push_goal)
-                push_goal_command_buffer.copy_(push_goal_command)
-                current_push_goal_tuple = tuple(round(v, 4) for v in push_goal_command[0].detach().cpu().tolist())
-                if current_push_goal_tuple != previous_logged_push_goal:
-                    current_box_pose = unified_box_pose = env.unwrapped.observation_manager.compute_group("policy")
-                    term_slices_now = term_slices
-                    box_pose_now = unified_box_pose[:, term_slices_now["box_pose"]][0, :3].detach().cpu().tolist()
-                    box_pose_tuple = tuple(round(v, 4) for v in box_pose_now)
-                    print(f"[INFO] push_box box pos: {box_pose_tuple}, auto goal command: {current_push_goal_tuple}")
-                    previous_logged_push_goal = current_push_goal_tuple
-
                 if push_high_level_counter == 0:
                     # 对齐 PushBoxTest：高层策略每 10 个 EnvTest 步更新一次。
-                    push_high_obs = push_high_obs_manager.compute_group("push_policy")
+                    env.unwrapped.set_runtime_observation_buffers(
+                        velocity_commands=current_velocity_commands,
+                        push_goal_command=push_goal_command,
+                        push_actions=push_last_processed_actions,
+                    )
+                    unified_obs = env.unwrapped.observation_manager.compute_group("policy")
+                    push_high_obs = _slice_observation(unified_obs, term_slices, SKILL_REGISTRY[3].obs_terms)
                     _check_obs_dim(3, push_high_obs)
+
+                    current_push_goal_tuple = tuple(round(v, 4) for v in push_goal_command[0].detach().cpu().tolist())
+                    if current_push_goal_tuple != previous_logged_push_goal:
+                        box_pose_now = unified_obs[:, term_slices["box_pose"]][0, :3].detach().cpu().tolist()
+                        box_pose_tuple = tuple(round(v, 4) for v in box_pose_now)
+                        print(f"[INFO] push_box box pos: {box_pose_tuple}, auto goal command: {current_push_goal_tuple}")
+                        previous_logged_push_goal = current_push_goal_tuple
 
                     push_raw_actions = policies[3](push_high_obs)
                     if push_raw_actions.shape != push_last_processed_actions.shape:
@@ -641,7 +637,16 @@ def main():
                     push_last_processed_actions.copy_(push_current_processed_actions)
 
                 # 再把裁剪后的高层动作写入低层速度命令槽位，供 rough-walk 低层策略执行。
-                policy_obs = push_low_obs_manager.compute_group("push_low_level")
+                env.unwrapped.set_runtime_observation_buffers(
+                    velocity_commands=push_current_processed_actions,
+                    push_goal_command=push_goal_command,
+                    push_actions=push_current_processed_actions,
+                )
+                unified_obs = env.unwrapped.observation_manager.compute_group("policy")
+                policy_obs = _slice_observation(unified_obs, term_slices, LOW_LEVEL_OBS_TERMS)
+                policy_obs = _align_push_low_level_obs_to_training(
+                    env.unwrapped, policy_obs, term_slices, push_low_level_last_actions
+                )
                 if policy_obs.shape[1] != LOW_LEVEL_OBS_DIM:
                     raise RuntimeError(
                         f"Push low-level observation dim mismatch. "

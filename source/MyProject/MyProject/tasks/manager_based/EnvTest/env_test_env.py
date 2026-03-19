@@ -39,8 +39,11 @@ class EnvTestEnv(ManagerBasedEnv, gym.Env):
         # 这里不需要用它们，所以直接忽略即可。
         # 由于 scene_id 可能在 parse_env_cfg 之后又被启动脚本覆盖，
         # 因此这里在真正创建环境前，再按最终 scene_id 重建一次 scene。
+        disable_front_camera = hasattr(cfg.scene, "front_camera") and cfg.scene.front_camera is None
         if hasattr(cfg, "scene_id"):
             cfg.scene = build_scene_cfg(cfg.scene.num_envs, cfg.scene.env_spacing, cfg.scene_id)
+        if disable_front_camera and hasattr(cfg.scene, "front_camera"):
+            cfg.scene.front_camera = None
         super().__init__(cfg=cfg)
         self.render_mode = render_mode
         # 让录视频或显示时使用和环境步长一致的帧率。
