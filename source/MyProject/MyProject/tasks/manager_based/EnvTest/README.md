@@ -32,7 +32,7 @@ python scripts/envtest_camera_view.py --scene_id 4 --headless --max_steps 10
 
 ## 统一观测
 
-`EnvTest` 的 `policy` 观测已经改成三个技能的并集，总维度是 `251`：
+`EnvTest` 的 `policy` 观测已经改成三个技能的并集，总维度是 `252`：
 
 - `base_lin_vel`：`3`
 - `base_ang_vel`：`3`
@@ -44,14 +44,14 @@ python scripts/envtest_camera_view.py --scene_id 4 --headless --max_steps 10
 - `height_scan`：`187`
 - `box_pose`：`7`
 - `robot_position`：`3`
-- `goal_command`：`3`
+- `goal_command`：`4`
 - `push_actions`：`3`
 
 其中：
 
 - `walk` 使用前 `235` 维低层观测
 - `climb` 也使用同样的 `235` 维低层观测
-- `push_box` 先使用 `22` 维高层观测，再把高层输出写回 `velocity_commands`，继续调用 `235` 维低层 walk 策略
+- `push_box` 先使用 `23` 维高层观测，再把高层输出写回 `velocity_commands`，继续调用 `235` 维低层 walk 策略
 
 ## 按 model_use 切换技能
 
@@ -75,7 +75,7 @@ python NewTools/envtest_model_use_player.py --scene_id 4
 
 - `model_use`：`/tmp/model_use.txt`
 - 速度指令：`/tmp/envtest_velocity_command.txt`
-- 位置指令：`/tmp/envtest_goal_command.txt`
+- 位置指令：`/tmp/envtest_goal_command.txt`（支持 `x y z [yaw]`）
 - 启动开关：`/tmp/envtest_start.txt`
 
 推荐直接用 `Socket` 目录里的 UDP 控制：

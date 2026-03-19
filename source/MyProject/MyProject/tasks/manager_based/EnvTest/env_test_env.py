@@ -86,7 +86,7 @@ class EnvTestEnv(ManagerBasedEnv, gym.Env):
         if not hasattr(self, "_envtest_velocity_commands"):
             self._envtest_velocity_commands = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
         if not hasattr(self, "_envtest_push_goal_command"):
-            self._envtest_push_goal_command = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
+            self._envtest_push_goal_command = torch.zeros((self.num_envs, 4), dtype=torch.float32, device=self.device)
         if not hasattr(self, "_envtest_push_actions"):
             self._envtest_push_actions = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
 

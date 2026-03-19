@@ -21,7 +21,7 @@ def _runtime_buffer(env: "ManagerBasedEnv", attr_name: str, dim: int) -> torch.T
 
     这些缓冲用于把“外部控制器实时给出的指令”写进统一观测：
     - 低层速度命令 `velocity_commands`
-    - 推箱子目标点 `goal_command`
+    - 推箱子目标点 `goal_command`（xyz + yaw）
     - 推箱子高层上一步动作 `push_actions`
     """
 
@@ -115,7 +115,7 @@ def velocity_commands(env: "ManagerBasedEnv") -> torch.Tensor:
 def push_goal_command(env: "ManagerBasedEnv") -> torch.Tensor:
     """推箱子高层目标点槽位。"""
 
-    return _runtime_buffer(env, "_envtest_push_goal_command", 3)
+    return _runtime_buffer(env, "_envtest_push_goal_command", 4)
 
 
 def push_actions(env: "ManagerBasedEnv") -> torch.Tensor:
@@ -147,10 +147,11 @@ def robot_position(env: "ManagerBasedEnv") -> torch.Tensor:
 
 
 def compute_push_goal_from_scene(env: "ManagerBasedEnv") -> torch.Tensor:
-    """按当前障碍位置生成一个“把箱子推到障碍前”的目标点。
+    """按当前障碍位置生成一个“把箱子推到障碍前”的目标位姿。
 
     该逻辑和 `envtest_model_use_player.py` 使用的推箱子目标保持一致。
     如果当前场景没有箱子或没有可选障碍，则抛出异常，让上层显式处理。
+    返回格式为 `[x, y, z, yaw]`，当前默认目标 yaw 为 0。
     """
 
     scene = env.scene
@@ -176,10 +177,11 @@ def compute_push_goal_from_scene(env: "ManagerBasedEnv") -> torch.Tensor:
         except KeyError:
             continue
         obstacle_pos_e = asset.data.root_pos_w[:, :3] - env_origins
-        goal = torch.zeros_like(obstacle_pos_e)
+        goal = torch.zeros((env.num_envs, 4), dtype=obstacle_pos_e.dtype, device=obstacle_pos_e.device)
         goal[:, 0] = obstacle_pos_e[:, 0] - 0.5 * size[0] - 0.5 * BOX_SIZE[0] - 0.02
         goal[:, 1] = obstacle_pos_e[:, 1]
         goal[:, 2] = 0.5 * BOX_SIZE[2]
+        goal[:, 3] = 0.0
         candidates.append(goal)
 
     if not candidates:

@@ -15,7 +15,7 @@
 - model_use=0: idle，机器人保持静止
 - model_use=1: walk（按 walk_rough 的 235 维观测接口）
 - model_use=2: climb（235 维观测接口）
-- model_use=3: push_box（22 维高层观测 + 235 维低层 walk 观测）
+- model_use=3: push_box（23 维高层观测 + 235 维低层 walk 观测）
 """
 
 from __future__ import annotations
@@ -63,7 +63,7 @@ parser.add_argument(
     "--goal_command_file",
     type=str,
     default="/tmp/envtest_goal_command.txt",
-    help="位置指令文件，支持 3 个数：x y z。push_box 会优先使用它。",
+    help="位置指令文件，支持 3 或 4 个数：x y z [yaw]。push_box 会优先使用它。",
 )
 parser.add_argument(
     "--start_file",
@@ -92,6 +92,7 @@ simulation_app = app_launcher.app
 
 import gymnasium as gym
 import torch
+import torch.nn as nn
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
@@ -129,6 +130,9 @@ class SkillSpec:
     policy_path: str
     obs_terms: tuple[str, ...]
     obs_dim: int
+    checkpoint_format: str = "jit"
+    actor_hidden_dims: tuple[int, ...] = ()
+    activation: str = "elu"
 
 
 SKILL_REGISTRY: dict[int, SkillSpec] = {
@@ -141,15 +145,21 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
     ),
     2: SkillSpec(
         name="climb",
-        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "BiShePolicy", "exported", "policy.pt"),
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "BiShePolicy", "BiSheClimbPolicy.pt"),
         obs_terms=LOW_LEVEL_OBS_TERMS,
         obs_dim=LOW_LEVEL_OBS_DIM,
+        checkpoint_format="rsl_rl_checkpoint",
+        actor_hidden_dims=(512, 256, 128),
+        activation="elu",
     ),
     3: SkillSpec(
         name="push_box",
-        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "PushPolicy", "exported", "policy.pt"),
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "PushPolicy", "PushNewNoHeightRestrain.pt"),
         obs_terms=PUSH_HIGH_LEVEL_OBS_TERMS,
-        obs_dim=22,
+        obs_dim=23,
+        checkpoint_format="rsl_rl_checkpoint",
+        actor_hidden_dims=(256, 128),
+        activation="elu",
     ),
 }
 
@@ -158,14 +168,64 @@ PUSH_ACTION_SCALE = (0.4, 0.2, 0.3)
 PUSH_ACTION_CLIP = ((-0.4, 0.4), (-0.2, 0.2), (-0.3, 0.3))
 
 
-def _load_policies(device: torch.device | str) -> dict[int, torch.jit.ScriptModule]:
+def _make_activation(name: str) -> nn.Module:
+    """根据名称创建激活层。"""
+
+    activation_name = name.lower()
+    if activation_name == "elu":
+        return nn.ELU()
+    if activation_name == "relu":
+        return nn.ReLU()
+    if activation_name == "tanh":
+        return nn.Tanh()
+    raise ValueError(f"Unsupported activation for checkpoint policy loading: {name}")
+
+
+def _load_rsl_rl_actor_from_checkpoint(spec: SkillSpec, device: torch.device | str) -> nn.Module:
+    """从 RSL-RL checkpoint 中恢复 actor，用于推理。"""
+
+    checkpoint = torch.load(spec.policy_path, map_location=device)
+    model_state_dict = checkpoint.get("model_state_dict")
+    if model_state_dict is None:
+        raise KeyError(f"Checkpoint does not contain 'model_state_dict': {spec.policy_path}")
+
+    actor_state_dict = {
+        key[len("actor."):]: value for key, value in model_state_dict.items() if key.startswith("actor.")
+    }
+    if not actor_state_dict:
+        raise KeyError(f"Checkpoint does not contain actor weights: {spec.policy_path}")
+
+    bias_layer_indices = sorted(int(key.split(".")[0]) for key in actor_state_dict if key.endswith(".bias"))
+    if not bias_layer_indices:
+        raise KeyError(f"Checkpoint actor is missing bias tensors: {spec.policy_path}")
+    output_dim = actor_state_dict[f"{bias_layer_indices[-1]}.bias"].shape[0]
+    layer_dims = [spec.obs_dim, *spec.actor_hidden_dims, output_dim]
+    layers: list[nn.Module] = []
+    for layer_index, (in_dim, out_dim) in enumerate(zip(layer_dims[:-1], layer_dims[1:])):
+        layers.append(nn.Linear(in_dim, out_dim))
+        if layer_index < len(layer_dims) - 2:
+            layers.append(_make_activation(spec.activation))
+
+    actor = nn.Sequential(*layers)
+    actor.load_state_dict(actor_state_dict)
+    actor.to(device)
+    actor.eval()
+    return actor
+
+
+def _load_policies(device: torch.device | str) -> dict[int, nn.Module]:
     """加载所有高层技能策略。"""
 
-    policies: dict[int, torch.jit.ScriptModule] = {}
+    policies: dict[int, nn.Module] = {}
     for model_use, spec in SKILL_REGISTRY.items():
         if not os.path.isfile(spec.policy_path):
             raise FileNotFoundError(f"Policy file not found: {spec.policy_path}")
-        policies[model_use] = torch.jit.load(spec.policy_path, map_location=device).eval()
+        if spec.checkpoint_format == "jit":
+            policies[model_use] = torch.jit.load(spec.policy_path, map_location=device).eval()
+        elif spec.checkpoint_format == "rsl_rl_checkpoint":
+            policies[model_use] = _load_rsl_rl_actor_from_checkpoint(spec, device)
+        else:
+            raise ValueError(f"Unsupported checkpoint format '{spec.checkpoint_format}' for skill '{spec.name}'.")
     return policies
 
 
@@ -274,7 +334,8 @@ def _read_goal_command_file(file_path: str, fallback: torch.Tensor) -> torch.Ten
     行为：
     - 文件不存在：使用场景自动目标
     - 内容是 `auto` / `scene` / 空：使用场景自动目标
-    - 内容是三个数：使用显式目标点
+    - 内容是三个数：使用显式目标点，yaw 默认补 0
+    - 内容是四个数：使用显式目标点和目标 yaw
     """
 
     if not file_path or not os.path.isfile(file_path):
@@ -289,7 +350,22 @@ def _read_goal_command_file(file_path: str, fallback: torch.Tensor) -> torch.Ten
     if text in ("", "auto", "scene", "default"):
         return fallback
 
-    return _read_float_vector_file(file_path, 3, fallback)
+    values = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", text)
+    if len(values) < 3:
+        return fallback
+
+    try:
+        parsed = [float(value) for value in values[:4]]
+    except ValueError:
+        return fallback
+
+    if len(parsed) == 3:
+        parsed.append(0.0)
+    elif len(parsed) < 4:
+        return fallback
+
+    vector = torch.tensor(parsed, dtype=fallback.dtype, device=fallback.device)
+    return vector.unsqueeze(0).repeat(fallback.shape[0], 1)
 
 
 def _build_default_velocity_commands(num_envs: int, device: torch.device | str) -> torch.Tensor:
@@ -404,7 +480,8 @@ def main():
     print(f"[INFO] start file: {args_cli.start_file} (auto_start={args_cli.auto_start})")
 
     base_velocity_commands = _build_default_velocity_commands(num_envs, device)
-    zero_command = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
+    zero_push_goal_command = torch.zeros((num_envs, 4), dtype=torch.float32, device=device)
+    zero_push_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
     zero_actions = torch.zeros(expected_action_shape, dtype=torch.float32, device=device)
     push_last_processed_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
 
@@ -442,16 +519,16 @@ def main():
             if not start_flag or current_model_use == 0:
                 env.unwrapped.set_runtime_observation_buffers(
                     velocity_commands=current_velocity_commands,
-                    push_goal_command=zero_command,
-                    push_actions=zero_command,
+                    push_goal_command=zero_push_goal_command,
+                    push_actions=zero_push_actions,
                 )
                 policy_obs = env.unwrapped.observation_manager.compute_group("policy")
                 actions = zero_actions
             elif current_model_use in (1, 2):
                 env.unwrapped.set_runtime_observation_buffers(
                     velocity_commands=current_velocity_commands,
-                    push_goal_command=zero_command,
-                    push_actions=zero_command,
+                    push_goal_command=zero_push_goal_command,
+                    push_actions=zero_push_actions,
                 )
                 unified_obs = env.unwrapped.observation_manager.compute_group("policy")
                 policy_obs = _slice_observation(unified_obs, term_slices, SKILL_REGISTRY[current_model_use].obs_terms)

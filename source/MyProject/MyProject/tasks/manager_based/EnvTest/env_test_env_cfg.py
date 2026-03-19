@@ -296,10 +296,10 @@ class ObservationsCfg:
 
     当前总维度为：
     - 低层部分：235 维
-    - 推箱子额外部分：16 维
-    - 并集总计：251 维
+    - 推箱子额外部分：17 维
+    - 并集总计：252 维
 
-    后续 `envtest_model_use_player.py` 会按 `model_use` 从这 251 维里切出各技能真正需要的部分。
+    后续 `envtest_model_use_player.py` 会按 `model_use` 从这 252 维里切出各技能真正需要的部分。
     """
 
     @configclass
@@ -327,7 +327,7 @@ class ObservationsCfg:
         box_pose = ObsTerm(func=mdp.box_pose)
         # 机器人在环境坐标系中的位置（3）
         robot_position = ObsTerm(func=mdp.robot_position)
-        # 推箱子目标点（3）
+        # 推箱子目标点（4：x, y, z, yaw）
         goal_command = ObsTerm(func=mdp.push_goal_command)
         # 推箱子高层上一步裁剪后动作（3）
         push_actions = ObsTerm(func=mdp.push_actions)
