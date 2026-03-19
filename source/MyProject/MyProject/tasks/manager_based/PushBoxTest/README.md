@@ -195,6 +195,7 @@ PushBoxTest/
 - `box_goal_progress`
 - `box_goal_yaw`
 - `robot_box_distance`
+- `face_to_object`
 - `box_goal_success`
 - `flat_orientation`
 - `action_rate`
@@ -220,6 +221,9 @@ PushBoxTest/
 
 - `robot_box_distance`
   - 鼓励机器人保持在能有效推箱子的距离
+- `face_to_object`
+  - 对齐论文中的 `cos⟨θ_b, x_o - x_b⟩`
+  - 鼓励机器人先正面对准箱子，再做推进
 - `flat_orientation`
   - 限制机身姿态过度倾斜
 - `action_rate`
@@ -377,4 +381,5 @@ walk(goal_pose)
 
 - `box_goal_progress`
 - `robot_box_distance`
+- `face_to_object`
 - reset 分布范围

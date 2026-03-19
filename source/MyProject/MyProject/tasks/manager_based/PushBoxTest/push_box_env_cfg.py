@@ -234,6 +234,10 @@ class RewardsCfg:
         weight=0.4,
         params={"std": 0.8},
     )
+    # 对齐论文中的 face-to-object：鼓励机身正面对准箱子后再推进。
+
+    face_to_object = RewTerm(func=mdp.face_to_object_cosine, weight=2.0)
+    
     # 惩罚头部刚体的 xy 投影落到箱子顶面矩形范围内，避免头越到箱子上方。
     head_over_box = RewTerm(
         func=mdp.head_point_in_box_penalty,

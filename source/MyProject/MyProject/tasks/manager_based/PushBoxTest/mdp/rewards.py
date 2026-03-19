@@ -355,6 +355,36 @@ def robot_box_distance_tanh(
     return 1.0 - torch.tanh(distance / std)
 
 
+def face_to_object_cosine(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """Reward the robot for facing the box before pushing.
+
+    论文对应项 / Paper term:
+        Face to object: ``cos⟨θ_b, x_o - x_b⟩``
+
+    这里将机器人朝向向量和“机器人到物体”的单位方向向量做余弦相似度。
+    奖励越接近 1，表示机器人越正对着箱子；越接近 -1，表示机器人背对箱子。
+    """
+
+    robot: RigidObject = env.scene[robot_cfg.name]
+    box: RigidObject = env.scene[box_cfg.name]
+
+    forward_axis_b = torch.tensor([1.0, 0.0, 0.0], device=env.device, dtype=robot.data.root_quat_w.dtype).unsqueeze(0)
+    forward_axis_b = forward_axis_b.expand(env.num_envs, -1)
+    robot_forward_xy = quat_apply(robot.data.root_quat_w, forward_axis_b)[:, :2]
+
+    robot_to_box_xy = box.data.root_pos_w[:, :2] - robot.data.root_pos_w[:, :2]
+    robot_to_box_xy = robot_to_box_xy / torch.clamp(torch.norm(robot_to_box_xy, dim=1, keepdim=True), min=1.0e-6)
+
+    return torch.sum(robot_forward_xy * robot_to_box_xy, dim=1)
+
+
+face_to_box_cosine = face_to_object_cosine
+
+
 def head_point_in_box_penalty(
     env: ManagerBasedRLEnv,
     head_local_offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
