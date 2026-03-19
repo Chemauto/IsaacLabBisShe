@@ -557,6 +557,13 @@ def main():
         current_model_use = _resolve_model_use(current_model_use)
         current_velocity_commands = _read_float_vector_file(args_cli.velocity_command_file, 3, base_velocity_commands)
         start_flag = _resolve_start_flag()
+        previous_start_flag_value = previous_start_flag
+        previous_model_use_value = previous_model_use
+        entering_push_execution = (
+            start_flag
+            and current_model_use == 3
+            and (previous_start_flag_value is not True or previous_model_use_value != 3)
+        )
 
         if start_flag != previous_start_flag:
             state_text = "RUN" if start_flag else "IDLE"
@@ -580,6 +587,16 @@ def main():
                     f"skill={SKILL_REGISTRY[current_model_use].name}, scene_id={args_cli.scene_id}"
                 )
             previous_model_use = current_model_use
+
+        if entering_push_execution:
+            with torch.inference_mode():
+                env.reset()
+            push_last_processed_actions.zero_()
+            push_current_processed_actions.zero_()
+            push_low_level_last_actions.zero_()
+            push_high_level_counter = 0
+            previous_logged_push_goal = None
+            print("[INFO] 进入 push_box 执行态，环境已重置到初始状态。")
 
         with torch.inference_mode():
             # 第一步：待机阶段。机器人保持静止，但仍然持续读取 model_use、速度指令和位置指令文件。
