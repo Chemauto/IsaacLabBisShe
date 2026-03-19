@@ -57,6 +57,29 @@ def _runtime_buffer(env: "ManagerBasedEnv", attr_name: str, dim: int) -> torch.T
     return buffer
 
 
+def _scene_asset_size(
+    env: "ManagerBasedEnv",
+    asset_name: str,
+    fallback_size: tuple[float, float, float],
+) -> tuple[float, float, float]:
+    """从 scene cfg 里读取当前物体尺寸；若取不到则回退到常量。"""
+
+    scene_cfg = getattr(env.cfg, "scene", None)
+    if scene_cfg is None or not hasattr(scene_cfg, asset_name):
+        return fallback_size
+
+    asset_cfg = getattr(scene_cfg, asset_name)
+    if asset_cfg is None or not hasattr(asset_cfg, "spawn"):
+        return fallback_size
+
+    spawn_cfg = asset_cfg.spawn
+    size = getattr(spawn_cfg, "size", None)
+    if size is None:
+        return fallback_size
+
+    return tuple(float(value) for value in size)
+
+
 def velocity_commands(env: "ManagerBasedEnv") -> torch.Tensor:
     """低层策略速度命令槽位。"""
 
@@ -108,13 +131,15 @@ def _build_height_scan_grid(env: "ManagerBasedEnv", sensor_cfg: SceneEntityCfg) 
     return local_grid
 
 
-def height_scan(env: "ManagerBasedEnv", sensor_cfg: SceneEntityCfg, offset: float = 0.5) -> torch.Tensor:
-    """为 EnvTest 当前场景手工构造结构化 height scan。
+def _structured_height_scan(
+    env: "ManagerBasedEnv",
+    sensor_cfg: SceneEntityCfg,
+    offset: float = 0.5,
+    include_support_box: bool = True,
+) -> torch.Tensor:
+    """为 EnvTest 当前场景手工构造结构化 height scan。"""
 
-    Isaac Lab 原始 `RayCaster` 只能命中一个 mesh prim，而 EnvTest 的墙/障碍/箱子是多个 `RigidObject`。
-    因此这里不再直接读取 ray hit，而是按当前场景里各障碍物的几何尺寸，在机器人 yaw 对齐的扫描网格上
-    计算每个采样点对应的顶部高度。
-    """
+    active_assets = HEIGHT_SCAN_ASSETS if include_support_box else HEIGHT_SCAN_ASSETS[:-1]
 
     sensor = env.scene.sensors[sensor_cfg.name]
     robot = env.scene["robot"]
@@ -131,7 +156,7 @@ def height_scan(env: "ManagerBasedEnv", sensor_cfg: SceneEntityCfg, offset: floa
     sample_points_e = rotated_grid + sensor_pos_e.unsqueeze(1)
     top_heights = torch.zeros((num_envs, num_rays), dtype=torch.float32, device=env.device)
 
-    for asset_name, size in HEIGHT_SCAN_ASSETS:
+    for asset_name, size in active_assets:
         try:
             asset = env.scene[asset_name]
         except KeyError:
@@ -151,6 +176,27 @@ def height_scan(env: "ManagerBasedEnv", sensor_cfg: SceneEntityCfg, offset: floa
         top_heights = torch.where(hit_mask, torch.maximum(top_heights, asset_top_z), top_heights)
 
     return sensor_pos_e[:, 2].unsqueeze(1) - top_heights - offset
+
+
+def height_scan(env: "ManagerBasedEnv", sensor_cfg: SceneEntityCfg, offset: float = 0.5) -> torch.Tensor:
+    """为 EnvTest 当前场景手工构造结构化 height scan。
+
+    Isaac Lab 原始 `RayCaster` 只能命中一个 mesh prim，而 EnvTest 的墙/障碍/箱子是多个 `RigidObject`。
+    因此这里不再直接读取 ray hit，而是按当前场景里各障碍物的几何尺寸，在机器人 yaw 对齐的扫描网格上
+    计算每个采样点对应的顶部高度。
+    """
+
+    return _structured_height_scan(env, sensor_cfg=sensor_cfg, offset=offset, include_support_box=True)
+
+
+def height_scan_without_box(
+    env: "ManagerBasedEnv",
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("height_scanner"),
+    offset: float = 0.5,
+) -> torch.Tensor:
+    """给 push 的 low-level 使用：保留障碍物，但屏蔽 support_box。"""
+
+    return _structured_height_scan(env, sensor_cfg=sensor_cfg, offset=offset, include_support_box=False)
 
 
 def box_pose(env: "ManagerBasedEnv") -> torch.Tensor:
@@ -192,42 +238,73 @@ def compute_push_goal_from_scene(env: "ManagerBasedEnv") -> torch.Tensor:
         raise RuntimeError("当前 EnvTest 场景中没有 support_box，无法生成推箱子目标点。") from err
 
     box_pos_e = box.data.root_pos_w[:, :3] - env_origins
+    support_box_size = _scene_asset_size(env, "support_box", BOX_SIZE)
 
     candidates: list[torch.Tensor] = []
+    candidate_names: list[str] = []
+    candidate_size_values: list[tuple[float, float, float]] = []
+    candidate_positions: list[torch.Tensor] = []
     candidate_sizes = (
         ("left_high_obstacle", HIGH_OBSTACLE_SIZE),
         ("right_high_obstacle", HIGH_OBSTACLE_SIZE),
         ("left_low_obstacle", LOW_OBSTACLE_SIZE),
         ("right_low_obstacle", LOW_OBSTACLE_SIZE),
     )
-    for asset_name, size in candidate_sizes:
+    for asset_name, fallback_size in candidate_sizes:
         try:
             asset = scene[asset_name]
         except KeyError:
             continue
+        size = _scene_asset_size(env, asset_name, fallback_size)
         obstacle_pos_e = asset.data.root_pos_w[:, :3] - env_origins
         goal = torch.zeros((env.num_envs, 4), dtype=obstacle_pos_e.dtype, device=obstacle_pos_e.device)
         # x 方向：让箱子前表面尽量贴近障碍物前表面，但保留很小安全间隙。
-        goal[:, 0] = obstacle_pos_e[:, 0] - 0.5 * size[0] - 0.5 * BOX_SIZE[0] - GOAL_FRONT_GAP
+        goal[:, 0] = obstacle_pos_e[:, 0] - 0.5 * size[0] - 0.5 * support_box_size[0] - GOAL_FRONT_GAP
         # y 方向：不再强制对齐到障碍物中心，而是在“箱子仍能贴住障碍”的可行区间内，
         # 选取距离当前箱子横向位置最近的中心点，减少无意义侧移。
-        lateral_half_range = 0.5 * (size[1] - BOX_SIZE[1]) - GOAL_LATERAL_MARGIN
+        lateral_half_range = 0.5 * (size[1] - support_box_size[1]) - GOAL_LATERAL_MARGIN
         if lateral_half_range > 0.0:
             goal_y_min = obstacle_pos_e[:, 1] - lateral_half_range
             goal_y_max = obstacle_pos_e[:, 1] + lateral_half_range
             goal[:, 1] = torch.clamp(box_pos_e[:, 1], min=goal_y_min, max=goal_y_max)
         else:
             goal[:, 1] = obstacle_pos_e[:, 1]
-        goal[:, 2] = 0.5 * BOX_SIZE[2]
+        goal[:, 2] = 0.5 * support_box_size[2]
         goal[:, 3] = 0.0
         candidates.append(goal)
+        candidate_names.append(asset_name)
+        candidate_size_values.append(size)
+        candidate_positions.append(obstacle_pos_e)
 
     if not candidates:
         raise RuntimeError("当前场景中没有可供 push_box 使用的目标障碍物。")
 
     candidate_tensor = torch.stack(candidates, dim=1)
+    candidate_position_tensor = torch.stack(candidate_positions, dim=1)
+    candidate_size_tensor = torch.tensor(candidate_size_values, dtype=box_pos_e.dtype, device=box_pos_e.device)
     # 选择“从当前箱子位姿移动量最小”的可行目标，而不是单纯最近障碍中心。
     distances = torch.linalg.norm(candidate_tensor[..., :2] - box_pos_e[:, None, :2], dim=-1)
     best_indices = torch.argmin(distances, dim=1)
     env_indices = torch.arange(env.num_envs, device=box_pos_e.device)
-    return candidate_tensor[env_indices, best_indices]
+    selected_goal = candidate_tensor[env_indices, best_indices]
+    setattr(env, "_envtest_push_goal_debug", {
+        "box_size": support_box_size,
+        "box_position": box_pos_e,
+        "selected_obstacle_names": [candidate_names[index] for index in best_indices.detach().cpu().tolist()],
+        "selected_obstacle_sizes": candidate_size_tensor[best_indices],
+        "selected_obstacle_positions": candidate_position_tensor[env_indices, best_indices],
+        "goal": selected_goal,
+    })
+    return selected_goal
+
+
+def get_push_goal_debug_info(env: "ManagerBasedEnv") -> dict:
+    """返回最近一次自动 push goal 计算的调试信息。"""
+
+    goal = compute_push_goal_from_scene(env)
+    debug_info = getattr(env, "_envtest_push_goal_debug", None)
+    if debug_info is None:
+        raise RuntimeError("Push goal debug info is unavailable.")
+    debug_info = dict(debug_info)
+    debug_info["goal"] = goal
+    return debug_info

@@ -173,7 +173,6 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
 
 PUSH_LOW_LEVEL_POLICY_PATH = os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkRoughNewTransfer.pt")
 PUSH_HIGH_LEVEL_DECIMATION = 10
-PUSHBOX_PLAY_DEFAULT_GOAL = (2.27, 0.5, 0.1, 0.0)
 
 
 def _make_activation(name: str) -> nn.Module:
@@ -397,11 +396,8 @@ def _resolve_runtime_velocity_commands(model_use: int, velocity_commands: torch.
 
 
 def _default_push_goal(env) -> torch.Tensor:
-    """优先对齐 PushBoxTest Play 的固定 goal。"""
+    """按当前场景中的箱子/障碍尺寸自动生成 push goal。"""
 
-    if args_cli.scene_id == 4:
-        goal = torch.tensor(PUSHBOX_PLAY_DEFAULT_GOAL, dtype=torch.float32, device=env.device)
-        return goal.unsqueeze(0).repeat(env.num_envs, 1)
     return envtest_mdp.compute_push_goal_from_scene(env)
 
 
@@ -432,6 +428,7 @@ def _align_push_low_level_obs_to_training(
         push_low_level_last_actions[env.episode_length_buf == 0, :] = 0.0
 
     aligned_obs[:, local_slices["actions"]] = push_low_level_last_actions
+    aligned_obs[:, local_slices["height_scan"]] = envtest_mdp.height_scan_without_box(env)
     aligned_obs[:, local_slices["base_lin_vel"]] += torch.empty_like(
         aligned_obs[:, local_slices["base_lin_vel"]]
     ).uniform_(-0.1, 0.1)
@@ -690,9 +687,25 @@ def main():
 
                     current_push_goal_tuple = tuple(round(v, 4) for v in push_goal_command[0].detach().cpu().tolist())
                     if current_push_goal_tuple != previous_logged_push_goal:
-                        box_pose_now = unified_obs[:, term_slices["box_pose"]][0, :3].detach().cpu().tolist()
-                        box_pose_tuple = tuple(round(v, 4) for v in box_pose_now)
-                        print(f"[INFO] push_box box pos: {box_pose_tuple}, auto goal command: {current_push_goal_tuple}")
+                        goal_debug = envtest_mdp.get_push_goal_debug_info(env.unwrapped)
+                        box_pose_tuple = tuple(round(v, 4) for v in goal_debug["box_position"][0].detach().cpu().tolist())
+                        box_size_tuple = tuple(round(v, 4) for v in goal_debug["box_size"])
+                        obstacle_name = goal_debug["selected_obstacle_names"][0]
+                        obstacle_pos_tuple = tuple(
+                            round(v, 4) for v in goal_debug["selected_obstacle_positions"][0].detach().cpu().tolist()
+                        )
+                        obstacle_size_tuple = tuple(
+                            round(v, 4) for v in goal_debug["selected_obstacle_sizes"][0].detach().cpu().tolist()
+                        )
+                        print(
+                            "[INFO] push_box auto goal:"
+                            f" box_pos={box_pose_tuple},"
+                            f" box_size={box_size_tuple},"
+                            f" obstacle={obstacle_name},"
+                            f" obstacle_pos={obstacle_pos_tuple},"
+                            f" obstacle_size={obstacle_size_tuple},"
+                            f" goal={current_push_goal_tuple}"
+                        )
                         previous_logged_push_goal = current_push_goal_tuple
 
                     push_raw_actions = policies[3](push_high_obs)
