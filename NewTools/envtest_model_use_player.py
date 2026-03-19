@@ -126,6 +126,7 @@ PUSH_HIGH_LEVEL_OBS_TERMS = (
     "push_actions",
 )
 LOW_LEVEL_OBS_DIM = 235
+CLIMB_PLAY_DEFAULT_VELOCITY = (0.75, 0.0, 0.0)
 
 
 @dataclass(frozen=True)
@@ -384,6 +385,17 @@ def _build_default_velocity_commands(num_envs: int, device: torch.device | str) 
     return single_command.unsqueeze(0).repeat(num_envs, 1)
 
 
+def _resolve_runtime_velocity_commands(model_use: int, velocity_commands: torch.Tensor) -> torch.Tensor:
+    """对齐各技能 Play 配置的默认速度命令。"""
+
+    if args_cli.scene_id == 2 and model_use == 2 and torch.allclose(velocity_commands, torch.zeros_like(velocity_commands)):
+        climb_velocity = torch.tensor(
+            CLIMB_PLAY_DEFAULT_VELOCITY, dtype=velocity_commands.dtype, device=velocity_commands.device
+        )
+        return climb_velocity.unsqueeze(0).repeat(velocity_commands.shape[0], 1)
+    return velocity_commands
+
+
 def _default_push_goal(env) -> torch.Tensor:
     """优先对齐 PushBoxTest Play 的固定 goal。"""
 
@@ -458,6 +470,30 @@ def _build_obs_slices(env, group_name: str = "policy") -> dict[str, slice]:
         slices[term_name] = slice(start, start + flat_dim)
         start += flat_dim
     return slices
+
+
+def _build_local_obs_slices(term_names: tuple[str, ...], term_slices: dict[str, slice]) -> dict[str, slice]:
+    """为切片后的局部观测重新建立 term 对应区间。"""
+
+    local_slices: dict[str, slice] = {}
+    start = 0
+    for term_name in term_names:
+        term_slice = term_slices[term_name]
+        term_dim = term_slice.stop - term_slice.start
+        local_slices[term_name] = slice(start, start + term_dim)
+        start += term_dim
+    return local_slices
+
+
+def _align_low_level_obs_to_play(policy_obs: torch.Tensor, term_slices: dict[str, slice]) -> torch.Tensor:
+    """对齐 walk/climb Play 模式下的低层观测后处理。"""
+
+    aligned_obs = policy_obs.clone()
+    local_slices = _build_local_obs_slices(LOW_LEVEL_OBS_TERMS, term_slices)
+    aligned_obs[:, local_slices["height_scan"]] = torch.clamp(
+        aligned_obs[:, local_slices["height_scan"]], min=-1.0, max=1.0
+    )
+    return aligned_obs
 
 
 def _slice_observation(unified_obs: torch.Tensor, term_slices: dict[str, slice], term_names: tuple[str, ...]) -> torch.Tensor:
@@ -544,6 +580,7 @@ def main():
     push_current_processed_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
     push_low_level_last_actions = torch.zeros(expected_action_shape, dtype=torch.float32, device=device)
     push_high_level_counter = 0
+    push_entry_settle_steps = 0
 
     current_model_use = args_cli.model_use
     previous_model_use = None
@@ -556,6 +593,7 @@ def main():
         start_time = time.time()
         current_model_use = _resolve_model_use(current_model_use)
         current_velocity_commands = _read_float_vector_file(args_cli.velocity_command_file, 3, base_velocity_commands)
+        current_velocity_commands = _resolve_runtime_velocity_commands(current_model_use, current_velocity_commands)
         start_flag = _resolve_start_flag()
         previous_start_flag_value = previous_start_flag
         previous_model_use_value = previous_model_use
@@ -576,12 +614,14 @@ def main():
                 push_current_processed_actions.zero_()
                 push_low_level_last_actions.zero_()
                 push_high_level_counter = 0
+                push_entry_settle_steps = 0
                 print(f"[INFO] 切换技能: model_use=0, skill=idle, scene_id={args_cli.scene_id}")
             else:
                 push_last_processed_actions.zero_()
                 push_current_processed_actions.zero_()
                 push_low_level_last_actions.zero_()
                 push_high_level_counter = 0
+                push_entry_settle_steps = 0
                 print(
                     f"[INFO] 切换技能: model_use={current_model_use}, "
                     f"skill={SKILL_REGISTRY[current_model_use].name}, scene_id={args_cli.scene_id}"
@@ -595,16 +635,27 @@ def main():
             push_current_processed_actions.zero_()
             push_low_level_last_actions.zero_()
             push_high_level_counter = 0
+            push_entry_settle_steps = 1
             previous_logged_push_goal = None
-            print("[INFO] 进入 push_box 执行态，环境已重置到初始状态。")
+            print("[INFO] 进入 push_box 执行态，环境已重置并预留 1 个稳定步。")
 
         with torch.inference_mode():
             # 第一步：待机阶段。机器人保持静止，但仍然持续读取 model_use、速度指令和位置指令文件。
-            if not start_flag or current_model_use == 0:
+            if push_entry_settle_steps > 0:
+                env.unwrapped.set_runtime_observation_buffers(
+                    velocity_commands=current_velocity_commands,
+                    push_goal_command=zero_push_goal_command,
+                    push_actions=zero_push_actions,
+                )
+                policy_obs = env.unwrapped.observation_manager.compute_group("policy")
+                actions = zero_actions
+                push_entry_settle_steps -= 1
+            elif not start_flag or current_model_use == 0:
                 push_last_processed_actions.zero_()
                 push_current_processed_actions.zero_()
                 push_low_level_last_actions.zero_()
                 push_high_level_counter = 0
+                push_entry_settle_steps = 0
                 env.unwrapped.set_runtime_observation_buffers(
                     velocity_commands=current_velocity_commands,
                     push_goal_command=zero_push_goal_command,
@@ -620,6 +671,7 @@ def main():
                 )
                 unified_obs = env.unwrapped.observation_manager.compute_group("policy")
                 policy_obs = _slice_observation(unified_obs, term_slices, SKILL_REGISTRY[current_model_use].obs_terms)
+                policy_obs = _align_low_level_obs_to_play(policy_obs, term_slices)
                 _check_obs_dim(current_model_use, policy_obs)
                 actions = policies[current_model_use](policy_obs)
             else:

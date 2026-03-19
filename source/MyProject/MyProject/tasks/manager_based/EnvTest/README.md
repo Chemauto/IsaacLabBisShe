@@ -82,7 +82,7 @@ python NewTools/envtest_model_use_player.py --scene_id 4
 
 ```bash
 python Socket/envtest_socket_server.py
-python Socket/envtest_socket_client.py --model_use 1 --velocity 0.6 0.0 0.0
+python Socket/envtest_socket_client.py --model_use 1 --velocity -0.6 0.0 0.0
 ```
 
 开始执行：

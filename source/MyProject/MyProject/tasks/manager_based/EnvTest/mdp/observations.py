@@ -9,8 +9,16 @@ import torch
 from typing import TYPE_CHECKING
 
 import isaaclab.utils.math as math_utils
+from isaaclab.managers import SceneEntityCfg
 
-from MyProject.tasks.manager_based.EnvTest.scene_layout import BOX_SIZE, HIGH_OBSTACLE_SIZE, LOW_OBSTACLE_SIZE
+from MyProject.tasks.manager_based.EnvTest.scene_layout import (
+    BOX_SIZE,
+    HIGH_OBSTACLE_SIZE,
+    LOW_OBSTACLE_SIZE,
+    WALL_HEIGHT,
+    WALL_LENGTH,
+    WALL_THICKNESS,
+)
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
@@ -18,6 +26,15 @@ if TYPE_CHECKING:
 
 GOAL_FRONT_GAP = 0.03
 GOAL_LATERAL_MARGIN = 0.03
+HEIGHT_SCAN_ASSETS = (
+    ("left_wall", (WALL_LENGTH, WALL_THICKNESS, WALL_HEIGHT)),
+    ("right_wall", (WALL_LENGTH, WALL_THICKNESS, WALL_HEIGHT)),
+    ("left_low_obstacle", LOW_OBSTACLE_SIZE),
+    ("right_low_obstacle", LOW_OBSTACLE_SIZE),
+    ("left_high_obstacle", HIGH_OBSTACLE_SIZE),
+    ("right_high_obstacle", HIGH_OBSTACLE_SIZE),
+    ("support_box", BOX_SIZE),
+)
 
 
 def _runtime_buffer(env: "ManagerBasedEnv", attr_name: str, dim: int) -> torch.Tensor:
@@ -56,6 +73,84 @@ def push_actions(env: "ManagerBasedEnv") -> torch.Tensor:
     """推箱子高层上一步裁剪后动作槽位。"""
 
     return _runtime_buffer(env, "_envtest_push_actions", 3)
+
+
+def _build_height_scan_grid(env: "ManagerBasedEnv", sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    """按 RayCaster 的 grid 配置生成与训练一致的 2D 采样网格。"""
+
+    sensor = env.scene.sensors[sensor_cfg.name]
+    pattern_cfg = sensor.cfg.pattern_cfg
+    device = env.device
+    cache_key = "_envtest_height_scan_local_grid"
+    cached_grid = getattr(env, cache_key, None)
+    expected_num_rays = sensor.data.ray_hits_w.shape[1]
+    if cached_grid is not None and cached_grid.shape == (expected_num_rays, 3) and cached_grid.device == device:
+        return cached_grid
+
+    indexing = pattern_cfg.ordering if pattern_cfg.ordering == "xy" else "ij"
+    x = torch.arange(
+        start=-pattern_cfg.size[0] / 2,
+        end=pattern_cfg.size[0] / 2 + 1.0e-9,
+        step=pattern_cfg.resolution,
+        device=device,
+    )
+    y = torch.arange(
+        start=-pattern_cfg.size[1] / 2,
+        end=pattern_cfg.size[1] / 2 + 1.0e-9,
+        step=pattern_cfg.resolution,
+        device=device,
+    )
+    grid_x, grid_y = torch.meshgrid(x, y, indexing=indexing)
+    local_grid = torch.zeros((grid_x.numel(), 3), dtype=torch.float32, device=device)
+    local_grid[:, 0] = grid_x.flatten()
+    local_grid[:, 1] = grid_y.flatten()
+    setattr(env, cache_key, local_grid)
+    return local_grid
+
+
+def height_scan(env: "ManagerBasedEnv", sensor_cfg: SceneEntityCfg, offset: float = 0.5) -> torch.Tensor:
+    """为 EnvTest 当前场景手工构造结构化 height scan。
+
+    Isaac Lab 原始 `RayCaster` 只能命中一个 mesh prim，而 EnvTest 的墙/障碍/箱子是多个 `RigidObject`。
+    因此这里不再直接读取 ray hit，而是按当前场景里各障碍物的几何尺寸，在机器人 yaw 对齐的扫描网格上
+    计算每个采样点对应的顶部高度。
+    """
+
+    sensor = env.scene.sensors[sensor_cfg.name]
+    robot = env.scene["robot"]
+    env_origins = env.scene.env_origins
+    num_envs = env.num_envs
+
+    local_grid = _build_height_scan_grid(env, sensor_cfg)
+    num_rays = local_grid.shape[0]
+    repeated_quat = robot.data.root_quat_w.repeat_interleave(num_rays, dim=0)
+    repeated_grid = local_grid.unsqueeze(0).repeat(num_envs, 1, 1).reshape(-1, 3)
+    rotated_grid = math_utils.quat_apply_yaw(repeated_quat, repeated_grid).reshape(num_envs, num_rays, 3)
+
+    sensor_pos_e = sensor.data.pos_w - env_origins
+    sample_points_e = rotated_grid + sensor_pos_e.unsqueeze(1)
+    top_heights = torch.zeros((num_envs, num_rays), dtype=torch.float32, device=env.device)
+
+    for asset_name, size in HEIGHT_SCAN_ASSETS:
+        try:
+            asset = env.scene[asset_name]
+        except KeyError:
+            continue
+
+        asset_pos_e = asset.data.root_pos_w[:, :3] - env_origins
+        sample_points_local = sample_points_e - asset_pos_e.unsqueeze(1)
+        repeated_asset_quat = asset.data.root_quat_w.repeat_interleave(num_rays, dim=0)
+        sample_points_local = math_utils.quat_apply_inverse(
+            repeated_asset_quat, sample_points_local.reshape(-1, 3)
+        ).reshape(num_envs, num_rays, 3)
+
+        in_x = torch.abs(sample_points_local[..., 0]) <= 0.5 * size[0]
+        in_y = torch.abs(sample_points_local[..., 1]) <= 0.5 * size[1]
+        hit_mask = in_x & in_y
+        asset_top_z = asset_pos_e[:, 2].unsqueeze(1) + 0.5 * size[2]
+        top_heights = torch.where(hit_mask, torch.maximum(top_heights, asset_top_z), top_heights)
+
+    return sensor_pos_e[:, 2].unsqueeze(1) - top_heights - offset
 
 
 def box_pose(env: "ManagerBasedEnv") -> torch.Tensor:
