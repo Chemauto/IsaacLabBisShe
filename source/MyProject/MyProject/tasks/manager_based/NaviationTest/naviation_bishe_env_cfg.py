@@ -184,26 +184,11 @@ class ObservationsCfg:
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
-        # obstacle_1_pos = ObsTerm(
-        #     func=mdp.asset_position_in_robot_frame, 
-        #     params={"asset_cfg": SceneEntityCfg("obstacle_1")},
-        #     noise=Unoise(n_min=-0.05, n_max=0.05),
-        # )
-        # obstacle_1_size = ObsTerm(
-        #     func=mdp.asset_size,
-        #     params={"asset_cfg": SceneEntityCfg("obstacle_1"), "fallback_size": (0.5, 1.2, 0.8)},
-        #     noise=Unoise(n_min=-0.05, n_max=0.05),
-        # )
-        # obstacle_2_pos = ObsTerm(
-        #     func=mdp.asset_position_in_robot_frame,
-        #     params={"asset_cfg": SceneEntityCfg("obstacle_2")}, 
-        #     noise=Unoise(n_min=-0.05, n_max=0.05)
-        # )
-        # obstacle_2_size = ObsTerm(
-        #     func=mdp.asset_size,
-        #     params={"asset_cfg": SceneEntityCfg("obstacle_2"), "fallback_size": (0.5, 1.2, 0.8)},
-        #     noise=Unoise(n_min=-0.05, n_max=0.05),
-        # )
+        nearest_obstacles_state = ObsTerm(
+            func=mdp.nearest_obstacles_state,
+            params={"k": 3, "prefix": "obstacle_", "fallback_size": (0.5, 1.2, 0.8)},
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
         obstacle_height_scan = ObsTerm(
             func=mdp.obstacle_height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
@@ -225,22 +210,10 @@ class ObservationsCfg:
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
         projected_gravity = ObsTerm(func=mdp.projected_gravity)
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
-        # obstacle_1_pos = ObsTerm(
-        #     func=mdp.asset_position_in_robot_frame, 
-        #     params={"asset_cfg": SceneEntityCfg("obstacle_1")}
-        # )
-        # obstacle_1_size = ObsTerm(
-        #     func=mdp.asset_size,
-        #     params={"asset_cfg": SceneEntityCfg("obstacle_1"), "fallback_size": (0.5, 1.2, 0.8)},
-        # )
-        # obstacle_2_pos = ObsTerm(
-        #     func=mdp.asset_position_in_robot_frame, 
-        #     params={"asset_cfg": SceneEntityCfg("obstacle_2")}
-        # )
-        # obstacle_2_size = ObsTerm(
-        #     func=mdp.asset_size,
-        #     params={"asset_cfg": SceneEntityCfg("obstacle_2"), "fallback_size": (0.5, 1.2, 0.8)},
-        # )
+        nearest_obstacles_state = ObsTerm(
+            func=mdp.nearest_obstacles_state,
+            params={"k": 3, "prefix": "obstacle_", "fallback_size": (0.5, 1.2, 0.8)},
+        )
         obstacle_height_scan = ObsTerm(
             func=mdp.obstacle_height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},

@@ -49,5 +49,6 @@ class NaviationFlatPPORunnerCfg(NaviationRoughPPORunnerCfg):
 class NaviationBiShePPORunnerCfg(NaviationRoughPPORunnerCfg):
     def __post_init__(self):
         super().__post_init__()
-
+        self.num_steps_per_env = 24
+        self.max_iterations = 3000
         self.experiment_name = "naviation_bishe"

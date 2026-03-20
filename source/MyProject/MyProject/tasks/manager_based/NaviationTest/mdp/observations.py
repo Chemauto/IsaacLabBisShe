@@ -137,6 +137,60 @@ def obstacle_height_scan(
 
     return sensor_pos_e[:, 2].unsqueeze(1) - top_heights - offset
 
+
+def nearest_obstacles_state(
+    env: ManagerBasedRLEnv,
+    k: int = 3,
+    prefix: str = "obstacle_",
+    fallback_size: tuple[float, float, float] = (0.5, 1.2, 0.8),
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Return the nearest K obstacle positions and sizes in the robot frame, padded with zeros."""
+
+    if k <= 0:
+        return torch.zeros((env.num_envs, 0), dtype=torch.float32, device=env.device)
+
+    obstacle_assets = _obstacle_height_scan_assets(env, prefix=prefix, fallback_size=fallback_size)
+    output = torch.zeros((env.num_envs, k, 6), dtype=torch.float32, device=env.device)
+    if not obstacle_assets:
+        return output.reshape(env.num_envs, k * 6)
+
+    robot: RigidObject = env.scene[robot_cfg.name]
+    positions: list[torch.Tensor] = []
+    sizes: list[torch.Tensor] = []
+    distances: list[torch.Tensor] = []
+
+    for asset_name, size in obstacle_assets:
+        try:
+            asset: RigidObject = env.scene[asset_name]
+        except KeyError:
+            continue
+
+        asset_pos_b, _ = subtract_frame_transforms(
+            robot.data.root_pos_w,
+            robot.data.root_quat_w,
+            asset.data.root_pos_w[:, :3],
+        )
+        positions.append(asset_pos_b)
+        sizes.append(torch.tensor(size, dtype=asset_pos_b.dtype, device=asset_pos_b.device).repeat(env.num_envs, 1))
+        distances.append(torch.linalg.norm(asset_pos_b[:, :2], dim=-1))
+
+    if not positions:
+        return output.reshape(env.num_envs, k * 6)
+
+    position_tensor = torch.stack(positions, dim=1)
+    size_tensor = torch.stack(sizes, dim=1)
+    distance_tensor = torch.stack(distances, dim=1)
+
+    num_assets = position_tensor.shape[1]
+    gather_count = min(k, num_assets)
+    best_indices = torch.argsort(distance_tensor, dim=1)[:, :gather_count]
+    gather_index = best_indices.unsqueeze(-1).expand(-1, -1, 3)
+    output[:, :gather_count, :3] = torch.gather(position_tensor, 1, gather_index)
+    output[:, :gather_count, 3:] = torch.gather(size_tensor, 1, gather_index)
+    return output.reshape(env.num_envs, k * 6)
+
+
 def asset_position_in_robot_frame(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
