@@ -69,22 +69,37 @@ def _build_height_scan_grid(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) 
     return local_grid
 
 
+def _obstacle_height_scan_assets(
+    env: ManagerBasedRLEnv,
+    prefix: str = "obstacle_",
+    fallback_size: tuple[float, float, float] = (0.5, 1.2, 0.8),
+) -> list[tuple[str, tuple[float, float, float]]]:
+    """Collect all configured obstacle assets that should participate in the custom scan."""
+
+    scene_cfg = getattr(env.cfg, "scene", None)
+    if scene_cfg is None:
+        return []
+
+    obstacle_assets: list[tuple[str, tuple[float, float, float]]] = []
+    for asset_name, asset_cfg in vars(scene_cfg).items():
+        if not asset_name.startswith(prefix):
+            continue
+        if asset_cfg is None or not hasattr(asset_cfg, "spawn"):
+            continue
+        obstacle_assets.append((asset_name, _scene_asset_size(env, asset_name, fallback_size)))
+
+    obstacle_assets.sort(key=lambda item: item[0])
+    return obstacle_assets
+
+
 def obstacle_height_scan(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg = SceneEntityCfg("height_scanner"),
     offset: float = 0.5,
 ) -> torch.Tensor:
-    """Structured height scan that accounts for the two navigation obstacles.
+    """Structured height scan that accounts for all active navigation obstacles."""
 
-    The built-in RayCaster only scans `/World/ground` in this task, so separate `RigidObject`
-    obstacles would otherwise be invisible. This function analytically projects obstacle cuboids
-    into the scan grid in the robot yaw-aligned frame.
-    """
-
-    obstacle_assets = (
-        ("obstacle_1", _scene_asset_size(env, "obstacle_1", (0.5, 1.2, 0.8))),
-        ("obstacle_2", _scene_asset_size(env, "obstacle_2", (0.5, 1.2, 0.8))),
-    )
+    obstacle_assets = _obstacle_height_scan_assets(env)
 
     sensor = env.scene.sensors[sensor_cfg.name]
     robot = env.scene["robot"]
@@ -102,7 +117,11 @@ def obstacle_height_scan(
     top_heights = torch.zeros((num_envs, num_rays), dtype=torch.float32, device=env.device)
 
     for asset_name, size in obstacle_assets:
-        asset = env.scene[asset_name]
+        try:
+            asset = env.scene[asset_name]
+        except KeyError:
+            continue
+
         asset_pos_e = asset.data.root_pos_w[:, :3] - env_origins
         sample_points_local = sample_points_e - asset_pos_e.unsqueeze(1)
         repeated_asset_quat = asset.data.root_quat_w.repeat_interleave(num_rays, dim=0)
@@ -118,7 +137,6 @@ def obstacle_height_scan(
 
     return sensor_pos_e[:, 2].unsqueeze(1) - top_heights - offset
 
-
 def asset_position_in_robot_frame(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
@@ -130,3 +148,14 @@ def asset_position_in_robot_frame(
     asset: RigidObject = env.scene[asset_cfg.name]
     asset_pos_b, _ = subtract_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, asset.data.root_pos_w[:, :3])
     return asset_pos_b
+
+
+def asset_size(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    fallback_size: tuple[float, float, float] = (0.0, 0.0, 0.0),
+):
+    """Return the configured cuboid size of an asset, repeated for all environments."""
+
+    size = _scene_asset_size(env, asset_cfg.name, fallback_size)
+    return torch.tensor(size, dtype=torch.float32, device=env.device).repeat(env.num_envs, 1)

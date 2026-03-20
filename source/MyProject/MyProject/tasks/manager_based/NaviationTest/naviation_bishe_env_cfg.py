@@ -3,13 +3,11 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-import math
-from dataclasses import MISSING
 from pathlib import Path
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-from isaaclab.assets import RigidObject, RigidObjectCfg
+from isaaclab.assets import RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -22,7 +20,7 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
-from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 # import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
@@ -30,7 +28,6 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 ##
 # Pre-defined configs
 ##
-from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
 # Custom terrain configuration for stair climbing
@@ -116,7 +113,6 @@ class MySceneCfg(InteractiveSceneCfg):
     )
     # robots
     robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-    # sensors
     height_scanner = RayCasterCfg(
         prim_path="{ENV_REGEX_NS}/Robot/base",
         offset=RayCasterCfg.OffsetCfg(pos=(0.0, 0.0, 20.0)),
@@ -188,6 +184,26 @@ class ObservationsCfg:
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
+        # obstacle_1_pos = ObsTerm(
+        #     func=mdp.asset_position_in_robot_frame, 
+        #     params={"asset_cfg": SceneEntityCfg("obstacle_1")},
+        #     noise=Unoise(n_min=-0.05, n_max=0.05),
+        # )
+        # obstacle_1_size = ObsTerm(
+        #     func=mdp.asset_size,
+        #     params={"asset_cfg": SceneEntityCfg("obstacle_1"), "fallback_size": (0.5, 1.2, 0.8)},
+        #     noise=Unoise(n_min=-0.05, n_max=0.05),
+        # )
+        # obstacle_2_pos = ObsTerm(
+        #     func=mdp.asset_position_in_robot_frame,
+        #     params={"asset_cfg": SceneEntityCfg("obstacle_2")}, 
+        #     noise=Unoise(n_min=-0.05, n_max=0.05)
+        # )
+        # obstacle_2_size = ObsTerm(
+        #     func=mdp.asset_size,
+        #     params={"asset_cfg": SceneEntityCfg("obstacle_2"), "fallback_size": (0.5, 1.2, 0.8)},
+        #     noise=Unoise(n_min=-0.05, n_max=0.05),
+        # )
         obstacle_height_scan = ObsTerm(
             func=mdp.obstacle_height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
@@ -209,6 +225,22 @@ class ObservationsCfg:
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
         projected_gravity = ObsTerm(func=mdp.projected_gravity)
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
+        # obstacle_1_pos = ObsTerm(
+        #     func=mdp.asset_position_in_robot_frame, 
+        #     params={"asset_cfg": SceneEntityCfg("obstacle_1")}
+        # )
+        # obstacle_1_size = ObsTerm(
+        #     func=mdp.asset_size,
+        #     params={"asset_cfg": SceneEntityCfg("obstacle_1"), "fallback_size": (0.5, 1.2, 0.8)},
+        # )
+        # obstacle_2_pos = ObsTerm(
+        #     func=mdp.asset_position_in_robot_frame, 
+        #     params={"asset_cfg": SceneEntityCfg("obstacle_2")}
+        # )
+        # obstacle_2_size = ObsTerm(
+        #     func=mdp.asset_size,
+        #     params={"asset_cfg": SceneEntityCfg("obstacle_2"), "fallback_size": (0.5, 1.2, 0.8)},
+        # )
         obstacle_height_scan = ObsTerm(
             func=mdp.obstacle_height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
