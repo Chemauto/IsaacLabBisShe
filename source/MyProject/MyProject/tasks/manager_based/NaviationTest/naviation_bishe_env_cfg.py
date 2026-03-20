@@ -182,26 +182,44 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
-        projected_gravity = ObsTerm(func=mdp.projected_gravity)
+        # base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+            noise=Unoise(n_min=-0.05, n_max=0.05),
+        )
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
-        # obstacle_1_pos = ObsTerm(
-        #     func=mdp.asset_position_in_robot_frame,
-        #     params={"asset_cfg": SceneEntityCfg("obstacle_1")},
-        # )
-        # obstacle_2_pos = ObsTerm(
-        #     func=mdp.asset_position_in_robot_frame,
-        #     params={"asset_cfg": SceneEntityCfg("obstacle_2")},
-        # )
-        height_scan = ObsTerm(
-            func=mdp.height_scan,
+        obstacle_height_scan = ObsTerm(
+            func=mdp.obstacle_height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             noise=Unoise(n_min=-0.1, n_max=0.1),
             clip=(-1.0, 1.0),
         )
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
     # observation groups
     policy: PolicyCfg = PolicyCfg()
 
+
+    @configclass
+    class CriticCfg(ObsGroup):
+        """Observations for critic group."""
+
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
+        projected_gravity = ObsTerm(func=mdp.projected_gravity)
+        pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
+        obstacle_height_scan = ObsTerm(
+            func=mdp.obstacle_height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            clip=(-1.0, 1.0),
+        )
+
+        def __post_init__(self):
+            self.concatenate_terms = True
+
+    # privileged observations
+    critic: CriticCfg = CriticCfg()
 
 @configclass
 class EventCfg:
