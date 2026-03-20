@@ -241,10 +241,10 @@ class RewardsCfg:
     # 惩罚头部刚体的 xy 投影落到箱子顶面矩形范围内，避免头越到箱子上方。
     head_over_box = RewTerm(
         func=mdp.head_point_in_box_penalty,
-        weight=-5.0,
+        weight=-8.0,
         params={
-            "head_local_offset": (0.03, 0.0, 0.0),
-            "footprint_margin": 0.02,
+            "head_local_offset": (0.00, 0.0, 0.0),
+            "footprint_margin": -0.05,  # 允许头部投影稍微进入箱子边界内，因为推的过程中可能会有轻微的接触和变形。
             "top_surface_margin": 0.03,
             "head_body_cfg": SceneEntityCfg("robot", body_names="Head_.*"),
         },
@@ -292,10 +292,10 @@ class TerminationsCfg:
         func=mdp.goal_reached,
         params={
             "command_name": "box_goal",
-            "distance_threshold": 0.08,
+            "distance_threshold": 0.05,
             "yaw_threshold": 0.2,
             "box_speed_threshold": 0.05,
-            "robot_speed_threshold": 0.08,
+            "robot_speed_threshold": 0.05,
             "settle_steps": 12,
         },
     )

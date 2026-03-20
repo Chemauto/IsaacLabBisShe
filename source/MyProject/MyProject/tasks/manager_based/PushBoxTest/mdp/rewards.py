@@ -399,7 +399,7 @@ def head_point_in_box_penalty(
         1. 在机器人的头部刚体上取一个点（默认取 `Head_.*` 刚体原点） /
            Take a point on the robot head rigid body (defaults to the `Head_.*` body origin)
         2. 将该点转换到世界坐标，再投到箱子局部坐标系 / Transform the point to world, then into the box frame
-        3. 只有当该点的 XY 投影落入箱子的矩形 footprint，且 Z 严格高于箱子顶面，才返回 1 /
+        3. 只有当该点的 XY 投影落入箱子的矩形 footprint,且 Z 严格高于箱子顶面，才返回 1 /
            Return 1 only when the XY projection falls inside the box footprint and Z is strictly above the box top surface
 
     Note:
