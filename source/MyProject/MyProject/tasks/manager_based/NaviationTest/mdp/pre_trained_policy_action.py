@@ -45,6 +45,14 @@ class PreTrainedPolicyAction(ActionTerm):
         self.policy = torch.jit.load(file_bytes).to(env.device).eval()
 
         self._raw_actions = torch.zeros(self.num_envs, self.action_dim, device=self.device)
+        self._action_scale = torch.tensor(cfg.action_scale, device=self.device).view(1, self.action_dim)
+        if cfg.action_clip is None:
+            self._action_clip_min = None
+            self._action_clip_max = None
+        else:
+            clip_tensor = torch.tensor(cfg.action_clip, device=self.device)
+            self._action_clip_min = clip_tensor[:, 0].view(1, self.action_dim)
+            self._action_clip_max = clip_tensor[:, 1].view(1, self.action_dim)
 
         # prepare low level actions
         self._low_level_action_term: ActionTerm = cfg.low_level_actions.class_type(cfg.low_level_actions, env)
@@ -59,7 +67,7 @@ class PreTrainedPolicyAction(ActionTerm):
         # remap some of the low level observations to internal observations
         cfg.low_level_observations.actions.func = lambda dummy_env: last_action()
         cfg.low_level_observations.actions.params = dict()
-        cfg.low_level_observations.velocity_commands.func = lambda dummy_env: self._raw_actions
+        cfg.low_level_observations.velocity_commands.func = lambda dummy_env: self.processed_actions
         cfg.low_level_observations.velocity_commands.params = dict()
 
         # add the low level observations to the observation manager
@@ -81,7 +89,10 @@ class PreTrainedPolicyAction(ActionTerm):
 
     @property
     def processed_actions(self) -> torch.Tensor:
-        return self.raw_actions
+        processed_actions = self.raw_actions * self._action_scale
+        if self._action_clip_min is not None and self._action_clip_max is not None:
+            processed_actions = torch.max(torch.min(processed_actions, self._action_clip_max), self._action_clip_min)
+        return processed_actions
 
     """
     Operations.
@@ -137,7 +148,7 @@ class PreTrainedPolicyAction(ActionTerm):
         base_pos_w = self.robot.data.root_pos_w.clone()
         base_pos_w[:, 2] += 0.5
         # -- resolve the scales and quaternions
-        vel_des_arrow_scale, vel_des_arrow_quat = self._resolve_xy_velocity_to_arrow(self.raw_actions[:, :2])
+        vel_des_arrow_scale, vel_des_arrow_quat = self._resolve_xy_velocity_to_arrow(self.processed_actions[:, :2])
         vel_arrow_scale, vel_arrow_quat = self._resolve_xy_velocity_to_arrow(self.robot.data.root_lin_vel_b[:, :2])
         # display markers
         self.base_vel_goal_visualizer.visualize(base_pos_w, vel_des_arrow_quat, vel_des_arrow_scale)
@@ -184,5 +195,9 @@ class PreTrainedPolicyActionCfg(ActionTermCfg):
     """Low level action configuration."""
     low_level_observations: ObservationGroupCfg = MISSING
     """Low level observation configuration."""
+    action_scale: tuple[float, float, float] = (1.0, 1.0, 1.0)
+    """Optional scale applied to the high-level velocity command before clipping."""
+    action_clip: tuple[tuple[float, float], tuple[float, float], tuple[float, float]] | None = None
+    """Per-dimension clip range applied to the processed high-level velocity command."""
     debug_vis: bool = True
     """Whether to visualize debug information. Defaults to False."""

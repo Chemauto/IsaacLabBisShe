@@ -101,14 +101,14 @@ class MySceneCfg(InteractiveSceneCfg):
     )
     obstacle_1 = _obstacle_cfg(
         prim_path="{ENV_REGEX_NS}/Obstacle1",
-        size=(0.5, 1.2, 0.8),
+        size=(0.5, 1.6, 0.8),
         pos=(1.5, 0.4, 0.4),
         color=(0.22, 0.64, 0.34),
     )
     obstacle_2 = _obstacle_cfg(
         prim_path="{ENV_REGEX_NS}/Obstacle2",
-        size=(0.5, 1.2, 0.8),
-        pos=(3.1, -0.4, 0.4),
+        size=(0.5, 1.6, 0.8),
+        pos=(3.3, -0.4, 0.4),
         color=(0.76, 0.24, 0.20),
     )
     # robots
@@ -146,7 +146,7 @@ class CommandsCfg:
         simple_heading=False,
         resampling_time_range=(8.0, 8.0),
         debug_vis=True,
-        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(4.2, 6.0), pos_y=(-1.6, 1.6), heading=(-0.6, 0.6)),
+        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(4.4, 6.0), pos_y=(-1.6, 1.6), heading=(-0.6, 0.6)),
     )
 
 
@@ -167,6 +167,7 @@ class ActionsCfg:
         low_level_decimation=4,
         low_level_actions=LOW_LEVEL_ENV_CFG.actions.joint_pos,
         low_level_observations=LOW_LEVEL_ENV_CFG.observations.policy,
+        action_clip=((-1.0, 1.0), (-1.0, 1.0), (-1.0, 1.0)),
     )
 
 @configclass
@@ -178,17 +179,17 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        # base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
-        nearest_obstacles_state = ObsTerm(
-            func=mdp.nearest_obstacles_state,
-            params={"k": 3, "prefix": "obstacle_", "fallback_size": (0.5, 1.2, 0.8)},
-            noise=Unoise(n_min=-0.05, n_max=0.05),
-        )
+        # nearest_obstacles_state = ObsTerm(
+        #     func=mdp.nearest_obstacles_state,
+        #     params={"k": 3, "prefix": "obstacle_", "fallback_size": (0.5, 1.2, 0.8)},
+        #     noise=Unoise(n_min=-0.05, n_max=0.05),
+        # )
         obstacle_height_scan = ObsTerm(
             func=mdp.obstacle_height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
@@ -210,16 +211,15 @@ class ObservationsCfg:
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
         projected_gravity = ObsTerm(func=mdp.projected_gravity)
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
-        nearest_obstacles_state = ObsTerm(
-            func=mdp.nearest_obstacles_state,
-            params={"k": 3, "prefix": "obstacle_", "fallback_size": (0.5, 1.2, 0.8)},
-        )
+        # nearest_obstacles_state = ObsTerm(
+        #     func=mdp.nearest_obstacles_state,
+        #     params={"k": 3, "prefix": "obstacle_", "fallback_size": (0.5, 1.2, 0.8)},
+        # )
         obstacle_height_scan = ObsTerm(
             func=mdp.obstacle_height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=(-1.0, 1.0),
         )
-
         def __post_init__(self):
             self.concatenate_terms = True
 
@@ -281,7 +281,7 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
-    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-400.0)
+    termination_penalty = RewTerm(func=mdp.is_terminated, weight=-1.0)
     position_tracking = RewTerm(
         func=mdp.position_command_error_tanh,
         weight=0.5,
@@ -297,11 +297,11 @@ class RewardsCfg:
         weight=-0.2,
         params={"command_name": "pose_command"},
     )
-    base_collision_penalty = RewTerm(
-        func=mdp.undesired_contacts,
-        weight=-10.0,  # 原来: -3.0（加重，抑制用腹部/机身“扑地过坑”）
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},  # 原来: 1.0
-    )
+    # base_collision_penalty = RewTerm(
+    #     func=mdp.undesired_contacts,
+    #     weight=-1.0,  # 原来: -3.0（加重，抑制用腹部/机身“扑地过坑”）
+    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},  # 原来: 1.0
+    # )
 
 
 @configclass
@@ -331,7 +331,7 @@ class NaviationBiSheEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the navigation environment."""
 
     # environment settings
-    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
+    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=4.0)
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     events: EventCfg = EventCfg()
@@ -379,6 +379,6 @@ class NaviationBiSheEnvCfg_Play(NaviationBiSheEnvCfg):
 
         # make a smaller scene for play
         self.scene.num_envs = 50
-        self.scene.env_spacing = 4
+        self.scene.env_spacing = 6
         # disable randomization for play
         self.observations.policy.enable_corruption = False
