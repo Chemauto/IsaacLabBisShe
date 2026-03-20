@@ -44,3 +44,10 @@ class NaviationFlatPPORunnerCfg(NaviationRoughPPORunnerCfg):
 
         self.experiment_name = "naviation_flat"
 
+
+@configclass
+class NaviationBiShePPORunnerCfg(NaviationRoughPPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.experiment_name = "naviation_bishe"

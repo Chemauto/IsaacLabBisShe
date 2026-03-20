@@ -85,3 +85,27 @@ gym.register(
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_nav_rough_ppo_cfg.yaml",
     },
 )
+
+####################################毕设场景的设置#####################################
+
+gym.register(
+    id="Template-Naviation-BiShe-Go2-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.naviation_bishe_env_cfg:NaviationBiSheEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:NaviationBiShePPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_nav_bishe_ppo_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Naviation-BiShe-Go2-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.naviation_bishe_env_cfg:NaviationBiSheEnvCfg_Play",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:NaviationBiShePPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_nav_bishe_ppo_cfg.yaml",
+    },
+)
