@@ -26,6 +26,8 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 import MyProject.tasks.manager_based.WalkTest.mdp as walk_mdp
 from MyProject.tasks.manager_based.WalkTest.config.terrain import (
+    HIGH_DOUBLE_PLATFORM_TERRAINS_CFG,
+    HIGH_DOUBLE_PLATFORM_TERRAINS_PLAY_CFG,
     HIGH_PLATFORM_TERRAINS_CFG,
     HIGH_PLATFORM_TERRAINS_PLAY_CFG,
 )
@@ -528,7 +530,7 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """后初始化：覆盖为高台 climb 训练配置。"""
         # 使用高台地形。地形课程对应的是平台高度，而不是 pit 深度。
-        self.scene.terrain.terrain_generator = HIGH_PLATFORM_TERRAINS_CFG
+        self.scene.terrain.terrain_generator = HIGH_DOUBLE_PLATFORM_TERRAINS_CFG
         self.rewards = self.pit_rewards
         # 从最低课程等级开始，逐步提高平台高度。
         self.scene.terrain.max_init_terrain_level = 0
@@ -585,7 +587,7 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()
-        self.scene.terrain.terrain_generator = HIGH_PLATFORM_TERRAINS_PLAY_CFG
+        self.scene.terrain.terrain_generator = HIGH_DOUBLE_PLATFORM_TERRAINS_PLAY_CFG
         # make a smaller scene for play
         self.scene.num_envs = 50
         self.scene.env_spacing = 4
