@@ -16,6 +16,7 @@ from isaaclab.envs import ManagerBasedEnv
 from isaaclab.envs.manager_based_env_cfg import ManagerBasedEnvCfg
 
 from .env_test_env_cfg import build_scene_cfg
+from .observation_schema import RUNTIME_BUFFER_DIMS
 
 
 class EnvTestEnv(ManagerBasedEnv, gym.Env):
@@ -87,15 +88,26 @@ class EnvTestEnv(ManagerBasedEnv, gym.Env):
         """确保统一观测里用到的运行时缓冲已经存在。"""
 
         if not hasattr(self, "_envtest_velocity_commands"):
-            self._envtest_velocity_commands = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
+            self._envtest_velocity_commands = torch.zeros(
+                (self.num_envs, RUNTIME_BUFFER_DIMS["velocity_commands"]), dtype=torch.float32, device=self.device
+            )
+        if not hasattr(self, "_envtest_pose_command"):
+            self._envtest_pose_command = torch.zeros(
+                (self.num_envs, RUNTIME_BUFFER_DIMS["pose_command"]), dtype=torch.float32, device=self.device
+            )
         if not hasattr(self, "_envtest_push_goal_command"):
-            self._envtest_push_goal_command = torch.zeros((self.num_envs, 4), dtype=torch.float32, device=self.device)
+            self._envtest_push_goal_command = torch.zeros(
+                (self.num_envs, RUNTIME_BUFFER_DIMS["push_goal_command"]), dtype=torch.float32, device=self.device
+            )
         if not hasattr(self, "_envtest_push_actions"):
-            self._envtest_push_actions = torch.zeros((self.num_envs, 3), dtype=torch.float32, device=self.device)
+            self._envtest_push_actions = torch.zeros(
+                (self.num_envs, RUNTIME_BUFFER_DIMS["push_actions"]), dtype=torch.float32, device=self.device
+            )
 
     def set_runtime_observation_buffers(
         self,
         velocity_commands: torch.Tensor | None = None,
+        pose_command: torch.Tensor | None = None,
         push_goal_command: torch.Tensor | None = None,
         push_actions: torch.Tensor | None = None,
     ):
@@ -104,6 +116,7 @@ class EnvTestEnv(ManagerBasedEnv, gym.Env):
         self._ensure_runtime_observation_buffers()
         updates = (
             ("_envtest_velocity_commands", velocity_commands),
+            ("_envtest_pose_command", pose_command),
             ("_envtest_push_goal_command", push_goal_command),
             ("_envtest_push_actions", push_actions),
         )

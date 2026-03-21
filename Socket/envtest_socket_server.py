@@ -22,6 +22,9 @@ SKILL_NAME_TO_ID = {
     "climb": 2,
     "push": 3,
     "push_box": 3,
+    "nav": 4,
+    "navigation": 4,
+    "navigation_bishe": 4,
 }
 BOOL_TRUE = {"1", "true", "on", "run", "start", "yes", "y"}
 BOOL_FALSE = {"0", "false", "off", "stop", "idle", "no", "n"}
@@ -183,8 +186,8 @@ def apply_message(text: str, output_paths: OutputPaths) -> list[str]:
     if skill_id is None:
         skill_id = _parse_skill_name(normalized)
     if skill_id is not None:
-        if skill_id not in (0, 1, 2, 3):
-            raise ValueError(f"model_use 必须是 0/1/2/3，收到: {skill_id}")
+        if skill_id not in (0, 1, 2, 3, 4):
+            raise ValueError(f"model_use 必须是 0/1/2/3/4，收到: {skill_id}")
         _write_text(output_paths.model_use, str(skill_id))
         updates.append(f"model_use={skill_id}")
 

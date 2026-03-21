@@ -215,7 +215,6 @@ class MySceneCfg(InteractiveSceneCfg):
         debug_vis=False,
         mesh_prim_paths=["/World/ground"],
     )
-
     # 机器人前视相机。
     # 这里使用 USD Camera，挂在 Go2 的 base 上，
     # 后续可以直接通过 env.unwrapped.scene["front_camera"] 读取图像。
@@ -271,18 +270,20 @@ class ActionsCfg:
 class ObservationsCfg:
     """统一观测配置。
 
-    这里不再只保留“最小状态”，而是直接做成 walk / climb / push_box 三个技能的观测并集。
+    这里不再只保留“最小状态”，而是直接做成 walk / climb / push_box / navigation 四个技能的观测并集。
     统一后的 policy 向量按顺序包含：
 
     - walk / climb 低层公共项
+    - navigation 高层特有项
     - 推箱子高层特有项
 
     当前总维度为：
     - 低层部分：235 维
+    - navigation 额外部分：4 维
     - 推箱子额外部分：17 维
-    - 并集总计：252 维
+    - 并集总计：256 维
 
-    后续 `envtest_model_use_player.py` 会按 `model_use` 从这 252 维里切出各技能真正需要的部分。
+    后续 `envtest_model_use_player.py` 会按 `model_use` 从这 256 维里切出各技能真正需要的部分。
     """
 
     @configclass
@@ -304,6 +305,10 @@ class ObservationsCfg:
         actions = ObsTerm(func=mdp.last_action)
         # 结构化高度扫描（187）
         height_scan = ObsTerm(func=mdp.height_scan, params={"sensor_cfg": SceneEntityCfg("height_scanner")})
+
+        # ===== navigation 高层额外观测 =====
+        # base-frame pose command（4：dx, dy, dz, dyaw）
+        pose_command = ObsTerm(func=mdp.pose_command)
 
         # ===== push_box 高层额外观测 =====
         # support_box 的位姿；若当前场景没有箱子则返回 0（7）

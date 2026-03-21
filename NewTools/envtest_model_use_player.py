@@ -7,7 +7,7 @@
 
 设计目标：
 - 场景始终使用 EnvTest；
-- EnvTest 的 policy 观测改成三个技能的并集；
+- EnvTest 的 policy 观测改成多技能观测项的并集；
 - 本脚本每步先取统一大观测，再按 `model_use` 切出当前技能真正需要的输入；
 - 后续 LLM 只需要改 `model_use`，不需要再关心底层观测拼接逻辑。
 
@@ -16,6 +16,7 @@
 - model_use=1: walk（按 walk_rough 的 235 维观测接口）
 - model_use=2: climb（235 维观测接口）
 - model_use=3: push_box（23 维高层观测 + 235 维低层 walk 观测）
+- model_use=4: navigation（197 维高层观测 + 235 维低层 walk 观测）
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ parser.add_argument(
 )
 parser.add_argument("--task", type=str, default="Template-EnvTest-Go2-Play-v0", help="EnvTest 任务名。")
 parser.add_argument("--scene_id", type=int, default=0, help="EnvTest 场景编号，使用 0~4。")
-parser.add_argument("--model_use", type=int, default=0, help="技能编号：0=idle，1=walk，2=climb，3=push_box。")
+parser.add_argument("--model_use", type=int, default=0, help="技能编号：0=idle，1=walk，2=climb，3=push_box，4=navigation。")
 parser.add_argument(
     "--model_use_file",
     type=str,
@@ -111,8 +112,13 @@ from isaaclab_tasks.utils import parse_env_cfg
 
 import MyProject.tasks  # noqa: F401
 import MyProject.tasks.manager_based.EnvTest.mdp as envtest_mdp
+from MyProject.tasks.manager_based.EnvTest.observation_schema import (
+    NAVIGATION_HIGH_LEVEL_OBS_DIM,
+    NAVIGATION_HIGH_LEVEL_OBS_TERMS,
+)
 from MyProject.tasks.manager_based.EnvTest.scene_layout import BOX_SIZE, HIGH_OBSTACLE_SIZE, LOW_OBSTACLE_SIZE
 from NewTools.envtest_control_flags import consume_one_shot_flag
+from NewTools.envtest_navigation_bridge import align_navigation_goal_height, build_navigation_pose_command
 from NewTools.envtest_status_panel import AssetStatus, StatusSnapshot, render_status_block
 
 
@@ -137,6 +143,7 @@ PUSH_HIGH_LEVEL_OBS_TERMS = (
 LOW_LEVEL_OBS_DIM = 235
 CLIMB_PLAY_DEFAULT_VELOCITY = (0.75, 0.0, 0.0)
 STATUS_PANEL_REFRESH_INTERVAL = 0.2
+NAVIGATION_HIGH_LEVEL_DECIMATION = 10
 STATUS_PLATFORM_ASSETS = (
     ("platform_1", ("left_high_obstacle", "left_low_obstacle")),
     ("platform_2", ("right_high_obstacle", "right_low_obstacle")),
@@ -188,6 +195,15 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
         obs_dim=23,
         checkpoint_format="rsl_rl_checkpoint",
         actor_hidden_dims=(256, 128),
+        activation="elu",
+    ),
+    4: SkillSpec(
+        name="navigation",
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "NaviationPolicy", "NavigationBishe.pt"),
+        obs_terms=NAVIGATION_HIGH_LEVEL_OBS_TERMS,
+        obs_dim=NAVIGATION_HIGH_LEVEL_OBS_DIM,
+        checkpoint_format="rsl_rl_checkpoint",
+        actor_hidden_dims=(128, 128),
         activation="elu",
     ),
 }
@@ -446,13 +462,20 @@ def _process_push_actions(raw_actions: torch.Tensor) -> torch.Tensor:
     return raw_actions
 
 
-def _align_push_low_level_obs_to_training(
+def _process_navigation_actions(raw_actions: torch.Tensor) -> torch.Tensor:
+    """对齐 NavigationTest：高层动作按训练时的 `[-1, 1]` 范围裁剪。"""
+
+    return torch.clamp(raw_actions, min=-1.0, max=1.0)
+
+
+def _align_low_level_obs_to_training(
     env,
     policy_obs: torch.Tensor,
     term_slices: dict[str, slice],
-    push_low_level_last_actions: torch.Tensor,
+    last_actions: torch.Tensor,
+    include_support_box: bool = True,
 ) -> torch.Tensor:
-    """把切片后的低层观测对齐到 `PushBoxTest` 内部 low-level ObservationManager 的行为。"""
+    """把切片后的低层观测对齐到 rough-walk 训练时的 ObservationManager 行为。"""
 
     aligned_obs = policy_obs.clone()
     local_slices: dict[str, slice] = {}
@@ -464,10 +487,13 @@ def _align_push_low_level_obs_to_training(
         start += term_dim
 
     if hasattr(env, "episode_length_buf"):
-        push_low_level_last_actions[env.episode_length_buf == 0, :] = 0.0
+        last_actions[env.episode_length_buf == 0, :] = 0.0
 
-    aligned_obs[:, local_slices["actions"]] = push_low_level_last_actions
-    aligned_obs[:, local_slices["height_scan"]] = envtest_mdp.height_scan_without_box(env)
+    aligned_obs[:, local_slices["actions"]] = last_actions
+    if include_support_box:
+        aligned_obs[:, local_slices["height_scan"]] = policy_obs[:, local_slices["height_scan"]]
+    else:
+        aligned_obs[:, local_slices["height_scan"]] = envtest_mdp.height_scan_without_box(env)
     aligned_obs[:, local_slices["base_lin_vel"]] += torch.empty_like(
         aligned_obs[:, local_slices["base_lin_vel"]]
     ).uniform_(-0.1, 0.1)
@@ -489,6 +515,32 @@ def _align_push_low_level_obs_to_training(
     aligned_obs[:, local_slices["height_scan"]] = torch.clamp(
         aligned_obs[:, local_slices["height_scan"]], min=-1.0, max=1.0
     )
+    return aligned_obs
+
+
+def _align_push_low_level_obs_to_training(
+    env,
+    policy_obs: torch.Tensor,
+    term_slices: dict[str, slice],
+    push_low_level_last_actions: torch.Tensor,
+) -> torch.Tensor:
+    """Push-box 分支复用 rough-walk 低层观测，但要屏蔽 support_box。"""
+
+    return _align_low_level_obs_to_training(
+        env,
+        policy_obs,
+        term_slices,
+        push_low_level_last_actions,
+        include_support_box=False,
+    )
+
+
+def _align_navigation_high_level_obs_to_play(policy_obs: torch.Tensor) -> torch.Tensor:
+    """对齐 NaviationBiSheEnvCfg_Play：不加噪声，只保留裁剪。"""
+
+    aligned_obs = policy_obs.clone()
+    local_slices = {"height_scan": slice(10, NAVIGATION_HIGH_LEVEL_OBS_DIM)}
+    aligned_obs[:, local_slices["height_scan"]] = torch.clamp(aligned_obs[:, local_slices["height_scan"]], -1.0, 1.0)
     return aligned_obs
 
 
@@ -542,7 +594,7 @@ def _slice_observation(unified_obs: torch.Tensor, term_slices: dict[str, slice],
 def _validate_required_terms(term_slices: dict[str, slice]):
     """确保统一观测中已经包含各技能需要的全部 term。"""
 
-    required_terms = set(LOW_LEVEL_OBS_TERMS) | set(PUSH_HIGH_LEVEL_OBS_TERMS)
+    required_terms = set(LOW_LEVEL_OBS_TERMS) | set(PUSH_HIGH_LEVEL_OBS_TERMS) | set(NAVIGATION_HIGH_LEVEL_OBS_TERMS)
     missing_terms = sorted(required_terms.difference(term_slices))
     if missing_terms:
         raise RuntimeError(f"EnvTest unified observation is missing terms: {missing_terms}")
@@ -635,6 +687,8 @@ def _build_status_snapshot(
     env,
     model_use: int,
     start_flag: bool,
+    unified_obs_dim: int,
+    policy_obs_dim: int | None,
     velocity_command: torch.Tensor,
     pose_command: torch.Tensor | None,
     goal_command: torch.Tensor | None,
@@ -652,6 +706,8 @@ def _build_status_snapshot(
         skill=_skill_name_for_model_use(model_use),
         scene_id=args_cli.scene_id,
         start=start_flag,
+        unified_obs_dim=unified_obs_dim,
+        policy_obs_dim=policy_obs_dim,
         pose_command=_tensor_row_to_tuple(pose_command),
         vel_command=_tensor_row_to_tuple(velocity_command),
         robot_pose=_tensor_row_to_tuple(robot_pose_e),
@@ -707,11 +763,12 @@ def main():
     expected_action_shape = (num_envs, action_dim)
 
     policies = _load_policies(device)
-    push_low_level_policy = _load_push_low_level_policy(device)
+    rough_low_level_policy = _load_push_low_level_policy(device)
 
     term_slices = _build_obs_slices(env.unwrapped)
     _validate_required_terms(term_slices)
     _print_obs_layout(term_slices)
+    unified_obs_dim = env.unwrapped.observation_manager.group_obs_dim["policy"][0]
     print("[INFO] Control files have been reset at startup.")
     print(f"[INFO] model_use file: {args_cli.model_use_file}")
     print(f"[INFO] velocity command file: {args_cli.velocity_command_file}")
@@ -720,14 +777,19 @@ def main():
     print(f"[INFO] reset file: {args_cli.reset_file}")
 
     base_velocity_commands = _build_default_velocity_commands(num_envs, device)
+    zero_pose_command = torch.zeros((num_envs, 4), dtype=torch.float32, device=device)
     zero_push_goal_command = torch.zeros((num_envs, 4), dtype=torch.float32, device=device)
     zero_push_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
+    zero_navigation_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
     zero_actions = torch.zeros(expected_action_shape, dtype=torch.float32, device=device)
     push_last_processed_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
     push_current_processed_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
     push_low_level_last_actions = torch.zeros(expected_action_shape, dtype=torch.float32, device=device)
     push_high_level_counter = 0
     push_entry_settle_steps = 0
+    navigation_current_processed_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
+    navigation_low_level_last_actions = torch.zeros(expected_action_shape, dtype=torch.float32, device=device)
+    navigation_high_level_counter = 0
 
     current_model_use = args_cli.model_use
     previous_model_use = None
@@ -743,8 +805,17 @@ def main():
         current_velocity_commands = _read_float_vector_file(args_cli.velocity_command_file, 3, base_velocity_commands)
         current_velocity_commands = _resolve_runtime_velocity_commands(current_model_use, current_velocity_commands)
         explicit_pose_command = _read_explicit_goal_command_file(args_cli.goal_command_file, zero_push_goal_command)
-        current_goal_for_display = explicit_pose_command
+        robot = env.unwrapped.scene["robot"]
+        if explicit_pose_command is None:
+            navigation_goal_command = None
+        else:
+            default_root_height_e = robot.data.default_root_state[:, 2:3] - env.unwrapped.scene.env_origins[:, 2:3]
+            navigation_goal_command = align_navigation_goal_height(explicit_pose_command, default_root_height_e)
+        current_goal_for_display = navigation_goal_command if current_model_use == 4 else explicit_pose_command
+        current_pose_for_display = None if current_model_use == 4 else explicit_pose_command
+        current_velocity_for_display = current_velocity_commands
         start_flag = _resolve_start_flag()
+        current_policy_obs_dim = SKILL_REGISTRY[current_model_use].obs_dim if start_flag and current_model_use in SKILL_REGISTRY else None
         reset_requested = consume_one_shot_flag(args_cli.reset_file)
         previous_start_flag_value = previous_start_flag
         previous_model_use_value = previous_model_use
@@ -768,6 +839,9 @@ def main():
                 push_low_level_last_actions.zero_()
                 push_high_level_counter = 0
                 push_entry_settle_steps = 0
+                navigation_current_processed_actions.zero_()
+                navigation_low_level_last_actions.zero_()
+                navigation_high_level_counter = 0
                 print(f"[INFO] 切换技能: model_use=0, skill=idle, scene_id={args_cli.scene_id}")
             else:
                 push_last_processed_actions.zero_()
@@ -775,6 +849,9 @@ def main():
                 push_low_level_last_actions.zero_()
                 push_high_level_counter = 0
                 push_entry_settle_steps = 0
+                navigation_current_processed_actions.zero_()
+                navigation_low_level_last_actions.zero_()
+                navigation_high_level_counter = 0
                 print(
                     f"[INFO] 切换技能: model_use={current_model_use}, "
                     f"skill={SKILL_REGISTRY[current_model_use].name}, scene_id={args_cli.scene_id}"
@@ -789,6 +866,9 @@ def main():
             push_low_level_last_actions.zero_()
             push_high_level_counter = 0
             push_entry_settle_steps = 1 if start_flag and current_model_use == 3 else 0
+            navigation_current_processed_actions.zero_()
+            navigation_low_level_last_actions.zero_()
+            navigation_high_level_counter = 0
             previous_logged_push_goal = None
             print("[INFO] 收到 reset 指令，环境已重置。")
 
@@ -800,14 +880,30 @@ def main():
             push_low_level_last_actions.zero_()
             push_high_level_counter = 0
             push_entry_settle_steps = 1
+            navigation_current_processed_actions.zero_()
+            navigation_low_level_last_actions.zero_()
+            navigation_high_level_counter = 0
             previous_logged_push_goal = None
             print("[INFO] 进入 push_box 执行态，环境已重置并预留 1 个稳定步。")
+
+        if navigation_goal_command is None:
+            navigation_pose_command = zero_pose_command
+        else:
+            robot_pos_e = robot.data.root_pos_w[:, :3] - env.unwrapped.scene.env_origins
+            navigation_pose_command = build_navigation_pose_command(
+                robot_pos_e,
+                robot.data.root_quat_w,
+                navigation_goal_command,
+            )
+            if current_model_use == 4:
+                current_pose_for_display = navigation_pose_command
 
         with torch.inference_mode():
             # 第一步：待机阶段。机器人保持静止，但仍然持续读取 model_use、速度指令和位置指令文件。
             if push_entry_settle_steps > 0:
                 env.unwrapped.set_runtime_observation_buffers(
                     velocity_commands=current_velocity_commands,
+                    pose_command=zero_pose_command,
                     push_goal_command=zero_push_goal_command,
                     push_actions=zero_push_actions,
                 )
@@ -820,8 +916,12 @@ def main():
                 push_low_level_last_actions.zero_()
                 push_high_level_counter = 0
                 push_entry_settle_steps = 0
+                navigation_current_processed_actions.zero_()
+                navigation_low_level_last_actions.zero_()
+                navigation_high_level_counter = 0
                 env.unwrapped.set_runtime_observation_buffers(
                     velocity_commands=current_velocity_commands,
+                    pose_command=zero_pose_command,
                     push_goal_command=zero_push_goal_command,
                     push_actions=zero_push_actions,
                 )
@@ -830,6 +930,7 @@ def main():
             elif current_model_use in (1, 2):
                 env.unwrapped.set_runtime_observation_buffers(
                     velocity_commands=current_velocity_commands,
+                    pose_command=zero_pose_command,
                     push_goal_command=zero_push_goal_command,
                     push_actions=zero_push_actions,
                 )
@@ -838,6 +939,54 @@ def main():
                 policy_obs = _align_low_level_obs_to_play(policy_obs, term_slices)
                 _check_obs_dim(current_model_use, policy_obs)
                 actions = policies[current_model_use](policy_obs)
+            elif current_model_use == 4:
+                if navigation_goal_command is None:
+                    navigation_current_processed_actions.zero_()
+                    navigation_high_level_counter = 0
+                elif navigation_high_level_counter == 0:
+                    env.unwrapped.set_runtime_observation_buffers(
+                        velocity_commands=current_velocity_commands,
+                        pose_command=navigation_pose_command,
+                        push_goal_command=zero_push_goal_command,
+                        push_actions=zero_push_actions,
+                    )
+                    unified_obs = env.unwrapped.observation_manager.compute_group("policy")
+                    navigation_high_obs = _slice_observation(unified_obs, term_slices, SKILL_REGISTRY[4].obs_terms)
+                    navigation_high_obs = _align_navigation_high_level_obs_to_play(navigation_high_obs)
+                    _check_obs_dim(4, navigation_high_obs)
+                    navigation_raw_actions = policies[4](navigation_high_obs)
+                    if navigation_raw_actions.shape != navigation_current_processed_actions.shape:
+                        raise RuntimeError(
+                            f"Navigation high-level action dim mismatch. "
+                            f"Expected {tuple(navigation_current_processed_actions.shape)}, "
+                            f"got {tuple(navigation_raw_actions.shape)}."
+                        )
+                    navigation_current_processed_actions.copy_(_process_navigation_actions(navigation_raw_actions))
+
+                current_velocity_for_display = navigation_current_processed_actions
+                env.unwrapped.set_runtime_observation_buffers(
+                    velocity_commands=navigation_current_processed_actions,
+                    pose_command=navigation_pose_command,
+                    push_goal_command=zero_push_goal_command,
+                    push_actions=zero_navigation_actions,
+                )
+                unified_obs = env.unwrapped.observation_manager.compute_group("policy")
+                policy_obs = _slice_observation(unified_obs, term_slices, LOW_LEVEL_OBS_TERMS)
+                policy_obs = _align_low_level_obs_to_training(
+                    env.unwrapped,
+                    policy_obs,
+                    term_slices,
+                    navigation_low_level_last_actions,
+                    include_support_box=True,
+                )
+                if policy_obs.shape[1] != LOW_LEVEL_OBS_DIM:
+                    raise RuntimeError(
+                        f"Navigation low-level observation dim mismatch. "
+                        f"Expected {LOW_LEVEL_OBS_DIM}, got {policy_obs.shape[1]}."
+                    )
+                actions = rough_low_level_policy(policy_obs)
+                navigation_low_level_last_actions.copy_(actions)
+                navigation_high_level_counter = (navigation_high_level_counter + 1) % NAVIGATION_HIGH_LEVEL_DECIMATION
             else:
                 scene_push_goal = _default_push_goal(env.unwrapped)
                 push_goal_command = scene_push_goal if explicit_pose_command is None else explicit_pose_command
@@ -846,6 +995,7 @@ def main():
                     # 对齐 PushBoxTest：高层策略每 10 个 EnvTest 步更新一次。
                     env.unwrapped.set_runtime_observation_buffers(
                         velocity_commands=current_velocity_commands,
+                        pose_command=zero_pose_command,
                         push_goal_command=push_goal_command,
                         push_actions=push_last_processed_actions,
                     )
@@ -889,6 +1039,7 @@ def main():
                 # 再把裁剪后的高层动作写入低层速度命令槽位，供 rough-walk 低层策略执行。
                 env.unwrapped.set_runtime_observation_buffers(
                     velocity_commands=push_current_processed_actions,
+                    pose_command=zero_pose_command,
                     push_goal_command=push_goal_command,
                     push_actions=push_current_processed_actions,
                 )
@@ -902,7 +1053,7 @@ def main():
                         f"Push low-level observation dim mismatch. "
                         f"Expected {LOW_LEVEL_OBS_DIM}, got {policy_obs.shape[1]}."
                     )
-                actions = push_low_level_policy(policy_obs)
+                actions = rough_low_level_policy(policy_obs)
                 push_low_level_last_actions.copy_(actions)
                 push_high_level_counter = (push_high_level_counter + 1) % PUSH_HIGH_LEVEL_DECIMATION
 
@@ -916,10 +1067,9 @@ def main():
 
         step_count += 1
         if step_count == 1:
-            unified_dim = env.unwrapped.observation_manager.group_obs_dim["policy"][0]
-            print(f"[INFO] EnvTest unified observation dim: {unified_dim}")
+            print(f"[INFO] EnvTest unified observation dim: {unified_obs_dim}")
             if start_flag and current_model_use in SKILL_REGISTRY:
-                print(f"[INFO] 当前策略输入维度: {policy_obs.shape[1]}")
+                print(f"[INFO] 当前策略输入维度: {current_policy_obs_dim}")
             else:
                 print("[INFO] 当前处于待机阶段，机器人保持静止。")
             print(f"[INFO] 当前策略输出维度: {actions.shape[1]}")
@@ -929,8 +1079,10 @@ def main():
                 env.unwrapped,
                 model_use=current_model_use,
                 start_flag=start_flag,
-                velocity_command=current_velocity_commands,
-                pose_command=explicit_pose_command,
+                unified_obs_dim=unified_obs_dim,
+                policy_obs_dim=current_policy_obs_dim,
+                velocity_command=current_velocity_for_display,
+                pose_command=current_pose_for_display,
                 goal_command=current_goal_for_display,
             )
             _render_status_panel(status_snapshot)

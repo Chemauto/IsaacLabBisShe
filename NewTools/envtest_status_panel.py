@@ -20,6 +20,8 @@ class StatusSnapshot:
     skill: str | None
     scene_id: int | None
     start: bool | None
+    unified_obs_dim: int | None
+    policy_obs_dim: int | None
     pose_command: tuple[float, ...] | None
     vel_command: tuple[float, ...] | None
     robot_pose: tuple[float, ...] | None
@@ -60,6 +62,8 @@ def build_status_lines(snapshot: StatusSnapshot) -> list[str]:
         f"skill: {_format_scalar(snapshot.skill)}",
         f"scene_id: {_format_scalar(snapshot.scene_id)}",
         f"start: {_format_start(snapshot.start)}",
+        f"unified_obs_dim: {_format_scalar(snapshot.unified_obs_dim)}",
+        f"policy_obs_dim: {_format_scalar(snapshot.policy_obs_dim)}",
         f"pose_command: {_format_vector(snapshot.pose_command)}",
         f"vel_command: {_format_vector(snapshot.vel_command)}",
         f"robot_pose: {_format_vector(snapshot.robot_pose)}",

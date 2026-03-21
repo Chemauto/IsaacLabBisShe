@@ -19,6 +19,7 @@ from MyProject.tasks.manager_based.EnvTest.scene_layout import (
     WALL_LENGTH,
     WALL_THICKNESS,
 )
+from MyProject.tasks.manager_based.EnvTest.observation_schema import RUNTIME_BUFFER_DIMS
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
@@ -42,6 +43,7 @@ def _runtime_buffer(env: "ManagerBasedEnv", attr_name: str, dim: int) -> torch.T
 
     这些缓冲用于把“外部控制器实时给出的指令”写进统一观测：
     - 低层速度命令 `velocity_commands`
+    - 导航目标位姿 `pose_command`（dx, dy, dz, dyaw）
     - 推箱子目标点 `goal_command`（xyz + yaw）
     - 推箱子高层上一步动作 `push_actions`
     """
@@ -83,19 +85,25 @@ def _scene_asset_size(
 def velocity_commands(env: "ManagerBasedEnv") -> torch.Tensor:
     """低层策略速度命令槽位。"""
 
-    return _runtime_buffer(env, "_envtest_velocity_commands", 3)
+    return _runtime_buffer(env, "_envtest_velocity_commands", RUNTIME_BUFFER_DIMS["velocity_commands"])
+
+
+def pose_command(env: "ManagerBasedEnv") -> torch.Tensor:
+    """导航策略的 pose command 槽位。"""
+
+    return _runtime_buffer(env, "_envtest_pose_command", RUNTIME_BUFFER_DIMS["pose_command"])
 
 
 def push_goal_command(env: "ManagerBasedEnv") -> torch.Tensor:
     """推箱子高层目标点槽位。"""
 
-    return _runtime_buffer(env, "_envtest_push_goal_command", 4)
+    return _runtime_buffer(env, "_envtest_push_goal_command", RUNTIME_BUFFER_DIMS["push_goal_command"])
 
 
 def push_actions(env: "ManagerBasedEnv") -> torch.Tensor:
     """推箱子高层上一步裁剪后动作槽位。"""
 
-    return _runtime_buffer(env, "_envtest_push_actions", 3)
+    return _runtime_buffer(env, "_envtest_push_actions", RUNTIME_BUFFER_DIMS["push_actions"])
 
 
 def _build_height_scan_grid(env: "ManagerBasedEnv", sensor_cfg: SceneEntityCfg) -> torch.Tensor:

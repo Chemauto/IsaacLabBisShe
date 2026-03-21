@@ -22,6 +22,8 @@ player 启动后会在终端里持续覆盖刷新一块状态面板，显示：
 - `skill`
 - `scene_id`
 - `start`
+- `unified_obs_dim`
+- `policy_obs_dim`
 - `pose_command`
 - `vel_command`
 - `robot_pose`
@@ -31,6 +33,14 @@ player 启动后会在终端里持续覆盖刷新一块状态面板，显示：
 - `box`
 
 如果某个对象或命令当前不存在，会显示 `None`。
+
+其中：
+
+- `unified_obs_dim` 是 EnvTest 统一 `policy` 观测维度，当前为 `256`
+- `policy_obs_dim` 是当前 `model_use` 实际切片后的策略输入维度
+- walk / climb 对应 `235`
+- push_box 高层对应 `23`
+- navigation 高层对应 `197`
 
 再启动 UDP 服务：
 
@@ -59,6 +69,7 @@ python Socket/envtest_socket_client.py --start 1
 python Socket/envtest_socket_client.py --start 0
 python Socket/envtest_socket_client.py --model_use 3 --goal 1.8 0.0 0.1 --start 1
 python Socket/envtest_socket_client.py --model_use 3 --goal_auto --start 1
+python Socket/envtest_socket_client.py --model_use 4 --goal 4.5 0.0 0.1 --start 1
 python Socket/envtest_socket_client.py --reset 1
 ```
 
@@ -66,11 +77,14 @@ python Socket/envtest_socket_client.py --reset 1
 
 - `--model_use 3` 且未显式给 `--goal` 时，client 会自动补 `goal=auto`
 - server 端也会对 `model_use=3` 做同样兜底，保证 push_box 默认走场景自动目标
+- `--model_use 4` 复用同一个 `goal` 文件；player 会把世界系 `goal(x, y, z)` 转成 navigation 需要的 base-frame `pose_command(dx, dy, dz, dyaw)`
 - `--reset 1` 只会触发一次 `env.reset()`，不会改当前 `model_use / start / goal / velocity`
+- EnvTest 的统一 `policy` 观测现在是四类技能的并集：walk / climb / push_box / navigation，总维度 `256`
+- player 会先读这 `256` 维统一观测，再按 `model_use` 切出当前技能真正需要的输入
 
 ## 支持的控制字段
 
-- `--model_use 0/1/2/3`
+- `--model_use 0/1/2/3/4`
 - `--velocity vx vy wz`
 - `--goal x y z`
 - `--goal_auto`
@@ -81,13 +95,14 @@ python Socket/envtest_socket_client.py --reset 1
 
 ```bash
 python Socket/envtest_socket_client.py --text "model_use=3; goal=1.8,0,0.1; start=1"
+python Socket/envtest_socket_client.py --text "model_use=4; goal=4.5,0,0.1; start=1"
 python Socket/envtest_socket_client.py --text "reset=1"
 ```
 
 player 侧支持这些文本格式：
 
-- `model_use=0/1/2/3`
-- `skill=0/1/2/3`
+- `model_use=0/1/2/3/4`
+- `skill=0/1/2/3/4`
 - `velocity=0.6,0,0`
 - `vel=0.6,0,0`
 - `goal=1.8,0,0.1`
@@ -102,3 +117,6 @@ player 侧支持这些文本格式：
 - `walk`
 - `climb`
 - `push_box`
+- `nav`
+- `navigation`
+- `navigation_bishe`

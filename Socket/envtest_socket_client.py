@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send EnvTest control commands through UDP socket.")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="目标主机地址。")
     parser.add_argument("--port", type=int, default=5566, help="目标 UDP 端口。")
-    parser.add_argument("--model_use", type=int, choices=(0, 1, 2, 3), help="技能编号：0/1/2/3。")
+    parser.add_argument("--model_use", type=int, choices=(0, 1, 2, 3, 4), help="技能编号：0/1/2/3/4。")
     parser.add_argument("--velocity", type=float, nargs=3, metavar=("VX", "VY", "WZ"), help="速度指令。")
     parser.add_argument("--goal", type=float, nargs=3, metavar=("X", "Y", "Z"), help="位置指令。")
     parser.add_argument("--goal_auto", action="store_true", default=False, help="把 goal 切回自动场景目标。")
