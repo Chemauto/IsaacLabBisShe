@@ -61,16 +61,16 @@ gym.register(
     },
 )
 
-####################################楼梯地形的设置#####################################
+####################################climb地形的设置#####################################
 
 gym.register(
     id="Template-Naviation-Climb-Go2-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.naviation_rough_env_cfg:LocomotionNaviationClimbEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:NaviationRoughPPORunnerCfg",
-        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_nav_rough_ppo_cfg.yaml",
+        "env_cfg_entry_point": f"{__name__}.naviation_climb_env_cfg:NaviationClimbEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:NaviationClimbPPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_nav_climb_ppo_cfg.yaml",
     },
 )
 
@@ -80,9 +80,9 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.naviation_rough_env_cfg:LocomotionNaviationClimbEnvCfg_Play",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:NaviationRoughPPORunnerCfg",
-        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_nav_rough_ppo_cfg.yaml",
+        "env_cfg_entry_point": f"{__name__}.naviation_climb_env_cfg:NaviationClimbEnvCfg_Play",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:NaviationClimbPPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_nav_climb_ppo_cfg.yaml",
     },
 )
 

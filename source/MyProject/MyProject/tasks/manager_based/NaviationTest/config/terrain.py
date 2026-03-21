@@ -209,3 +209,29 @@ STAIR_TERRAINS_CFG = TerrainGeneratorCfg(
         ),
     },
 )
+
+
+
+Climb_TERRAINS_CFG = TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    sub_terrains={
+        "high_platform": terrain_gen.MeshBoxTerrainCfg(
+            proportion=1.0,
+            # difficulty=0 时约 0.10m，difficulty=1 时约 0.26m。
+            # 适合作为 easy -> medium -> hard 的高度课程。
+            box_height_range=(0.30, 0.30),
+            # 顶面尽量做宽，减少机器人从两侧绕开的空间。
+            platform_width=1.5,
+            # 论文语义更接近“单高台”，因此不使用双层箱体。
+            double_box=False,
+            size=(8.0, 8.0),
+        ),
+    },
+)

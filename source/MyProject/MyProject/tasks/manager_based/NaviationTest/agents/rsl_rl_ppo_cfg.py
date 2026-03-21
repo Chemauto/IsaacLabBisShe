@@ -52,3 +52,11 @@ class NaviationBiShePPORunnerCfg(NaviationRoughPPORunnerCfg):
         self.num_steps_per_env = 24
         self.max_iterations = 6000
         self.experiment_name = "naviation_bishe"
+
+@configclass
+class NaviationClimbPPORunnerCfg(NaviationRoughPPORunnerCfg):
+    def __post_init__(self):
+        super().__post_init__()
+        self.num_steps_per_env = 24
+        self.max_iterations = 6000
+        self.experiment_name = "naviation_climb"
