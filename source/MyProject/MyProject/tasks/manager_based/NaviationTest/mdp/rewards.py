@@ -131,7 +131,7 @@ def heading_command_error_abs(env: ManagerBasedRLEnv, command_name: str) -> torc
 
 def lateral_deviation_penalty(
     env: ManagerBasedRLEnv,
-    threshold: float = 1.5,
+    threshold: float = 0.8,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """Penalize lateral drift once the robot leaves the central corridor.
@@ -141,7 +141,7 @@ def lateral_deviation_penalty(
     asset = env.scene[asset_cfg.name]
     root_pos_e = asset.data.root_pos_w - env.scene.env_origins
     lateral_error = torch.abs(root_pos_e[:, 1]) - threshold
-    return torch.clamp(lateral_error, min=0.0)
+    return torch.square(torch.clamp(lateral_error, min=0.0))
 
 
 def progress_reward(
@@ -558,4 +558,3 @@ def vertical_lin_vel_penalty(
     
 #     return on_platform.float()
 ################################################################################
-

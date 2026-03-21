@@ -223,8 +223,8 @@ class RewardsCfg:
     )
     lateral_deviation_penalty = RewTerm(
         func=mdp.lateral_deviation_penalty,
-        weight=-0.5,
-        params={"threshold": 1.5},
+        weight=-1.0,
+        params={"threshold": 0.8},
     )
     # base_collision_penalty = RewTerm(
     #     func=mdp.undesired_contacts,
