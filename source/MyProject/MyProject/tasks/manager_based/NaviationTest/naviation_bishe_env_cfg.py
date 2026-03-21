@@ -7,7 +7,6 @@ from pathlib import Path
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
-from isaaclab.assets import RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import CurriculumTermCfg as CurrTerm
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -20,7 +19,7 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, RayCasterCfg, patterns
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils import configclass
-from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
+from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 # import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
@@ -42,6 +41,7 @@ from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 ##
 
 import MyProject.tasks.manager_based.NaviationTest.mdp as mdp
+from MyProject.tasks.manager_based.NaviationTest.config.terrain import TWO_PIT_TERRAINS_CFG
 from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo2WalkRoughEnvCfg
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughEnvCfg()
 _REPO_ROOT = Path(__file__).resolve().parents[6]
@@ -51,36 +51,6 @@ LOW_LEVEL_POLICY_PATH = str(_REPO_ROOT / LOW_LEVEL_POLICY_REL_PATH)
 #如果需要训练好的话，这个层次的策略也应该训练好一点
 
 
-def _obstacle_cfg(
-    prim_path: str,
-    size: tuple[float, float, float],
-    pos: tuple[float, float, float],
-    color: tuple[float, float, float],
-) -> RigidObjectCfg:
-    """Create a fixed cuboid obstacle for navigation avoidance."""
-
-    return RigidObjectCfg(
-        prim_path=prim_path,
-        spawn=sim_utils.CuboidCfg(
-            size=size,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
-            collision_props=sim_utils.CollisionPropertiesCfg(),
-            physics_material=sim_utils.RigidBodyMaterialCfg(
-                static_friction=1.0,
-                dynamic_friction=1.0,
-                restitution=0.0,
-            ),
-            visual_material=sim_utils.PreviewSurfaceCfg(
-                diffuse_color=color,
-                metallic=0.1,
-                roughness=0.6,
-            ),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=pos),
-    )
-
-
 @configclass
 class MySceneCfg(InteractiveSceneCfg):
     """Configuration for the terrain scene with a legged robot."""
@@ -88,7 +58,9 @@ class MySceneCfg(InteractiveSceneCfg):
     # ground terrain
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
-        terrain_type="plane",
+        terrain_type="generator",
+        terrain_generator=TWO_PIT_TERRAINS_CFG,
+        max_init_terrain_level=0,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -97,19 +69,12 @@ class MySceneCfg(InteractiveSceneCfg):
             dynamic_friction=1.0,
             restitution=0.0,
         ),
+        visual_material=sim_utils.MdlFileCfg(
+            mdl_path=f"{ISAACLAB_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
+            project_uvw=True,
+            texture_scale=(0.25, 0.25),
+        ),
         debug_vis=False,
-    )
-    obstacle_1 = _obstacle_cfg(
-        prim_path="{ENV_REGEX_NS}/Obstacle1",
-        size=(0.5, 1.6, 0.8),
-        pos=(1.5, 0.4, 0.4),
-        color=(0.22, 0.64, 0.34),
-    )
-    obstacle_2 = _obstacle_cfg(
-        prim_path="{ENV_REGEX_NS}/Obstacle2",
-        size=(0.5, 1.6, 0.8),
-        pos=(3.3, -0.4, 0.4),
-        color=(0.76, 0.24, 0.20),
     )
     # robots
     robot: ArticulationCfg = UNITREE_GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
@@ -146,7 +111,7 @@ class CommandsCfg:
         simple_heading=False,
         resampling_time_range=(8.0, 8.0),
         debug_vis=True,
-        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(4.4, 6.0), pos_y=(-1.6, 1.6), heading=(-0.6, 0.6)),
+        ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(4.2, 6.0), pos_y=(-1.4, 1.4), heading=(-0.6, 0.6)),
     )
 
 
@@ -185,13 +150,8 @@ class ObservationsCfg:
             noise=Unoise(n_min=-0.05, n_max=0.05),
         )
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
-        # nearest_obstacles_state = ObsTerm(
-        #     func=mdp.nearest_obstacles_state,
-        #     params={"k": 3, "prefix": "obstacle_", "fallback_size": (0.5, 1.2, 0.8)},
-        #     noise=Unoise(n_min=-0.05, n_max=0.05),
-        # )
-        obstacle_height_scan = ObsTerm(
-            func=mdp.obstacle_height_scan,
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             noise=Unoise(n_min=-0.1, n_max=0.1),
             clip=(-1.0, 1.0),
@@ -211,12 +171,8 @@ class ObservationsCfg:
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
         projected_gravity = ObsTerm(func=mdp.projected_gravity)
         pose_command = ObsTerm(func=mdp.generated_commands, params={"command_name": "pose_command"})
-        # nearest_obstacles_state = ObsTerm(
-        #     func=mdp.nearest_obstacles_state,
-        #     params={"k": 3, "prefix": "obstacle_", "fallback_size": (0.5, 1.2, 0.8)},
-        # )
-        obstacle_height_scan = ObsTerm(
-            func=mdp.obstacle_height_scan,
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=(-1.0, 1.0),
         )
@@ -245,38 +201,6 @@ class EventCfg:
             },
         },
     )
-    reset_obstacle_1 = EventTerm(
-        func=mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.4, 0.2), "y": (-0.2, 0.2), "z": (0.0, 0.0), "yaw": (0.0, 0.0)},
-            "velocity_range": {
-                "x": (0.0, 0.0),
-                "y": (0.0, 0.0),
-                "z": (0.0, 0.0),
-                "roll": (0.0, 0.0),
-                "pitch": (0.0, 0.0),
-                "yaw": (0.0, 0.0),
-            },
-            "asset_cfg": SceneEntityCfg("obstacle_1"),
-        },
-    )
-    reset_obstacle_2 = EventTerm(
-        func=mdp.reset_root_state_uniform,
-        mode="reset",
-        params={
-            "pose_range": {"x": (-0.2, 0.4), "y": (-0.2, 0.2), "z": (0.0, 0.0), "yaw": (0.0, 0.0)},
-            "velocity_range": {
-                "x": (0.0, 0.0),
-                "y": (0.0, 0.0),
-                "z": (0.0, 0.0),
-                "roll": (0.0, 0.0),
-                "pitch": (0.0, 0.0),
-                "yaw": (0.0, 0.0),
-            },
-            "asset_cfg": SceneEntityCfg("obstacle_2"),
-        },
-    )
 
 @configclass
 class RewardsCfg:
@@ -296,6 +220,11 @@ class RewardsCfg:
         func=mdp.heading_command_error_abs,
         weight=-0.2,
         params={"command_name": "pose_command"},
+    )
+    lateral_deviation_penalty = RewTerm(
+        func=mdp.lateral_deviation_penalty,
+        weight=-0.5,
+        params={"threshold": 1.5},
     )
     # base_collision_penalty = RewTerm(
     #     func=mdp.undesired_contacts,
@@ -348,20 +277,25 @@ class NaviationBiSheEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = self.actions.pre_trained_policy_action.low_level_decimation * 10
         self.episode_length_s = self.commands.pose_command.resampling_time_range[1]
         self.events.reset_base.params["pose_range"] = {"x": (-0.2, 0.2), "y": (-0.25, 0.25), "yaw": (-0.15, 0.15)}
-        obstacle_cfgs = (
-            (self.scene.obstacle_1, self.events.reset_obstacle_1),
-            (self.scene.obstacle_2, self.events.reset_obstacle_2),
+        two_pit_cfg = self.scene.terrain.terrain_generator.sub_terrains["two_pit"]
+        pit_cfgs = (
+            (two_pit_cfg.pit_1_position, two_pit_cfg.pit_1_size),
+            (two_pit_cfg.pit_2_position, two_pit_cfg.pit_2_size),
         )
-        max_obstacle_front_x = max(
-            obstacle_cfg.init_state.pos[0] + reset_event.params["pose_range"]["x"][1] + 0.5 * obstacle_cfg.spawn.size[0]
-            for obstacle_cfg, reset_event in obstacle_cfgs
+        max_pit_rear_x = max(
+            pit_position[0] + 0.5 * pit_size[0]
+            for pit_position, pit_size in pit_cfgs
         )
         max_lateral_extent = max(
-            abs(obstacle_cfg.init_state.pos[1]) + reset_event.params["pose_range"]["y"][1] + 0.5 * obstacle_cfg.spawn.size[1]
-            for obstacle_cfg, reset_event in obstacle_cfgs
+            abs(pit_position[1]) + 0.5 * pit_size[1]
+            for pit_position, pit_size in pit_cfgs
         )
-        self.commands.pose_command.ranges.pos_x = (max_obstacle_front_x + 0.45, max_obstacle_front_x + 2.55)
-        self.commands.pose_command.ranges.pos_y = (-max_lateral_extent - 0.6, max_lateral_extent + 0.6)
+        max_goal_x = min(two_pit_cfg.size[0] - two_pit_cfg.spawn_origin_x - 0.75, max_pit_rear_x + 2.5)
+        min_goal_x = max_pit_rear_x + 0.45
+        if max_goal_x <= min_goal_x:
+            max_goal_x = min_goal_x + 0.5
+        self.commands.pose_command.ranges.pos_x = (min_goal_x, max_goal_x)
+        self.commands.pose_command.ranges.pos_y = (-1.4, 1.4)
         self.commands.pose_command.ranges.heading = (-0.6, 0.6)
 
         if self.scene.height_scanner is not None:
@@ -377,8 +311,14 @@ class NaviationBiSheEnvCfg_Play(NaviationBiSheEnvCfg):
         # post init of parent
         super().__post_init__()
 
-        # make a smaller scene for play
-        self.scene.num_envs = 50
-        self.scene.env_spacing = 6
+        # make a single, centered terrain tile for play/debug
+        self.scene.num_envs = 1
+        self.scene.env_spacing = 0.0
+        play_terrain_generator = self.scene.terrain.terrain_generator.copy()
+        play_terrain_generator.num_rows = 1
+        play_terrain_generator.num_cols = 1
+        play_terrain_generator.border_width = 2.0
+        self.scene.terrain.terrain_generator = play_terrain_generator
+        self.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.12, 0.12), "yaw": (0.0, 0.0)}
         # disable randomization for play
         self.observations.policy.enable_corruption = False
