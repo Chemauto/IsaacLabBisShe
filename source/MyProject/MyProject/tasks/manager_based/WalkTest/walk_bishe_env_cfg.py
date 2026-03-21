@@ -327,6 +327,15 @@ class BiShePitRewardsCfg(RewardsCfg):
         func=mdp.flat_orientation_l2,
         weight=-1.0,  # 原来(父类): 0.0
     )
+    feet_air_time = RewTerm(
+        func=mdp.feet_air_time,
+        weight=0.125,  # 原来: 0.01（大幅提升，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去）
+        params={
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+            "command_name": "base_velocity",
+            "threshold": 0.5,
+        },
+    )
     # 启用 gated 抬脚奖励，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去。
     # feet_height = RewTerm(
     #     func=walk_mdp.feet_height_pit_gated,
@@ -383,31 +392,7 @@ class BiShePitRewardsCfg(RewardsCfg):
         },
     )
 
-    # feet_slide = RewTerm(
-    #     func=mdp.feet_slide,
-    #     weight=-0.2,
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*ankle_roll.*"),
-    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*ankle_roll.*"),
-    #     },
-    # )防止腿打滑
-    # # 将原先合并的 thigh+hip 惩罚拆分为两项，便于独立调参。
-    # thigh_collision_penalty = RewTerm(
-    #     func=mdp.undesired_contacts,
-    #     weight=-2.0,  # 原来(合并项): -1.5
-    #     params={
-    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*([Tt][Hh][Ii][Gg][Hh]).*"),
-    #         "threshold": 1.0,  # 原来(合并项): 1.0
-    #     },
-    # )
-    # hip_collision_penalty = RewTerm(
-    #     func=mdp.undesired_contacts,
-    #     weight=-3.0,  # 原来(合并项): -1.5
-    #     params={
-    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*([Hh][Ii][Pp]).*"),
-    #         "threshold": 1.0,  # 原来(合并项): 1.0
-    #     },
-    # )
+
 
 
 @configclass
@@ -421,11 +406,7 @@ class TerminationsCfg:
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},
     )
-    # # 髋关节碰撞仍视为高风险，保留硬终止但阈值适度放宽。
-    # hip_contact = DoneTerm(
-    #     func=mdp.illegal_contact,
-    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*([Hh][Ii][Pp]).*"), "threshold": 1.2},
-    # )
+
 
 @configclass
 class CurriculumCfg:
@@ -558,9 +539,9 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         # self.commands.base_velocity.rel_standing_envs = 0.0
         # self.commands.base_velocity.rel_heading_envs = 0.0
         # self.commands.base_velocity.heading_command = True
-        self.commands.base_velocity.ranges.lin_vel_x = (0.3, 1.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.2, 0.2)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.15, 0.15)
+        self.commands.base_velocity.ranges.lin_vel_x = (0.2, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.0, 0.0)
         # self.commands.base_velocity.ranges.lin_vel_x = (0.5, 1.0)
         # self.commands.base_velocity.ranges.lin_vel_y = (-0.0, 0.0)
         # self.commands.base_velocity.ranges.ang_vel_z = (-0.0, 0.0)
