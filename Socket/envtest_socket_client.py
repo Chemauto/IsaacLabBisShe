@@ -27,6 +27,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--goal", type=float, nargs=3, metavar=("X", "Y", "Z"), help="位置指令。")
     parser.add_argument("--goal_auto", action="store_true", default=False, help="把 goal 切回自动场景目标。")
     parser.add_argument("--start", type=int, choices=(0, 1), help="启动开关：0=待机，1=开始。")
+    parser.add_argument("--reset", type=int, choices=(1,), help="一次性环境重置：1=请求 reset。")
     parser.add_argument("--text", type=str, default="", help="直接发送原始文本，不走字段拼接。")
     return parser.parse_args()
 
@@ -52,6 +53,8 @@ def build_message(args: argparse.Namespace) -> str:
         fields.append(f"goal={x},{y},{z}")
     if args.start is not None:
         fields.append(f"start={args.start}")
+    if args.reset is not None:
+        fields.append("reset=1")
 
     if not fields:
         raise ValueError("至少提供一个控制字段，或使用 --text。")

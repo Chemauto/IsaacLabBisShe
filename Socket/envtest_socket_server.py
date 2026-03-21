@@ -35,6 +35,7 @@ class OutputPaths:
     velocity: str
     goal: str
     start: str
+    reset: str
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,6 +62,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="/tmp/envtest_start.txt",
         help="启动开关文件路径。",
+    )
+    parser.add_argument(
+        "--reset-file",
+        type=str,
+        default="/tmp/envtest_reset.txt",
+        help="一次性环境重置文件路径。",
     )
     return parser.parse_args()
 
@@ -131,6 +138,25 @@ def _parse_start(text: str) -> bool | None:
     raise ValueError(f"无法识别 start 值: {token}")
 
 
+def _parse_reset(text: str) -> bool:
+    """解析一次性 reset 指令。"""
+
+    normalized = text.strip().lower()
+    if normalized == "reset":
+        return True
+
+    match = re.search(r"\breset\b\s*[:=]\s*([A-Za-z0-9_]+)", text, flags=re.IGNORECASE)
+    if match is None:
+        return False
+
+    token = match.group(1).strip().lower()
+    if token == "reset" or token in BOOL_TRUE:
+        return True
+    if token in BOOL_FALSE:
+        return False
+    raise ValueError(f"无法识别 reset 值: {token}")
+
+
 def _parse_skill_name(text: str) -> int | None:
     """解析 `walk / climb / push_box / idle` 这类消息。"""
 
@@ -192,10 +218,14 @@ def apply_message(text: str, output_paths: OutputPaths) -> list[str]:
         _write_text(output_paths.start, "1" if start else "0")
         updates.append(f"start={int(start)}")
 
+    if _parse_reset(normalized):
+        _write_text(output_paths.reset, "1")
+        updates.append("reset=1")
+
     if not updates:
         raise ValueError(
-            "未识别到有效字段。支持：model_use / skill / velocity / goal / start，"
-            "例如 `model_use=3; goal=1.8,0,0.1; start=1`。"
+            "未识别到有效字段。支持：model_use / skill / velocity / goal / start / reset，"
+            "例如 `model_use=3; goal=1.8,0,0.1; start=1` 或 `reset=1`。"
         )
     return updates
 
@@ -209,6 +239,7 @@ def main():
         velocity=args.velocity_file,
         goal=args.goal_file,
         start=args.start_file,
+        reset=args.reset_file,
     )
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -219,7 +250,9 @@ def main():
     print(f"[INFO] velocity file  : {output_paths.velocity}")
     print(f"[INFO] goal file      : {output_paths.goal}")
     print(f"[INFO] start file     : {output_paths.start}")
+    print(f"[INFO] reset file     : {output_paths.reset}")
     print("[INFO] Example: model_use=3; goal=1.8,0,0.1; start=1")
+    print("[INFO] Example: reset=1")
 
     try:
         while True:

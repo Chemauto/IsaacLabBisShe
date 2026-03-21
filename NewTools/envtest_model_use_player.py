@@ -72,6 +72,12 @@ parser.add_argument(
     help="启动开关文件。写入 1 表示开始执行策略，写入 0 表示待机静止。",
 )
 parser.add_argument(
+    "--reset_file",
+    type=str,
+    default="/tmp/envtest_reset.txt",
+    help="一次性环境重置文件。写入 1 表示请求 reset，player 消费后会自动清回 0。",
+)
+parser.add_argument(
     "--auto_start",
     action="store_true",
     default=False,
@@ -105,6 +111,9 @@ from isaaclab_tasks.utils import parse_env_cfg
 
 import MyProject.tasks  # noqa: F401
 import MyProject.tasks.manager_based.EnvTest.mdp as envtest_mdp
+from MyProject.tasks.manager_based.EnvTest.scene_layout import BOX_SIZE, HIGH_OBSTACLE_SIZE, LOW_OBSTACLE_SIZE
+from NewTools.envtest_control_flags import consume_one_shot_flag
+from NewTools.envtest_status_panel import AssetStatus, StatusSnapshot, render_status_block
 
 
 LOW_LEVEL_OBS_TERMS = (
@@ -127,6 +136,18 @@ PUSH_HIGH_LEVEL_OBS_TERMS = (
 )
 LOW_LEVEL_OBS_DIM = 235
 CLIMB_PLAY_DEFAULT_VELOCITY = (0.75, 0.0, 0.0)
+STATUS_PANEL_REFRESH_INTERVAL = 0.2
+STATUS_PLATFORM_ASSETS = (
+    ("platform_1", ("left_high_obstacle", "left_low_obstacle")),
+    ("platform_2", ("right_high_obstacle", "right_low_obstacle")),
+)
+SCENE_ASSET_SIZE_FALLBACKS = {
+    "left_low_obstacle": LOW_OBSTACLE_SIZE,
+    "right_low_obstacle": LOW_OBSTACLE_SIZE,
+    "left_high_obstacle": HIGH_OBSTACLE_SIZE,
+    "right_high_obstacle": HIGH_OBSTACLE_SIZE,
+    "support_box": BOX_SIZE,
+}
 
 
 @dataclass(frozen=True)
@@ -333,6 +354,7 @@ def _initialize_control_files():
     # push_box 默认使用场景自动推导的目标点，不直接写死成 0 0 0。
     _write_text_file(args_cli.goal_command_file, "auto")
     _write_text_file(args_cli.start_file, "1" if args_cli.auto_start else "0")
+    _write_text_file(args_cli.reset_file, "0")
 
 
 def _read_goal_command_file(file_path: str, fallback: torch.Tensor) -> torch.Tensor:
@@ -345,34 +367,51 @@ def _read_goal_command_file(file_path: str, fallback: torch.Tensor) -> torch.Ten
     - 内容是四个数：使用显式目标点和目标 yaw
     """
 
-    if not file_path or not os.path.isfile(file_path):
-        return fallback
+    explicit_goal = _read_explicit_goal_command_file(file_path, fallback)
+    return fallback if explicit_goal is None else explicit_goal
 
-    try:
-        with open(file_path, "r", encoding="utf-8") as file:
-            text = file.read().strip().lower()
-    except OSError:
-        return fallback
 
-    if text in ("", "auto", "scene", "default"):
-        return fallback
+def _parse_goal_command_text(text: str) -> list[float] | None:
+    """把目标点文本解析成 `[x, y, z, yaw]`。"""
 
-    values = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", text)
+    normalized_text = text.strip().lower()
+    if normalized_text in ("", "auto", "scene", "default"):
+        return None
+
+    values = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", normalized_text)
     if len(values) < 3:
-        return fallback
+        return None
 
     try:
         parsed = [float(value) for value in values[:4]]
     except ValueError:
-        return fallback
+        return None
 
     if len(parsed) == 3:
         parsed.append(0.0)
     elif len(parsed) < 4:
-        return fallback
+        return None
+    return parsed
 
-    vector = torch.tensor(parsed, dtype=fallback.dtype, device=fallback.device)
-    return vector.unsqueeze(0).repeat(fallback.shape[0], 1)
+
+def _read_explicit_goal_command_file(file_path: str, template: torch.Tensor) -> torch.Tensor | None:
+    """只读取显式 pose command；`auto` / 空 / 缺失都返回 `None`。"""
+
+    if not file_path or not os.path.isfile(file_path):
+        return None
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            text = file.read()
+    except OSError:
+        return None
+
+    parsed = _parse_goal_command_text(text)
+    if parsed is None:
+        return None
+
+    vector = torch.tensor(parsed, dtype=template.dtype, device=template.device)
+    return vector.unsqueeze(0).repeat(template.shape[0], 1)
 
 
 def _build_default_velocity_commands(num_envs: int, device: torch.device | str) -> torch.Tensor:
@@ -528,6 +567,116 @@ def _check_obs_dim(model_use: int, obs: torch.Tensor):
         )
 
 
+def _tensor_row_to_tuple(tensor: torch.Tensor | None) -> tuple[float, ...] | None:
+    """把单环境 tensor 转成 Python tuple，便于终端显示。"""
+
+    if tensor is None:
+        return None
+
+    row = tensor[0] if tensor.ndim > 1 else tensor
+    return tuple(float(value) for value in row.detach().cpu().tolist())
+
+
+def _scene_asset_size(env, asset_name: str) -> tuple[float, float, float]:
+    """从当前 scene cfg 读取物体尺寸，取不到时回退到场景常量。"""
+
+    fallback_size = SCENE_ASSET_SIZE_FALLBACKS[asset_name]
+    scene_cfg = getattr(env.cfg, "scene", None)
+    if scene_cfg is None or not hasattr(scene_cfg, asset_name):
+        return fallback_size
+
+    asset_cfg = getattr(scene_cfg, asset_name)
+    if asset_cfg is None or not hasattr(asset_cfg, "spawn"):
+        return fallback_size
+
+    size = getattr(asset_cfg.spawn, "size", None)
+    if size is None:
+        return fallback_size
+    return tuple(float(value) for value in size)
+
+
+def _scene_asset_status(env, asset_name: str) -> AssetStatus | None:
+    """读取当前场景物体的位置和尺寸；物体缺失时返回 `None`。"""
+
+    try:
+        asset = env.scene[asset_name]
+    except KeyError:
+        return None
+
+    asset_pos_e = asset.data.root_pos_w[:, :3] - env.scene.env_origins
+    return AssetStatus(
+        name=asset_name,
+        position=_tensor_row_to_tuple(asset_pos_e),
+        size=_scene_asset_size(env, asset_name),
+    )
+
+
+def _select_platform_status(env, asset_names: tuple[str, ...]) -> AssetStatus | None:
+    """按固定槽位顺序选取左/右通路中的障碍物。"""
+
+    for asset_name in asset_names:
+        asset_status = _scene_asset_status(env, asset_name)
+        if asset_status is not None:
+            return asset_status
+    return None
+
+
+def _skill_name_for_model_use(model_use: int) -> str | None:
+    """把当前 model_use 映射成技能名。"""
+
+    if model_use == 0:
+        return "idle"
+    if model_use in SKILL_REGISTRY:
+        return SKILL_REGISTRY[model_use].name
+    return None
+
+
+def _build_status_snapshot(
+    env,
+    model_use: int,
+    start_flag: bool,
+    velocity_command: torch.Tensor,
+    pose_command: torch.Tensor | None,
+    goal_command: torch.Tensor | None,
+) -> StatusSnapshot:
+    """汇总当前终端状态面板需要的运行时信息。"""
+
+    robot = env.scene["robot"]
+    robot_pose_e = robot.data.root_pos_w[:, :3] - env.scene.env_origins
+    platform_statuses = {
+        label: _select_platform_status(env, asset_names) for label, asset_names in STATUS_PLATFORM_ASSETS
+    }
+
+    return StatusSnapshot(
+        model_use=model_use,
+        skill=_skill_name_for_model_use(model_use),
+        scene_id=args_cli.scene_id,
+        start=start_flag,
+        pose_command=_tensor_row_to_tuple(pose_command),
+        vel_command=_tensor_row_to_tuple(velocity_command),
+        robot_pose=_tensor_row_to_tuple(robot_pose_e),
+        goal=_tensor_row_to_tuple(goal_command),
+        platform_1=platform_statuses["platform_1"],
+        platform_2=platform_statuses["platform_2"],
+        box=_scene_asset_status(env, "support_box"),
+    )
+
+
+def _render_status_panel(snapshot: StatusSnapshot):
+    """在终端中覆盖刷新当前状态。"""
+
+    if not sys.stdout.isatty():
+        return
+
+    try:
+        sys.stdout.write("\033[2J\033[H")
+        sys.stdout.write(render_status_block(snapshot))
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+    except OSError:
+        pass
+
+
 def main():
     """主入口。"""
 
@@ -568,6 +717,7 @@ def main():
     print(f"[INFO] velocity command file: {args_cli.velocity_command_file}")
     print(f"[INFO] goal command file: {args_cli.goal_command_file}")
     print(f"[INFO] start file: {args_cli.start_file} (auto_start={args_cli.auto_start})")
+    print(f"[INFO] reset file: {args_cli.reset_file}")
 
     base_velocity_commands = _build_default_velocity_commands(num_envs, device)
     zero_push_goal_command = torch.zeros((num_envs, 4), dtype=torch.float32, device=device)
@@ -583,6 +733,7 @@ def main():
     previous_model_use = None
     previous_start_flag = None
     previous_logged_push_goal = None
+    last_status_panel_time = 0.0
     dt = env.unwrapped.step_dt
     step_count = 0
 
@@ -591,7 +742,10 @@ def main():
         current_model_use = _resolve_model_use(current_model_use)
         current_velocity_commands = _read_float_vector_file(args_cli.velocity_command_file, 3, base_velocity_commands)
         current_velocity_commands = _resolve_runtime_velocity_commands(current_model_use, current_velocity_commands)
+        explicit_pose_command = _read_explicit_goal_command_file(args_cli.goal_command_file, zero_push_goal_command)
+        current_goal_for_display = explicit_pose_command
         start_flag = _resolve_start_flag()
+        reset_requested = consume_one_shot_flag(args_cli.reset_file)
         previous_start_flag_value = previous_start_flag
         previous_model_use_value = previous_model_use
         entering_push_execution = (
@@ -599,6 +753,8 @@ def main():
             and current_model_use == 3
             and (previous_start_flag_value is not True or previous_model_use_value != 3)
         )
+        if reset_requested:
+            entering_push_execution = False
 
         if start_flag != previous_start_flag:
             state_text = "RUN" if start_flag else "IDLE"
@@ -624,6 +780,17 @@ def main():
                     f"skill={SKILL_REGISTRY[current_model_use].name}, scene_id={args_cli.scene_id}"
                 )
             previous_model_use = current_model_use
+
+        if reset_requested:
+            with torch.inference_mode():
+                env.reset()
+            push_last_processed_actions.zero_()
+            push_current_processed_actions.zero_()
+            push_low_level_last_actions.zero_()
+            push_high_level_counter = 0
+            push_entry_settle_steps = 1 if start_flag and current_model_use == 3 else 0
+            previous_logged_push_goal = None
+            print("[INFO] 收到 reset 指令，环境已重置。")
 
         if entering_push_execution:
             with torch.inference_mode():
@@ -673,7 +840,8 @@ def main():
                 actions = policies[current_model_use](policy_obs)
             else:
                 scene_push_goal = _default_push_goal(env.unwrapped)
-                push_goal_command = _read_goal_command_file(args_cli.goal_command_file, scene_push_goal)
+                push_goal_command = scene_push_goal if explicit_pose_command is None else explicit_pose_command
+                current_goal_for_display = push_goal_command
                 if push_high_level_counter == 0:
                     # 对齐 PushBoxTest：高层策略每 10 个 EnvTest 步更新一次。
                     env.unwrapped.set_runtime_observation_buffers(
@@ -755,6 +923,18 @@ def main():
             else:
                 print("[INFO] 当前处于待机阶段，机器人保持静止。")
             print(f"[INFO] 当前策略输出维度: {actions.shape[1]}")
+
+        if time.time() - last_status_panel_time >= STATUS_PANEL_REFRESH_INTERVAL:
+            status_snapshot = _build_status_snapshot(
+                env.unwrapped,
+                model_use=current_model_use,
+                start_flag=start_flag,
+                velocity_command=current_velocity_commands,
+                pose_command=explicit_pose_command,
+                goal_command=current_goal_for_display,
+            )
+            _render_status_panel(status_snapshot)
+            last_status_panel_time = time.time()
 
         if args_cli.max_steps > 0 and step_count >= args_cli.max_steps:
             break
