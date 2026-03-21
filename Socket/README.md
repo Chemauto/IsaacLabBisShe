@@ -71,6 +71,7 @@ python Socket/envtest_socket_client.py --model_use 3 --goal 1.8 0.0 0.1 --start 
 python Socket/envtest_socket_client.py --model_use 3 --goal_auto --start 1
 python Socket/envtest_socket_client.py --model_use 4 --goal 4.5 0.0 0.1 --start 1
 python Socket/envtest_socket_client.py --reset 1
+python Socket/envtest_socket_client.py --reset 2
 ```
 
 说明：
@@ -78,7 +79,8 @@ python Socket/envtest_socket_client.py --reset 1
 - `--model_use 3` 且未显式给 `--goal` 时，client 会自动补 `goal=auto`
 - server 端也会对 `model_use=3` 做同样兜底，保证 push_box 默认走场景自动目标
 - `--model_use 4` 复用同一个 `goal` 文件；player 会把世界系 `goal(x, y, z)` 转成 navigation 需要的 base-frame `pose_command(dx, dy, dz, dyaw)`
-- `--reset 1` 只会触发一次 `env.reset()`，不会改当前 `model_use / start / goal / velocity`
+- `--reset 1` 只会触发一次整环境重置 `env.reset()`，不会改当前 `model_use / start / goal / velocity`
+- `--reset 2` 只重置机器人本体，不重置箱子、障碍物和场景状态，也不会改当前 `model_use / start / goal / velocity`
 - EnvTest 的统一 `policy` 观测现在是四类技能的并集：walk / climb / push_box / navigation，总维度 `256`
 - player 会先读这 `256` 维统一观测，再按 `model_use` 切出当前技能真正需要的输入
 
@@ -89,7 +91,7 @@ python Socket/envtest_socket_client.py --reset 1
 - `--goal x y z`
 - `--goal_auto`
 - `--start 0/1`
-- `--reset 1`
+- `--reset 1/2`
 
 也支持直接发送原始文本：
 
@@ -97,6 +99,7 @@ python Socket/envtest_socket_client.py --reset 1
 python Socket/envtest_socket_client.py --text "model_use=3; goal=1.8,0,0.1; start=1"
 python Socket/envtest_socket_client.py --text "model_use=4; goal=4.5,0,0.1; start=1"
 python Socket/envtest_socket_client.py --text "reset=1"
+python Socket/envtest_socket_client.py --text "reset=2"
 ```
 
 player 侧支持这些文本格式：
@@ -111,6 +114,7 @@ player 侧支持这些文本格式：
 - `start=1`
 - `start=0`
 - `reset=1`
+- `reset=2`
 - `reset=true`
 - `reset`
 - `idle`

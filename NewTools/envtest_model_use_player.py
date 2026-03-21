@@ -117,7 +117,7 @@ from MyProject.tasks.manager_based.EnvTest.observation_schema import (
     NAVIGATION_HIGH_LEVEL_OBS_TERMS,
 )
 from MyProject.tasks.manager_based.EnvTest.scene_layout import BOX_SIZE, HIGH_OBSTACLE_SIZE, LOW_OBSTACLE_SIZE
-from NewTools.envtest_control_flags import consume_one_shot_flag
+from NewTools.envtest_control_flags import consume_one_shot_value
 from NewTools.envtest_navigation_bridge import align_navigation_goal_height, build_navigation_pose_command
 from NewTools.envtest_status_panel import AssetStatus, StatusSnapshot, render_status_block
 
@@ -733,6 +733,21 @@ def _render_status_panel(snapshot: StatusSnapshot):
         pass
 
 
+def _reset_robot_only(env, robot):
+    """只重置机器人，不恢复箱子和障碍物。"""
+
+    default_root_state = robot.data.default_root_state.clone()
+    default_root_state[:, :3] += env.scene.env_origins
+    robot.write_root_pose_to_sim(default_root_state[:, :7])
+    robot.write_root_velocity_to_sim(default_root_state[:, 7:13])
+
+    default_joint_pos = robot.data.default_joint_pos.clone()
+    default_joint_vel = robot.data.default_joint_vel.clone()
+    robot.write_joint_state_to_sim(default_joint_pos, default_joint_vel)
+    robot.set_joint_position_target(default_joint_pos)
+    robot.set_joint_velocity_target(default_joint_vel)
+
+
 def main():
     """主入口。"""
 
@@ -816,7 +831,11 @@ def main():
         current_velocity_for_display = current_velocity_commands
         start_flag = _resolve_start_flag()
         current_policy_obs_dim = SKILL_REGISTRY[current_model_use].obs_dim if start_flag and current_model_use in SKILL_REGISTRY else None
-        reset_requested = consume_one_shot_flag(args_cli.reset_file)
+        reset_token = consume_one_shot_value(
+            args_cli.reset_file,
+            accepted_tokens=("1", "2", "true", "on", "reset"),
+        )
+        reset_mode = 2 if reset_token == "2" else (1 if reset_token is not None else 0)
         previous_start_flag_value = previous_start_flag
         previous_model_use_value = previous_model_use
         entering_push_execution = (
@@ -824,7 +843,7 @@ def main():
             and current_model_use == 3
             and (previous_start_flag_value is not True or previous_model_use_value != 3)
         )
-        if reset_requested:
+        if reset_mode != 0:
             entering_push_execution = False
 
         if start_flag != previous_start_flag:
@@ -858,7 +877,7 @@ def main():
                 )
             previous_model_use = current_model_use
 
-        if reset_requested:
+        if reset_mode == 1:
             with torch.inference_mode():
                 env.reset()
             push_last_processed_actions.zero_()
@@ -871,6 +890,20 @@ def main():
             navigation_high_level_counter = 0
             previous_logged_push_goal = None
             print("[INFO] 收到 reset 指令，环境已重置。")
+
+        if reset_mode == 2:
+            with torch.inference_mode():
+                _reset_robot_only(env.unwrapped, robot)
+            push_last_processed_actions.zero_()
+            push_current_processed_actions.zero_()
+            push_low_level_last_actions.zero_()
+            push_high_level_counter = 0
+            push_entry_settle_steps = 1 if start_flag and current_model_use == 3 else 0
+            navigation_current_processed_actions.zero_()
+            navigation_low_level_last_actions.zero_()
+            navigation_high_level_counter = 0
+            previous_logged_push_goal = None
+            print("[INFO] 收到 reset=2 指令，机器人已重置，环境保持不变。")
 
         if entering_push_execution:
             with torch.inference_mode():

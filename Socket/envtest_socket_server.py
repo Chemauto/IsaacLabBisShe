@@ -141,22 +141,24 @@ def _parse_start(text: str) -> bool | None:
     raise ValueError(f"无法识别 start 值: {token}")
 
 
-def _parse_reset(text: str) -> bool:
-    """解析一次性 reset 指令。"""
+def _parse_reset(text: str) -> int | None:
+    """解析一次性 reset 指令。返回 1/2 或 None。"""
 
     normalized = text.strip().lower()
     if normalized == "reset":
-        return True
+        return 1
 
     match = re.search(r"\breset\b\s*[:=]\s*([A-Za-z0-9_]+)", text, flags=re.IGNORECASE)
     if match is None:
-        return False
+        return None
 
     token = match.group(1).strip().lower()
+    if token == "2":
+        return 2
     if token == "reset" or token in BOOL_TRUE:
-        return True
+        return 1
     if token in BOOL_FALSE:
-        return False
+        return None
     raise ValueError(f"无法识别 reset 值: {token}")
 
 
@@ -221,9 +223,10 @@ def apply_message(text: str, output_paths: OutputPaths) -> list[str]:
         _write_text(output_paths.start, "1" if start else "0")
         updates.append(f"start={int(start)}")
 
-    if _parse_reset(normalized):
-        _write_text(output_paths.reset, "1")
-        updates.append("reset=1")
+    reset_mode = _parse_reset(normalized)
+    if reset_mode is not None:
+        _write_text(output_paths.reset, str(reset_mode))
+        updates.append(f"reset={reset_mode}")
 
     if not updates:
         raise ValueError(
