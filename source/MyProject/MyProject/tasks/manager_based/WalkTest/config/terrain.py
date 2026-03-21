@@ -1,7 +1,97 @@
 """Configuration for box terrains."""
 
+from __future__ import annotations
+
+import numpy as np
+import trimesh
+
 import isaaclab.terrains as terrain_gen
 from isaaclab.terrains import TerrainGeneratorCfg
+from isaaclab.terrains.sub_terrain_cfg import SubTerrainBaseCfg
+from isaaclab.utils import configclass
+
+
+def _make_box(
+    size: tuple[float, float, float],
+    center: tuple[float, float, float],
+) -> trimesh.Trimesh:
+    """Create a box mesh centered at the requested position."""
+
+    return trimesh.creation.box(size, trimesh.transformations.translation_matrix(center))
+
+
+def stacked_double_platform_terrain(
+    difficulty: float,
+    cfg: "StackedDoublePlatformTerrainCfg",
+) -> tuple[list[trimesh.Trimesh], np.ndarray]:
+    """Generate a centered double-platform terrain with independent upper/lower sizes.
+
+    The lower platform is a wide box rising from the ground.
+    The upper platform is a smaller box stacked on top of the lower one.
+    """
+
+    lower_height = cfg.lower_height_range[0] + difficulty * (
+        cfg.lower_height_range[1] - cfg.lower_height_range[0]
+    )
+    upper_height = cfg.upper_height_range[0] + difficulty * (
+        cfg.upper_height_range[1] - cfg.upper_height_range[0]
+    )
+    upper_height = max(upper_height, lower_height + cfg.min_height_gap)
+
+    terrain_height = 1.0
+    terrain_center_x = 0.5 * cfg.size[0]
+    terrain_center_y = 0.5 * cfg.size[1]
+
+    lower_center_x = terrain_center_x + cfg.lower_platform_offset[0]
+    lower_center_y = terrain_center_y + cfg.lower_platform_offset[1]
+    upper_center_x = terrain_center_x + cfg.upper_platform_offset[0]
+    upper_center_y = terrain_center_y + cfg.upper_platform_offset[1]
+
+    meshes_list = [
+        _make_box(
+            (cfg.size[0], cfg.size[1], terrain_height),
+            (terrain_center_x, terrain_center_y, -0.5 * terrain_height),
+        ),
+        _make_box(
+            (cfg.lower_platform_size[0], cfg.lower_platform_size[1], terrain_height + lower_height),
+            (lower_center_x, lower_center_y, 0.5 * (lower_height - terrain_height)),
+        ),
+        _make_box(
+            (cfg.upper_platform_size[0], cfg.upper_platform_size[1], terrain_height + upper_height),
+            (upper_center_x, upper_center_y, 0.5 * (upper_height - terrain_height)),
+        ),
+    ]
+
+    origin = np.array([upper_center_x, upper_center_y, upper_height])
+    return meshes_list, origin
+
+
+@configclass
+class StackedDoublePlatformTerrainCfg(SubTerrainBaseCfg):
+    """Configuration for a centered two-level climb platform."""
+
+    function = stacked_double_platform_terrain
+
+    lower_height_range: tuple[float, float] = (0.10, 0.18)
+    """Lower platform top height above ground."""
+
+    upper_height_range: tuple[float, float] = (0.24, 0.34)
+    """Upper platform top height above ground."""
+
+    min_height_gap: float = 0.08
+    """Minimum height gap between the two platform tops."""
+
+    lower_platform_size: tuple[float, float] = (3.2, 3.2)
+    """Size of the lower platform in x/y."""
+
+    upper_platform_size: tuple[float, float] = (1.4, 1.4)
+    """Size of the upper platform in x/y."""
+
+    lower_platform_offset: tuple[float, float] = (0.0, 0.0)
+    """Offset of the lower platform center from terrain center."""
+
+    upper_platform_offset: tuple[float, float] = (0.0, 0.0)
+    """Offset of the upper platform center from terrain center."""
 #This file is design to generate terrain
 # 创建一个只包含 Box 地形的配置
 BOX_TERRAINS_CFG = TerrainGeneratorCfg(
@@ -114,6 +204,12 @@ HIGH_PLATFORM_TERRAINS_PLAY_CFG = TerrainGeneratorCfg(
     },
 )
 
+
+
+
+
+#双层高台地形：中心为单个抬高平台，适合训练 climb skill。比单层更具挑战性。
+# 这里使用自定义双层平台，使上下两层的尺寸和高度都可以独立控制。
 HIGH_DOUBLE_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
     size=(8.0, 8.0),
     border_width=20.0,
@@ -124,16 +220,16 @@ HIGH_DOUBLE_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
     slope_threshold=0.75,
     use_cache=False,
     sub_terrains={
-        "high_platform": terrain_gen.MeshBoxTerrainCfg(
+        "high_platform": StackedDoublePlatformTerrainCfg(
             proportion=1.0,
-            # difficulty=0 时约 0.10m，difficulty=1 时约 0.26m。
-            # 适合作为 easy -> medium -> hard 的高度课程。
-            box_height_range=(0.06, 0.34),
-            # 顶面尽量做宽，减少机器人从两侧绕开的空间。
-            platform_width=2.0,
-            # 论文语义更接近“单高台”，因此不使用双层箱体。
-            double_box=True,
             size=(8.0, 8.0),
+            lower_height_range=(0.08, 0.34),
+            upper_height_range=(0.20, 0.54),
+            min_height_gap=0.05,
+            lower_platform_size=(3.2, 3.2),
+            upper_platform_size=(1.2, 2.6),
+            lower_platform_offset=(0.0, 0.0),
+            upper_platform_offset=(0.0, 0.0),
         ),
     },
 )
@@ -149,13 +245,16 @@ HIGH_DOUBLE_PLATFORM_TERRAINS_PLAY_CFG = TerrainGeneratorCfg(
     slope_threshold=0.75,
     use_cache=False,
     sub_terrains={
-        "high_platform": terrain_gen.MeshBoxTerrainCfg(
+        "high_platform": StackedDoublePlatformTerrainCfg(
             proportion=1.0,
-            # 固定在较高但仍可训练/评估的高度。
-            box_height_range=(0.30, 0.30),
-            platform_width=2.0,
-            double_box=True,
             size=(8.0, 8.0),
+            lower_height_range=(0.30, 0.30),
+            upper_height_range=(0.50, 0.50),
+            min_height_gap=0.05,
+            lower_platform_size=(3.2, 3.2),
+            upper_platform_size=(2.4, 2.4),
+            lower_platform_offset=(0.0, 0.0),
+            upper_platform_offset=(0.0, 0.0),
         ),
     },
 )
