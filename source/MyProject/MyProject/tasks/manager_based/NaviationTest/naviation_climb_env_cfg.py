@@ -136,7 +136,7 @@ class ActionsCfg:
         low_level_decimation=4,
         low_level_actions=LOW_LEVEL_ENV_CFG.actions.joint_pos,
         low_level_observations=LOW_LEVEL_ENV_CFG.observations.policy,
-        action_clip=((-1.0, 1.0), (-1.0, 1.0), (-1.0, 1.0)),
+        action_clip=((0.4, 1.0), (-0.15, 0.15), (-0.15, 0.15)),  # (pos_x, pos_y, heading)
     )
 
 @configclass

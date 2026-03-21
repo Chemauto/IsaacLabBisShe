@@ -8,11 +8,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-DEFAULT_TASK = "Template-Push-Box-Go2-v0"
-DEFAULT_EXPERIMENT = "push_box"
-DEFAULT_RUN_NAME = "test"
-DEFAULT_LOAD_RUN = "^no_height_restrain$"
-DEFAULT_CHECKPOINT_NAME = "model_8099.pt"
+DEFAULT_TASK = "Template-Velocity-Go2-Walk-BiShe-Pit-v0"
+DEFAULT_EXPERIMENT = "go2_walk_bishe"
+DEFAULT_RUN_NAME = "new_add_more_directions"
+DEFAULT_LOAD_RUN = "^test$"
+DEFAULT_CHECKPOINT_NAME = "BiSheClimbPolicy.pt"
+DEFAULT_LOAD_WEIGHTS_ONLY = True
 #文件夹形式” rsl_rl/logs/rsl_rl/DEFAULT_EXPERIMENT/DEFAULT_LOAD_RUN/DEFAULT_CHECKPOINT_NAME
 
 
@@ -43,6 +44,8 @@ def main() -> int:
         "--run_name",
         DEFAULT_RUN_NAME,
     ]
+    if DEFAULT_LOAD_WEIGHTS_ONLY:
+        cmd.append("--load_weights_only")
 
     print("[INFO] Running:")
     print(" ".join(cmd))
