@@ -221,18 +221,18 @@ HIGH_DOUBLE_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
     use_cache=False,
     sub_terrains={
         "double_high_platform": StackedDoublePlatformTerrainCfg(
-            proportion=0.15,
+            proportion=0.20,
             size=(8.0, 8.0),
             lower_height_range=(0.08, 0.34),
             upper_height_range=(0.20, 0.54),
             min_height_gap=0.05,
             lower_platform_size=(3.2, 3.2),
-            upper_platform_size=(1.2, 2.6),
+            upper_platform_size=(1.6, 2.6),
             lower_platform_offset=(0.0, 0.0),
             upper_platform_offset=(0.0, 0.0),
         ),
         "high_platform": terrain_gen.MeshBoxTerrainCfg(
-            proportion=0.85,
+            proportion=0.65,
             # difficulty=0 时约 0.10m，difficulty=1 时约 0.26m。
             # 适合作为 easy -> medium -> hard 的高度课程。
             box_height_range=(0.06, 0.34),
@@ -241,6 +241,22 @@ HIGH_DOUBLE_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
             # 论文语义更接近“单高台”，因此不使用双层箱体。
             double_box=False,
             size=(8.0, 8.0),
+        ),
+        "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.08,
+            step_height_range=(0.05, 0.23),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.07,
+            step_height_range=(0.05, 0.23),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
         ),
     },
 )
@@ -259,11 +275,11 @@ HIGH_DOUBLE_PLATFORM_TERRAINS_PLAY_CFG = TerrainGeneratorCfg(
         "high_platform": StackedDoublePlatformTerrainCfg(
             proportion=1.0,
             size=(8.0, 8.0),
-            lower_height_range=(0.15, 0.15),
-            upper_height_range=(0.50, 0.50),
+            lower_height_range=(0.25, 0.25),
+            upper_height_range=(0.45, 0.45),
             min_height_gap=0.05,
             lower_platform_size=(3.2, 3.2),
-            upper_platform_size=(2.0, 2.0),
+            upper_platform_size=(2.2, 2.2),
             lower_platform_offset=(0.0, 0.0),
             upper_platform_offset=(0.0, 0.0),
         ),

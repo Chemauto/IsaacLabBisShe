@@ -587,7 +587,7 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()
-        self.scene.terrain.terrain_generator = HIGH_PLATFORM_TERRAINS_PLAY_CFG
+        self.scene.terrain.terrain_generator = HIGH_DOUBLE_PLATFORM_TERRAINS_PLAY_CFG
         # make a smaller scene for play
         self.scene.num_envs = 50
         self.scene.env_spacing = 4
