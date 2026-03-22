@@ -220,8 +220,8 @@ HIGH_DOUBLE_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
     slope_threshold=0.75,
     use_cache=False,
     sub_terrains={
-        "high_platform": StackedDoublePlatformTerrainCfg(
-            proportion=1.0,
+        "double_high_platform": StackedDoublePlatformTerrainCfg(
+            proportion=0.00,
             size=(8.0, 8.0),
             lower_height_range=(0.08, 0.34),
             upper_height_range=(0.20, 0.54),
@@ -230,6 +230,17 @@ HIGH_DOUBLE_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
             upper_platform_size=(1.2, 2.6),
             lower_platform_offset=(0.0, 0.0),
             upper_platform_offset=(0.0, 0.0),
+        ),
+        "high_platform": terrain_gen.MeshBoxTerrainCfg(
+            proportion=1.0,
+            # difficulty=0 时约 0.10m，difficulty=1 时约 0.26m。
+            # 适合作为 easy -> medium -> hard 的高度课程。
+            box_height_range=(0.06, 0.34),
+            # 顶面尽量做宽，减少机器人从两侧绕开的空间。
+            platform_width=3.0,
+            # 论文语义更接近“单高台”，因此不使用双层箱体。
+            double_box=False,
+            size=(8.0, 8.0),
         ),
     },
 )
@@ -248,11 +259,11 @@ HIGH_DOUBLE_PLATFORM_TERRAINS_PLAY_CFG = TerrainGeneratorCfg(
         "high_platform": StackedDoublePlatformTerrainCfg(
             proportion=1.0,
             size=(8.0, 8.0),
-            lower_height_range=(0.30, 0.30),
+            lower_height_range=(0.15, 0.15),
             upper_height_range=(0.50, 0.50),
             min_height_gap=0.05,
             lower_platform_size=(3.2, 3.2),
-            upper_platform_size=(2.4, 2.4),
+            upper_platform_size=(2.0, 2.0),
             lower_platform_offset=(0.0, 0.0),
             upper_platform_offset=(0.0, 0.0),
         ),

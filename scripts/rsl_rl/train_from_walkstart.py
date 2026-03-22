@@ -10,7 +10,7 @@ from pathlib import Path
 
 DEFAULT_TASK = "Template-Velocity-Go2-Walk-BiShe-Pit-v0"
 DEFAULT_EXPERIMENT = "go2_walk_bishe"
-DEFAULT_RUN_NAME = "new_add_more_directions"
+DEFAULT_RUN_NAME = "testnew"
 DEFAULT_LOAD_RUN = "^test$"
 DEFAULT_CHECKPOINT_NAME = "BiSheClimbPolicy.pt"
 DEFAULT_LOAD_WEIGHTS_ONLY = True
