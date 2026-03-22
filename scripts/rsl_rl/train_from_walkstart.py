@@ -15,6 +15,7 @@ DEFAULT_RUN_NAME = "from_walk"
 DEFAULT_LOAD_RUN = "^test$"
 DEFAULT_CHECKPOINT_NAME = "WalkRoughNew.pt"
 DEFAULT_LOAD_WEIGHTS_ONLY = False
+DEFAULT_DEVICE = "cuda:0"
 #文件夹形式” rsl_rl/logs/rsl_rl/DEFAULT_EXPERIMENT/DEFAULT_LOAD_RUN/DEFAULT_CHECKPOINT_NAME
 
 
@@ -37,6 +38,8 @@ def main() -> int:
         "--task",
         DEFAULT_TASK,
         "--headless",
+        "--device",
+        DEFAULT_DEVICE,
         "--resume",
         "--experiment_name",
         DEFAULT_EXPERIMENT,
