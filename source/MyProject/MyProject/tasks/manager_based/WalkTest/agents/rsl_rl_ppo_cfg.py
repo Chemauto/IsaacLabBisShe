@@ -43,6 +43,11 @@ class Go2WalkBiShePPORunnerCfg(Go2WalkRoughPPORunnerCfg):
         super().__post_init__()
         self.max_iterations = 6000
         self.experiment_name = "go2_walk_bishe"
+        # Use log-std so the learned action std stays positive during PPO updates.
+        self.policy.noise_std_type = "log"
+        self.policy.init_noise_std = 0.5
+        # Fine-tuning the walk checkpoint on the double-platform climb task needs a smaller step size.
+        self.algorithm.learning_rate = 3.0e-4
 
 
 # Backward-compatible alias for older references.
