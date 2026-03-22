@@ -131,8 +131,8 @@ class ActionsCfg:
         low_level_decimation=4,
         low_level_actions=LOW_LEVEL_ENV_CFG.actions.joint_pos,
         low_level_observations=LOW_LEVEL_ENV_CFG.observations.policy,
-        # action_scale=(0.4, 0.2, 0.3),
-        action_clip=((-0.8, 0.8), (-0.8, 0.8), (-0.3, 0.3)),
+        action_scale=(0.8, 0.6, 0.6),
+        action_clip=((-0.6, 0.6), (-0.5, 0.5), (-0.3, 0.3)),
     )
 
 
@@ -239,16 +239,16 @@ class RewardsCfg:
     # face_to_object = RewTerm(func=mdp.face_to_object_cosine, weight=2.0)
     
     # 惩罚头部刚体的 xy 投影落到箱子顶面矩形范围内，避免头越到箱子上方。
-    head_over_box = RewTerm(
-        func=mdp.head_point_in_box_penalty,
-        weight=-0.5,
-        params={
-            "head_local_offset": (0.00, 0.0, 0.0),
-            "footprint_margin": -0.15,  # 允许头部投影稍微进入箱子边界内，因为推的过程中可能会有轻微的接触和变形。
-            "top_surface_margin": 0.00,
-            "head_body_cfg": SceneEntityCfg("robot", body_names="Head_.*"),
-        },
-    )
+    # head_over_box = RewTerm(
+    #     func=mdp.head_point_in_box_penalty,
+    #     weight=-0.5,
+    #     params={
+    #         "head_local_offset": (0.00, 0.0, 0.0),
+    #         "footprint_margin": -0.10,  # 允许头部投影稍微进入箱子边界内，因为推的过程中可能会有轻微的接触和变形。
+    #         "top_surface_margin": 0.00,
+    #         "head_body_cfg": SceneEntityCfg("robot", body_names="Head_.*"),
+    #     },
+    # )
     # 稀疏成功奖励，只有箱子到达目标且机器人和箱子都基本停稳时才触发,奖励阈值降低
     box_goal_success = RewTerm(
         func=mdp.box_goal_success_bonus,
@@ -256,7 +256,7 @@ class RewardsCfg:
         params={
             "command_name": "box_goal",
             "distance_threshold": 0.12,
-            "yaw_threshold": 0.3,
+            "yaw_threshold": 0.5,
             "box_speed_threshold": 0.10,
             "robot_speed_threshold": 0.12,
         },
@@ -292,10 +292,10 @@ class TerminationsCfg:
         func=mdp.goal_reached,
         params={
             "command_name": "box_goal",
-            "distance_threshold": 0.05,
-            "yaw_threshold": 0.2,
-            "box_speed_threshold": 0.05,
-            "robot_speed_threshold": 0.05,
+            "distance_threshold": 0.08,
+            "yaw_threshold": 0.4,
+            "box_speed_threshold": 0.08,
+            "robot_speed_threshold": 0.08,
             "settle_steps": 12,
         },
     )
