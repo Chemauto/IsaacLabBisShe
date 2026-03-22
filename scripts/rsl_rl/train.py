@@ -117,6 +117,38 @@ torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
 
 
+def _load_checkpoint_with_std_compatibility(
+    runner: OnPolicyRunner | DistillationRunner,
+    resume_path: str,
+    load_optimizer: bool,
+) -> None:
+    """Load a checkpoint while converting legacy scalar ``std`` to ``log_std`` if needed."""
+
+    try:
+        runner.load(resume_path, load_optimizer=load_optimizer)
+        return
+    except RuntimeError as err:
+        err_msg = str(err)
+        std_to_log_std_mismatch = (
+            'Missing key(s) in state_dict: "log_std".' in err_msg
+            and 'Unexpected key(s) in state_dict: "std".' in err_msg
+        )
+        if not std_to_log_std_mismatch:
+            raise
+
+    print("[INFO] Converting legacy checkpoint action std to log_std for compatibility.")
+    loaded_dict = torch.load(resume_path, weights_only=False, map_location=runner.device)
+    model_state_dict = loaded_dict["model_state_dict"]
+    legacy_std = model_state_dict.pop("std", None)
+    if legacy_std is None:
+        raise RuntimeError("Legacy checkpoint conversion failed: missing 'std' parameter in model_state_dict.")
+    model_state_dict["log_std"] = torch.log(torch.clamp(legacy_std, min=1.0e-6))
+    runner.alg.policy.load_state_dict(model_state_dict)
+    if load_optimizer:
+        print("[WARNING] Skipping optimizer state load because the checkpoint parameterization changed from std to log_std.")
+    runner.current_learning_iteration = loaded_dict["iter"]
+
+
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     """Train with RSL-RL agent."""
@@ -212,7 +244,11 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
-        runner.load(resume_path, load_optimizer=not args_cli.load_weights_only)
+        _load_checkpoint_with_std_compatibility(
+            runner,
+            resume_path,
+            load_optimizer=not args_cli.load_weights_only,
+        )
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
