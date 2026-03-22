@@ -6,6 +6,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import os
 from pathlib import Path
 
 DEFAULT_TASK = "Template-Velocity-Go2-Walk-BiShe-Pit-v0"
@@ -27,6 +28,8 @@ def to_exact_regex(text: str) -> str:
 def main() -> int:
     script_dir = Path(__file__).resolve().parent
     train_script = script_dir / "train.py"
+    tmp_dir = script_dir.parents[1] / ".isaaclab_tmp"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
         sys.executable,
@@ -47,9 +50,15 @@ def main() -> int:
     if DEFAULT_LOAD_WEIGHTS_ONLY:
         cmd.append("--load_weights_only")
 
+    env = os.environ.copy()
+    env["TMPDIR"] = str(tmp_dir)
+    env["TMP"] = str(tmp_dir)
+    env["TEMP"] = str(tmp_dir)
+
     print("[INFO] Running:")
     print(" ".join(cmd))
-    return subprocess.run(cmd, cwd=script_dir).returncode
+    print(f"[INFO] IsaacLab temp dir: {tmp_dir}")
+    return subprocess.run(cmd, cwd=script_dir, env=env).returncode
 
 
 if __name__ == "__main__":
