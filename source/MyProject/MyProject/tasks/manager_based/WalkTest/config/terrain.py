@@ -221,7 +221,7 @@ HIGH_DOUBLE_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
     use_cache=False,
     sub_terrains={
         "double_high_platform": StackedDoublePlatformTerrainCfg(
-            proportion=0.00,
+            proportion=0.15,
             size=(8.0, 8.0),
             lower_height_range=(0.08, 0.34),
             upper_height_range=(0.20, 0.54),
@@ -232,7 +232,7 @@ HIGH_DOUBLE_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
             upper_platform_offset=(0.0, 0.0),
         ),
         "high_platform": terrain_gen.MeshBoxTerrainCfg(
-            proportion=1.0,
+            proportion=0.85,
             # difficulty=0 时约 0.10m，difficulty=1 时约 0.26m。
             # 适合作为 easy -> medium -> hard 的高度课程。
             box_height_range=(0.06, 0.34),

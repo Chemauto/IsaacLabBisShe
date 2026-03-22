@@ -530,7 +530,7 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self):
         """后初始化：覆盖为高台 climb 训练配置。"""
         # 使用高台地形。地形课程对应的是平台高度，而不是 pit 深度。
-        self.scene.terrain.terrain_generator = HIGH_PLATFORM_TERRAINS_CFG
+        self.scene.terrain.terrain_generator = HIGH_DOUBLE_PLATFORM_TERRAINS_CFG
         self.rewards = self.pit_rewards
         # 从最低课程等级开始，逐步提高平台高度。
         self.scene.terrain.max_init_terrain_level = 0
