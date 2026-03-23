@@ -51,7 +51,7 @@ class Go2WalkBiShePPORunnerCfg(Go2WalkRoughPPORunnerCfg):
         self.algorithm.learning_rate = 1.0e-4
         self.algorithm.schedule = "fixed"
         self.algorithm.max_grad_norm = 0.5
-        self.clip_actions = 1.0
+        self.clip_actions = 5.0#新的代码这个加上了
 
 
 # Backward-compatible alias for older references.
