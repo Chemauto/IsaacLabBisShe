@@ -331,7 +331,7 @@ class BiShePitRewardsCfg(RewardsCfg):
     )
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.125,  # 原来: 0.01（大幅提升，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去）
+        weight=0.05,  # 原来: 0.01（大幅提升，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去）
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
