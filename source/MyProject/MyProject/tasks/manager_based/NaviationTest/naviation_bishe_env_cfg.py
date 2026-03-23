@@ -60,7 +60,7 @@ class MySceneCfg(InteractiveSceneCfg):
         prim_path="/World/ground",
         terrain_type="generator",
         terrain_generator=TWO_PIT_TERRAINS_CFG,
-        max_init_terrain_level=0,
+        max_init_terrain_level=None,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -186,6 +186,7 @@ class ObservationsCfg:
 class EventCfg:
     """Configuration for events."""
 
+    randomize_terrain_tile = None
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         mode="reset",
@@ -208,22 +209,22 @@ class RewardsCfg:
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-1.0)
     position_tracking = RewTerm(
         func=mdp.position_command_error_tanh,
-        weight=0.5,
+        weight=0.8,
         params={"std": 2.0, "command_name": "pose_command"},
     )
     position_tracking_fine_grained = RewTerm(
         func=mdp.position_command_error_tanh,
-        weight=0.5,
+        weight=0.8,
         params={"std": 0.2, "command_name": "pose_command"},
     )
     orientation_tracking = RewTerm(
         func=mdp.heading_command_error_abs,
-        weight=-0.2,
+        weight=-0.3,
         params={"command_name": "pose_command"},
     )
     lateral_deviation_penalty = RewTerm(
         func=mdp.lateral_deviation_penalty,
-        weight=-1.0,
+        weight=-2.0,
         params={"threshold": 0.8},
     )
     # base_collision_penalty = RewTerm(
@@ -276,27 +277,22 @@ class NaviationBiSheEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.actions.pre_trained_policy_action.low_level_decimation
         self.decimation = self.actions.pre_trained_policy_action.low_level_decimation * 10
         self.episode_length_s = self.commands.pose_command.resampling_time_range[1]
-        self.events.reset_base.params["pose_range"] = {"x": (-0.2, 0.2), "y": (-0.25, 0.25), "yaw": (-0.15, 0.15)}
+        self.scene.terrain.max_init_terrain_level = None
+        self.scene.terrain.terrain_generator.curriculum = False
+        self.events.reset_base.params["pose_range"] = {"x": (-0.3, 0.3), "y": (-0.45, 0.45), "yaw": (-0.35, 0.35)}
         two_pit_cfg = self.scene.terrain.terrain_generator.sub_terrains["two_pit"]
-        pit_cfgs = (
-            (two_pit_cfg.pit_1_position, two_pit_cfg.pit_1_size),
-            (two_pit_cfg.pit_2_position, two_pit_cfg.pit_2_size),
-        )
         max_pit_rear_x = max(
-            pit_position[0] + 0.5 * pit_size[0]
-            for pit_position, pit_size in pit_cfgs
-        )
-        max_lateral_extent = max(
-            abs(pit_position[1]) + 0.5 * pit_size[1]
-            for pit_position, pit_size in pit_cfgs
+            two_pit_cfg.pit_1_x_range[1] + 0.5 * two_pit_cfg.pit_1_size_x_range[1],
+            two_pit_cfg.pit_2_x_range[1] + 0.5 * two_pit_cfg.pit_2_size_x_range[1],
         )
         max_goal_x = min(two_pit_cfg.size[0] - two_pit_cfg.spawn_origin_x - 0.75, max_pit_rear_x + 2.5)
         min_goal_x = max_pit_rear_x + 0.45
         if max_goal_x <= min_goal_x:
             max_goal_x = min_goal_x + 0.5
+        lateral_goal_limit = min(0.5 * two_pit_cfg.navigation_corridor_width - 0.15, 1.4)
         self.commands.pose_command.ranges.pos_x = (min_goal_x, max_goal_x)
-        self.commands.pose_command.ranges.pos_y = (-1.4, 1.4)
-        self.commands.pose_command.ranges.heading = (-0.6, 0.6)
+        self.commands.pose_command.ranges.pos_y = (-lateral_goal_limit, lateral_goal_limit)
+        self.commands.pose_command.ranges.heading = (-0.75, 0.75)
 
         if self.scene.height_scanner is not None:
             self.scene.height_scanner.update_period = (
@@ -311,14 +307,15 @@ class NaviationBiSheEnvCfg_Play(NaviationBiSheEnvCfg):
         # post init of parent
         super().__post_init__()
 
-        # make a single, centered terrain tile for play/debug
+        # keep play lightweight, but still keep a small bank of random terrain tiles for evaluation
         self.scene.num_envs = 1
         self.scene.env_spacing = 0.0
         play_terrain_generator = self.scene.terrain.terrain_generator.copy()
-        play_terrain_generator.num_rows = 1
-        play_terrain_generator.num_cols = 1
+        play_terrain_generator.num_rows = 6
+        play_terrain_generator.num_cols = 6
         play_terrain_generator.border_width = 2.0
+        play_terrain_generator.curriculum = False
         self.scene.terrain.terrain_generator = play_terrain_generator
-        self.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.12, 0.12), "yaw": (0.0, 0.0)}
+        self.events.randomize_terrain_tile = EventTerm(func=mdp.randomize_terrain_tile, mode="reset")
         # disable randomization for play
         self.observations.policy.enable_corruption = False
