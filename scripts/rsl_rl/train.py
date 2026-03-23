@@ -85,6 +85,9 @@ import gymnasium as gym
 import logging
 import os
 import time
+############## XCJ TEMP BEGIN: legacy scalar-std checkpoint compatibility ##############
+import types
+############## XCJ TEMP END: legacy scalar-std checkpoint compatibility ##############
 import torch
 from datetime import datetime
 
@@ -117,6 +120,26 @@ torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
 
 
+############## XCJ TEMP BEGIN: legacy scalar-std checkpoint compatibility ##############
+def _enable_scalar_std_clamp(runner: OnPolicyRunner | DistillationRunner) -> None:
+    """Clamp scalar action std to stay positive while keeping legacy checkpoint compatibility."""
+
+    policy = runner.alg.policy
+    if getattr(policy, "noise_std_type", None) != "scalar" or getattr(policy, "state_dependent_std", False):
+        return
+    if not hasattr(policy, "std"):
+        return
+
+    def _update_distribution_clamped(self, obs) -> None:
+        mean = self.actor(obs)
+        std = torch.clamp(self.std, min=1.0e-6).expand_as(mean)
+        self.distribution = torch.distributions.Normal(mean, std)
+
+    policy._update_distribution = types.MethodType(_update_distribution_clamped, policy)
+    with torch.no_grad():
+        policy.std.data.clamp_(min=1.0e-6)
+
+
 def _load_checkpoint_with_std_compatibility(
     runner: OnPolicyRunner | DistillationRunner,
     resume_path: str,
@@ -133,20 +156,34 @@ def _load_checkpoint_with_std_compatibility(
             'Missing key(s) in state_dict: "log_std".' in err_msg
             and 'Unexpected key(s) in state_dict: "std".' in err_msg
         )
-        if not std_to_log_std_mismatch:
+        log_std_to_std_mismatch = (
+            'Missing key(s) in state_dict: "std".' in err_msg
+            and 'Unexpected key(s) in state_dict: "log_std".' in err_msg
+        )
+        if not std_to_log_std_mismatch and not log_std_to_std_mismatch:
             raise
 
-    print("[INFO] Converting legacy checkpoint action std to log_std for compatibility.")
+    if std_to_log_std_mismatch:
+        print("[INFO] Converting legacy checkpoint action std to log_std for compatibility.")
+    else:
+        print("[INFO] Converting checkpoint action log_std to std for compatibility.")
     loaded_dict = torch.load(resume_path, weights_only=False, map_location=runner.device)
     model_state_dict = loaded_dict["model_state_dict"]
-    legacy_std = model_state_dict.pop("std", None)
-    if legacy_std is None:
-        raise RuntimeError("Legacy checkpoint conversion failed: missing 'std' parameter in model_state_dict.")
-    model_state_dict["log_std"] = torch.log(torch.clamp(legacy_std, min=1.0e-6))
+    if std_to_log_std_mismatch:
+        legacy_std = model_state_dict.pop("std", None)
+        if legacy_std is None:
+            raise RuntimeError("Legacy checkpoint conversion failed: missing 'std' parameter in model_state_dict.")
+        model_state_dict["log_std"] = torch.log(torch.clamp(legacy_std, min=1.0e-6))
+    else:
+        legacy_log_std = model_state_dict.pop("log_std", None)
+        if legacy_log_std is None:
+            raise RuntimeError("Checkpoint conversion failed: missing 'log_std' parameter in model_state_dict.")
+        model_state_dict["std"] = torch.exp(legacy_log_std)
     runner.alg.policy.load_state_dict(model_state_dict)
     if load_optimizer:
         print("[WARNING] Skipping optimizer state load because the checkpoint parameterization changed from std to log_std.")
     runner.current_learning_iteration = loaded_dict["iter"]
+############## XCJ TEMP END: legacy scalar-std checkpoint compatibility ##############
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)
@@ -238,17 +275,23 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     else:
         raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
+    ############## XCJ TEMP BEGIN: legacy scalar-std checkpoint compatibility ##############
+    _enable_scalar_std_clamp(runner)
+    ############## XCJ TEMP END: legacy scalar-std checkpoint compatibility ##############
     # write git state to logs
     runner.add_git_repo_to_log(__file__)
     # load the checkpoint
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
         print(f"[INFO]: Loading model checkpoint from: {resume_path}")
         # load previously trained model
+        ############## XCJ TEMP BEGIN: legacy scalar-std checkpoint compatibility ##############
         _load_checkpoint_with_std_compatibility(
             runner,
             resume_path,
             load_optimizer=not args_cli.load_weights_only,
         )
+        _enable_scalar_std_clamp(runner)
+        ############## XCJ TEMP END: legacy scalar-std checkpoint compatibility ##############
 
     # dump the configuration into log-directory
     dump_yaml(os.path.join(log_dir, "params", "env.yaml"), env_cfg)
