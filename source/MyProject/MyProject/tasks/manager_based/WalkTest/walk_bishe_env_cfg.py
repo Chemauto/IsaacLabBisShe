@@ -338,6 +338,11 @@ class BiShePitRewardsCfg(RewardsCfg):
             "threshold": 0.5,
         },
     )
+    air_time_variance = RewTerm(
+        func=walk_mdp.air_time_variance_penalty,
+        weight=-0.5,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
+    )
     # 启用 gated 抬脚奖励，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去。
     # feet_height = RewTerm(
     #     func=walk_mdp.feet_height_pit_gated,
