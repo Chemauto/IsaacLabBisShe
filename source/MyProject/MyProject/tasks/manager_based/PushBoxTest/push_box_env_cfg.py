@@ -116,7 +116,7 @@ class CommandsCfg:
         ranges=mdp.BoxGoalCommandCfg.Ranges(
             pos_x=(0.5, 3.5),
             pos_y=(-1.0, 1.0),
-            yaw=(-3.1416/4, 3.1416/4),
+            yaw=(-3.1416/3, 3.1416/3),
         ),
     )
 
@@ -201,42 +201,74 @@ class EventCfg:
 @configclass
 class RewardsCfg:
     """Rewards for pushing the box to the target pose."""
-
-    # # 小的存活奖励，用来让稳定推进的 episode 略优于中途失稳的 episode。
-    # is_alive = RewTerm(func=mdp.is_alive, weight=0.2)
+    ###############################惩罚奖励函数################################## 
     # 惩罚失败终止，但不对成功到达目标后的终止进行扣分。
     termination_penalty = RewTerm(
         func=mdp.is_terminated_term,
         weight=-200.0,
         params={"term_keys": ["base_contact", "box_out_of_bounds"]},
     )
+    ###############################任务奖励函数################################## 
+              #####################稠密奖励#######################
     # 稠密距离奖励，鼓励箱子中心始终靠近目标点。
     box_goal_distance = RewTerm(
         func=mdp.box_goal_distance_tanh,
         weight=3.0,
-        params={"std": 0.25, "command_name": "box_goal"},
+        params={"std": 0.6, "command_name": "box_goal"},
     )
-    # 逐步进度奖励，只要箱子这一步朝着目标移动就能得到正反馈。
-    box_goal_progress = RewTerm(
-        func=mdp.box_goal_progress,
-        weight=8.0,
-        params={"command_name": "box_goal"},
+    box_goal_distance_fine_gained = RewTerm(
+        func=mdp.box_goal_distance_tanh,
+        weight=3.0,
+        params={"std": 0.15, "command_name": "box_goal"},
     )
     # 鼓励箱子最终朝向也与目标 yaw 对齐，避免只到点不转向。
     box_goal_yaw = RewTerm(
         func=mdp.box_goal_yaw_distance_tanh,
-        weight=0.5,
+        weight=1.5,
         params={"std": 0.4, "command_name": "box_goal"},
     )
-    # 鼓励机器人保持在能持续接触箱子的距离内，避免离箱子太远推不到。
-    robot_box_distance = RewTerm(
-        func=mdp.robot_box_distance_tanh,
-        weight=0.4,
-        params={"std": 0.8},
+    box_goal_yaw_fine_gained = RewTerm(
+        func=mdp.box_goal_yaw_distance_tanh,
+        weight=1.5,
+        params={"std": 0.15, "command_name": "box_goal"},
     )
-    # 对齐论文中的 face-to-object：鼓励机身正面对准箱子后再推进。
+              #####################稀疏奖励#######################
+    box_goal_success = RewTerm(
+        func=mdp.box_goal_success_bonus,
+        weight=15.0,
+        params={
+            "command_name": "box_goal",
+            "distance_threshold": 0.06,
+            "yaw_threshold": 0.15,
+            "box_speed_threshold": 0.06,
+            "robot_speed_threshold": 0.06,
+        },
+    )
 
-    # face_to_object = RewTerm(func=mdp.face_to_object_cosine, weight=2.0)
+    ###############################姿态奖励函数################################## 
+
+    # 惩罚横滚和俯仰，让机器人身体更平稳，减少接触时侧翻风险。
+    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
+    # 惩罚裁剪后高层命令变化过快，避免原始大动作数值爆炸污染训练。
+    action_rate = RewTerm(
+        func=mdp.processed_action_rate_l2,
+        weight=-0.20,
+        params={"action_name": "pre_trained_policy_action"},
+    )
+
+    # # 逐步进度奖励，只要箱子这一步朝着目标移动就能得到正反馈。
+    # box_goal_progress = RewTerm(
+    #     func=mdp.box_goal_progress,
+    #     weight=8.0,
+    #     params={"command_name": "box_goal"},
+    # )
+
+    # # 鼓励机器人保持在能持续接触箱子的距离内，避免离箱子太远推不到。
+    # robot_box_distance = RewTerm(
+    #     func=mdp.robot_box_distance_tanh,
+    #     weight=0.4,
+    #     params={"std": 0.8},
+    # )
     
     # 惩罚头部刚体的 xy 投影落到箱子顶面矩形范围内，避免头越到箱子上方。
     # head_over_box = RewTerm(
@@ -249,18 +281,18 @@ class RewardsCfg:
     #         "head_body_cfg": SceneEntityCfg("robot", body_names="Head_.*"),
     #     },
     # )
-    # 稀疏成功奖励，只有箱子到达目标且机器人和箱子都基本停稳时才触发,奖励阈值降低
-    box_goal_success = RewTerm(
-        func=mdp.box_goal_success_bonus,
-        weight=10.0,
-        params={
-            "command_name": "box_goal",
-            "distance_threshold": 0.12,
-            "yaw_threshold": 0.5,
-            "box_speed_threshold": 0.10,
-            "robot_speed_threshold": 0.12,
-        },
-    )
+    # # 稀疏成功奖励，只有箱子到达目标且机器人和箱子都基本停稳时才触发,奖励阈值降低
+    # box_goal_success = RewTerm(
+    #     func=mdp.box_goal_success_bonus,
+    #     weight=15.0,
+    #     params={
+    #         "command_name": "box_goal",
+    #         "distance_threshold": 0.06,
+    #         "yaw_threshold": 0.3,
+    #         "box_speed_threshold": 0.06,
+    #         "robot_speed_threshold": 0.06,
+    #     },
+    # )
     # 可选的额外姿态奖励；目前关闭，因为 flat_orientation 已经覆盖了相近作用。
     # upright_posture = RewTerm(
     #     func=mdp.orientation_l2,
@@ -273,14 +305,6 @@ class RewardsCfg:
     #     weight=-15.0,
     #     params={"target_height": 0.20},
     # )
-    # 惩罚横滚和俯仰，让机器人身体更平稳，减少接触时侧翻风险。
-    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
-    # 惩罚裁剪后高层命令变化过快，避免原始大动作数值爆炸污染训练。
-    action_rate = RewTerm(
-        func=mdp.processed_action_rate_l2,
-        weight=-0.08,
-        params={"action_name": "pre_trained_policy_action"},
-    )
 
 
 @configclass
@@ -292,11 +316,11 @@ class TerminationsCfg:
         func=mdp.goal_reached,
         params={
             "command_name": "box_goal",
-            "distance_threshold": 0.08,
-            "yaw_threshold": 0.4,
-            "box_speed_threshold": 0.08,
-            "robot_speed_threshold": 0.08,
-            "settle_steps": 12,
+            "distance_threshold": 0.06,
+            "yaw_threshold": 0.15,
+            "box_speed_threshold": 0.06,
+            "robot_speed_threshold": 0.06,
+            "settle_steps": 6,
         },
     )
     base_contact = DoneTerm(
@@ -360,7 +384,7 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
         self.observations.policy.enable_corruption = False
         self.curriculum.goal_range = None
         self.commands.box_goal.ranges.pos_x = (2.27, 2.27)
-        self.commands.box_goal.ranges.pos_y = (0.5, 0.5)
+        self.commands.box_goal.ranges.pos_y = (-0.5, -0.5)
         self.commands.box_goal.ranges.yaw = (0, 0)
         self.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
         self.events.reset_box.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
