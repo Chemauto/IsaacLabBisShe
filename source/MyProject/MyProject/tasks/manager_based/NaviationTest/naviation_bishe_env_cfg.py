@@ -209,17 +209,17 @@ class RewardsCfg:
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-1.0)
     position_tracking = RewTerm(
         func=mdp.position_command_error_tanh,
-        weight=0.8,
+        weight=1.0,#原来0.8
         params={"std": 2.0, "command_name": "pose_command"},
     )
     position_tracking_fine_grained = RewTerm(
         func=mdp.position_command_error_tanh,
-        weight=0.8,
+        weight=1.0,#原来0.8
         params={"std": 0.2, "command_name": "pose_command"},
     )
     orientation_tracking = RewTerm(
         func=mdp.heading_command_error_abs,
-        weight=-0.3,
+        weight=-0.4,#原来0.3
         params={"command_name": "pose_command"},
     )
     lateral_deviation_penalty = RewTerm(
@@ -227,11 +227,11 @@ class RewardsCfg:
         weight=-2.0,
         params={"threshold": 0.8},
     )
-    # base_collision_penalty = RewTerm(
-    #     func=mdp.undesired_contacts,
-    #     weight=-1.0,  # 原来: -3.0（加重，抑制用腹部/机身“扑地过坑”）
-    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},  # 原来: 1.0
-    # )
+    base_collision_penalty = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-1.0,  # 原来: -0.0
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},  
+    )
 
 
 @configclass
@@ -239,6 +239,10 @@ class TerminationsCfg:
     """Termination terms for the MDP."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    goal_reached = DoneTerm(
+        func=mdp.goal_reached,
+        params={"command_name": "pose_command", "distance_threshold": 0.2, "heading_threshold": 0.15, "settle_steps": 3},
+    )
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},

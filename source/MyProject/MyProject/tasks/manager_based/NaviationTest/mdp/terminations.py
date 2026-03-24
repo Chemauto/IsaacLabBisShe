@@ -51,3 +51,31 @@ def terrain_out_of_bounds(
         return torch.logical_or(x_out_of_bounds, y_out_of_bounds)
     else:
         raise ValueError("Received unsupported terrain type, must be either 'plane' or 'generator'.")
+
+
+def goal_reached(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    distance_threshold: float = 0.3,
+    heading_threshold: float = 0.35,
+    settle_steps: int = 2,
+) -> torch.Tensor:
+    """Terminate once the navigation command has been tracked closely for a few steps."""
+    command = env.command_manager.get_command(command_name)
+    position_error = torch.norm(command[:, :3], dim=1)
+    heading_error = torch.abs(command[:, 3])
+    reached = (position_error <= distance_threshold) & (heading_error <= heading_threshold)
+
+    counter_name = f"_{command_name}_goal_reached_steps"
+    if not hasattr(env, counter_name):
+        setattr(env, counter_name, torch.zeros(env.num_envs, device=env.device, dtype=torch.int32))
+
+    reached_steps = getattr(env, counter_name)
+    if hasattr(env, "episode_length_buf"):
+        reached_steps = reached_steps.clone()
+        reached_steps[env.episode_length_buf == 0] = 0
+
+    reached_steps = torch.where(reached, reached_steps + 1, torch.zeros_like(reached_steps))
+    setattr(env, counter_name, reached_steps)
+
+    return reached_steps >= settle_steps
