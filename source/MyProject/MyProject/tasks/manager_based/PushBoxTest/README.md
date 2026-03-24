@@ -62,33 +62,34 @@ R_pos = 3.0 * (1 - tanh(error_pos / 0.6))
 yaw 奖励：
 
 - `box_goal_yaw`: `weight=1.5`, `std=0.4`
-- `box_goal_yaw_fine_gained`: `weight=1.5`, `std=0.10`
+- `box_goal_yaw_fine_gained`: `weight=1.5`, `std=0.15`
 
 ```text
 R_yaw = 1.5 * (1 - tanh(error_yaw / 0.4))
-      + 1.5 * (1 - tanh(error_yaw / 0.10))
+      + 1.5 * (1 - tanh(error_yaw / 0.15))
 ```
 
 稀疏成功奖励：
 
-- `box_goal_success = 15.0`
-- `distance_threshold = 0.06 m`
-- `yaw_threshold = 0.15 rad`
-- `box_speed_threshold = 0.06 m/s`
-- `robot_speed_threshold = 0.06 m/s`
+- `box_goal_success = 20.0`
+- `distance_threshold = 0.08 m`
+- `yaw_threshold = 0.18 rad`
+- `box_speed_threshold = 0.08 m/s`
+- `robot_speed_threshold = 0.08 m/s`
 
 姿态与动作平滑：
 
 - `flat_orientation = -2.0`
+- `robot_goal_yaw = -0.3`，仅在 `error_pos < 0.25 m` 时启用，用于约束机器人最终朝向与目标 yaw 对齐
 - `action_rate = -0.20`
 
 ## 6. 成功终止条件
 `goal_reached` 与成功奖励保持一致：
 
-- `distance_threshold = 0.06 m`
-- `yaw_threshold = 0.15 rad`
-- `box_speed_threshold = 0.06 m/s`
-- `robot_speed_threshold = 0.06 m/s`
+- `distance_threshold = 0.08 m`
+- `yaw_threshold = 0.18 rad`
+- `box_speed_threshold = 0.08 m/s`
+- `robot_speed_threshold = 0.08 m/s`
 - `settle_steps = 6`
 
 其他终止项：`time_out`、`base_contact`、`box_out_of_bounds`
@@ -113,23 +114,24 @@ R_yaw = 1.5 * (1 - tanh(error_yaw / 0.4))
 - `coarse` 项负责更大范围的引导
 
 ### 7.2 角度误差对应的总 yaw 奖励
-| 角度误差(rad) | 角度误差(deg) | coarse std=0.4 | fine std=0.10 | 合计 |
+| 角度误差(rad) | 角度误差(deg) | coarse std=0.4 | fine std=0.15 | 合计 |
 |---|---:|---:|---:|---:|
 | 0.00 | 0.0 | 1.500 | 1.500 | 3.000 |
-| 0.05 | 2.9 | 1.314 | 0.807 | 2.120 |
-| 0.10 | 5.7 | 1.133 | 0.358 | 1.490 |
-| 0.15 | 8.6 | 0.963 | 0.142 | 1.105 |
-| 0.20 | 11.5 | 0.807 | 0.054 | 0.861 |
-| 0.30 | 17.2 | 0.547 | 0.007 | 0.555 |
-| 0.40 | 22.9 | 0.358 | 0.001 | 0.359 |
-| 0.60 | 34.4 | 0.142 | 0.000 | 0.142 |
+| 0.05 | 2.9 | 1.314 | 1.018 | 2.331 |
+| 0.10 | 5.7 | 1.133 | 0.626 | 1.758 |
+| 0.15 | 8.6 | 0.963 | 0.358 | 1.320 |
+| 0.18 | 10.3 | 0.867 | 0.250 | 1.117 |
+| 0.20 | 11.5 | 0.807 | 0.195 | 1.002 |
+| 0.30 | 17.2 | 0.547 | 0.054 | 0.601 |
+| 0.40 | 22.9 | 0.358 | 0.014 | 0.372 |
+| 0.60 | 34.4 | 0.142 | 0.001 | 0.143 |
 | 0.785 | 45.0 | 0.058 | 0.000 | 0.058 |
 
 说明：
 
-- `fine` yaw 项主要在 `0.0 ~ 0.15 rad` 内起作用
-- 成功阈值 `0.15 rad` 约等于 `8.6 deg`
-- 这意味着策略需要把箱子 yaw 收到大约 `9 度` 以内
+- `fine` yaw 项主要在 `0.0 ~ 0.2 rad` 内起作用
+- 成功阈值 `0.18 rad` 约等于 `10.3 deg`
+- 这意味着策略需要把箱子 yaw 收到大约 `10 度` 以内
 
 ## 8. 课程学习
 `goal_range` 使用基于 episode 改善比例的 curriculum：

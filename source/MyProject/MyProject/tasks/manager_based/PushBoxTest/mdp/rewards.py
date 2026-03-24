@@ -234,6 +234,36 @@ def box_goal_yaw_distance_tanh(
     return 1.0 - torch.tanh(error_yaw / std)
 
 
+def robot_goal_yaw_error_abs(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    activate_distance_threshold: float | None = None,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """Penalize robot yaw mismatch w.r.t. the commanded goal yaw.
+
+    This term is meant for the final placement stage. Optionally, it can be
+    activated only when the box is already close enough to the goal so that the
+    robot is not forced to align too early while still trying to push.
+    """
+    # 1. 获取机器人和目标命令  
+    robot = env.scene[robot_cfg.name]
+    goal_command = env.command_manager.get_command(command_name)
+    # 2. 提取目标朝向 
+    _, goal_yaw = split_box_goal_command(goal_command)
+    # 3. 获取机器人当前朝向
+    robot_yaw = quat_to_yaw(robot.data.root_quat_w)
+    # 4. 计算朝向误差（绝对值） 
+    error_yaw = yaw_error_abs(robot_yaw, goal_yaw)
+    # 5. 可选的条件激活
+    if activate_distance_threshold is not None:
+        _, box_distance = _box_goal_delta(env, command_name, box_cfg)
+        error_yaw = error_yaw * (box_distance < activate_distance_threshold).float()
+
+    return error_yaw
+
+
 def box_goal_settled_mask(
     env: ManagerBasedRLEnv,
     command_name: str,
