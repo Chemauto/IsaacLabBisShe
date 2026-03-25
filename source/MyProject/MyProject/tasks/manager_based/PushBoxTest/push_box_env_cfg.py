@@ -216,30 +216,30 @@ class RewardsCfg:
         weight=4.0,#原来3
         params={"std": 0.25, "command_name": "box_goal"},
     )
-    box_goal_distance_fine_gained = RewTerm(
-        func=mdp.box_goal_distance_tanh,
-        weight=0.5,#原来3
-        params={"std": 0.15, "command_name": "box_goal"},
-    )
+    # box_goal_distance_fine_gained = RewTerm(
+    #     func=mdp.box_goal_distance_tanh,
+    #     weight=1.5,#原来3
+    #     params={"std": 0.15, "command_name": "box_goal"},
+    # )
     # 原来只有一个距离奖励权重是4.0,std是0.25
     # 鼓励箱子最终朝向也与目标 yaw 对齐，避免只到点不转向。
     box_goal_yaw = RewTerm(
         func=mdp.box_goal_yaw_distance_tanh,
-        weight=2.5,#原来1.5
-        params={"std": 0.4, "command_name": "box_goal"},
+        weight=3.0,#原来1.5
+        params={"std": 0.3, "command_name": "box_goal"},
     )
-    box_goal_yaw_fine_gained = RewTerm(
-        func=mdp.box_goal_yaw_distance_tanh,
-        weight=0.5,
-        params={"std": 0.15, "command_name": "box_goal"},
-    )
+    # box_goal_yaw_fine_gained = RewTerm(
+    #     func=mdp.box_goal_yaw_distance_tanh,
+    #     weight=1.0,
+    #     params={"std": 0.15, "command_name": "box_goal"},
+    # )
     # 原来只有一个角度奖励权重是2.0,std是0.4
     # 当箱子已经接近目标时，再约束机器人最终朝向与目标 yaw 对齐，避免过早干扰推箱主任务。
-    robot_goal_yaw = RewTerm(
-        func=mdp.robot_goal_yaw_error_abs,
-        weight=-0.30,
-        params={"command_name": "box_goal", "activate_distance_threshold": 0.30 },
-    )
+    # robot_goal_yaw = RewTerm(
+    #     func=mdp.robot_goal_yaw_error_abs,
+    #     weight=-0.50,
+    #     params={"command_name": "box_goal", "activate_distance_threshold": 0.40},
+    # )
     # 加入角度控制，最后0.3米内保证机器人的姿态
               #####################稀疏奖励#######################
     box_goal_success = RewTerm(
@@ -248,9 +248,9 @@ class RewardsCfg:
         params={
             "command_name": "box_goal",
             "distance_threshold": 0.10,#0.06
-            "yaw_threshold": 0.20,#0.15
-            "box_speed_threshold": 0.10,#0.06
-            "robot_speed_threshold": 0.10,#0.06
+            "yaw_threshold": 0.15,#0.15
+            "box_speed_threshold": 0.15,#0.06
+            "robot_speed_threshold": 0.15,#0.06
         },
     )
 
@@ -261,7 +261,7 @@ class RewardsCfg:
     # 惩罚裁剪后高层命令变化过快，避免原始大动作数值爆炸污染训练。
     action_rate = RewTerm(
         func=mdp.processed_action_rate_l2,
-        weight=-0.30,#原来-0.20
+        weight=-0.20,#原来-0.20
         params={"action_name": "pre_trained_policy_action"},
     )
 
@@ -326,10 +326,10 @@ class TerminationsCfg:
         params={
             "command_name": "box_goal",
             "distance_threshold": 0.10,#0.06
-            "yaw_threshold": 0.20,#0.15
-            "box_speed_threshold": 0.10,#0.06
-            "robot_speed_threshold": 0.10,#0.06
-            "settle_steps": 6,
+            "yaw_threshold": 0.15,#0.15
+            "box_speed_threshold": 0.15,#0.06
+            "robot_speed_threshold": 0.15,#0.06
+            "settle_steps": 4,
         },
     )
     base_contact = DoneTerm(
