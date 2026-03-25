@@ -70,7 +70,7 @@ class MySceneCfg(InteractiveSceneCfg):
     box = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Box",
         spawn=sim_utils.CuboidCfg(
-            size=(0.4, 0.8, 0.2),
+            size=(0.4, 0.8, 0.8),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 rigid_body_enabled=True,
                 max_linear_velocity=10.0,
@@ -91,7 +91,7 @@ class MySceneCfg(InteractiveSceneCfg):
                 roughness=0.6,
             ),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.0, 0.0, 0.1)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.0, 0.0, 0.4)),
     )
 
     contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
@@ -210,29 +210,29 @@ class RewardsCfg:
     )
     ###############################任务奖励函数################################## 
               #####################稠密奖励#######################
-    # 稠密距离奖励，鼓励箱子中心始终靠近目标点。
-    box_goal_distance = RewTerm(
-        func=mdp.box_goal_distance_tanh,
-        weight=4.0,#原来3
-        params={"std": 0.25, "command_name": "box_goal"},
-    )
-    box_goal_yaw = RewTerm(
-        func=mdp.box_goal_yaw_distance_tanh,
-        weight=3.0,#原来1.5
-        params={"std": 0.3, "command_name": "box_goal"},
-    )
     # # 稠密距离奖励，鼓励箱子中心始终靠近目标点。
     # box_goal_distance = RewTerm(
-    #     func=mdp.box_goal_distance_exp,
-    #     weight=4.0,
-    #     params={"std": 0.10, "command_name": "box_goal"},
+    #     func=mdp.box_goal_distance_tanh,
+    #     weight=4.0,#原来3
+    #     params={"std": 0.25, "command_name": "box_goal"},
     # )
-    # # 鼓励箱子最终朝向也与目标 yaw 对齐，避免只到点不转向。
     # box_goal_yaw = RewTerm(
-    #     func=mdp.box_goal_yaw_distance_exp,
-    #     weight=2.0,
-    #     params={"std": 0.15, "command_name": "box_goal"},
+    #     func=mdp.box_goal_yaw_distance_tanh,
+    #     weight=3.0,#原来1.5
+    #     params={"std": 0.3, "command_name": "box_goal"},
     # )
+    # 稠密距离奖励，鼓励箱子中心始终靠近目标点。
+    box_goal_distance = RewTerm(
+        func=mdp.box_goal_distance_exp,
+        weight=4.0,
+        params={"std": 0.10, "command_name": "box_goal"},
+    )
+    # 鼓励箱子最终朝向也与目标 yaw 对齐，避免只到点不转向。
+    box_goal_yaw = RewTerm(
+        func=mdp.box_goal_yaw_distance_exp,
+        weight=2.0,
+        params={"std": 0.15, "command_name": "box_goal"},
+    )
     
     # 当箱子已经接近目标时，再约束机器人最终朝向与目标 yaw 对齐，避免过早干扰推箱主任务。
     # robot_goal_yaw = RewTerm(
