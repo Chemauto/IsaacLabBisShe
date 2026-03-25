@@ -210,17 +210,7 @@ class RewardsCfg:
     )
     ###############################任务奖励函数################################## 
               #####################稠密奖励#######################
-    # # 稠密距离奖励，鼓励箱子中心始终靠近目标点。
-    # box_goal_distance = RewTerm(
-    #     func=mdp.box_goal_distance_tanh,
-    #     weight=4.0,#原来3
-    #     params={"std": 0.25, "command_name": "box_goal"},
-    # )
-    # box_goal_yaw = RewTerm(
-    #     func=mdp.box_goal_yaw_distance_tanh,
-    #     weight=3.0,#原来1.5
-    #     params={"std": 0.3, "command_name": "box_goal"},
-    # )
+
     # 稠密距离奖励，鼓励箱子中心始终靠近目标点。
     box_goal_distance = RewTerm(
         func=mdp.box_goal_distance_exp,
@@ -292,7 +282,7 @@ class TerminationsCfg:
         func=mdp.goal_reached,
         params={
             "command_name": "box_goal",
-            "distance_threshold": 0.06,
+            "distance_threshold": 0.10,
             "yaw_threshold": 0.12,
             "box_speed_threshold": 0.10,
             "robot_speed_threshold": 0.10,
