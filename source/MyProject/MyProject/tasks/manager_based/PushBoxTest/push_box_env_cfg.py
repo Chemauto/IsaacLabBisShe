@@ -216,24 +216,24 @@ class RewardsCfg:
         weight=4.0,#原来3
         params={"std": 0.25, "command_name": "box_goal"},
     )
-    # box_goal_distance_fine_gained = RewTerm(
-    #     func=mdp.box_goal_distance_tanh,
-    #     weight=1.5,#原来3
-    #     params={"std": 0.15, "command_name": "box_goal"},
-    # )
-    # 原来只有一个距离奖励权重是4.0,std是0.25
-    # 鼓励箱子最终朝向也与目标 yaw 对齐，避免只到点不转向。
     box_goal_yaw = RewTerm(
         func=mdp.box_goal_yaw_distance_tanh,
         weight=3.0,#原来1.5
         params={"std": 0.3, "command_name": "box_goal"},
     )
-    # box_goal_yaw_fine_gained = RewTerm(
-    #     func=mdp.box_goal_yaw_distance_tanh,
-    #     weight=1.0,
+    # # 稠密距离奖励，鼓励箱子中心始终靠近目标点。
+    # box_goal_distance = RewTerm(
+    #     func=mdp.box_goal_distance_exp,
+    #     weight=4.0,
+    #     params={"std": 0.10, "command_name": "box_goal"},
+    # )
+    # # 鼓励箱子最终朝向也与目标 yaw 对齐，避免只到点不转向。
+    # box_goal_yaw = RewTerm(
+    #     func=mdp.box_goal_yaw_distance_exp,
+    #     weight=2.0,
     #     params={"std": 0.15, "command_name": "box_goal"},
     # )
-    # 原来只有一个角度奖励权重是2.0,std是0.4
+    
     # 当箱子已经接近目标时，再约束机器人最终朝向与目标 yaw 对齐，避免过早干扰推箱主任务。
     # robot_goal_yaw = RewTerm(
     #     func=mdp.robot_goal_yaw_error_abs,
@@ -248,9 +248,9 @@ class RewardsCfg:
         params={
             "command_name": "box_goal",
             "distance_threshold": 0.10,#0.06
-            "yaw_threshold": 0.15,#0.15
-            "box_speed_threshold": 0.15,#0.06
-            "robot_speed_threshold": 0.15,#0.06
+            "yaw_threshold": 0.12,#0.15
+            "box_speed_threshold": 0.10,#0.06
+            "robot_speed_threshold": 0.10,#0.06
         },
     )
 
@@ -263,22 +263,7 @@ class RewardsCfg:
         func=mdp.processed_action_rate_l2,
         weight=-0.20,#原来-0.20
         params={"action_name": "pre_trained_policy_action"},
-    )
-
-    # # 逐步进度奖励，只要箱子这一步朝着目标移动就能得到正反馈。
-    # box_goal_progress = RewTerm(
-    #     func=mdp.box_goal_progress,
-    #     weight=8.0,
-    #     params={"command_name": "box_goal"},
-    # )
-
-    # # 鼓励机器人保持在能持续接触箱子的距离内，避免离箱子太远推不到。
-    # robot_box_distance = RewTerm(
-    #     func=mdp.robot_box_distance_tanh,
-    #     weight=0.4,
-    #     params={"std": 0.8},
-    # )
-    
+    )  
     # 惩罚头部刚体的 xy 投影落到箱子顶面矩形范围内，避免头越到箱子上方。
     # head_over_box = RewTerm(
     #     func=mdp.head_point_in_box_penalty,
@@ -289,24 +274,6 @@ class RewardsCfg:
     #         "top_surface_margin": 0.00,
     #         "head_body_cfg": SceneEntityCfg("robot", body_names="Head_.*"),
     #     },
-    # )
-    # # 稀疏成功奖励，只有箱子到达目标且机器人和箱子都基本停稳时才触发,奖励阈值降低
-    # box_goal_success = RewTerm(
-    #     func=mdp.box_goal_success_bonus,
-    #     weight=15.0,
-    #     params={
-    #         "command_name": "box_goal",
-    #         "distance_threshold": 0.06,
-    #         "yaw_threshold": 0.3,
-    #         "box_speed_threshold": 0.06,
-    #         "robot_speed_threshold": 0.06,
-    #     },
-    # )
-    # 可选的额外姿态奖励；目前关闭，因为 flat_orientation 已经覆盖了相近作用。
-    # upright_posture = RewTerm(
-    #     func=mdp.orientation_l2,
-    #     weight=1.0,
-    #     params={"desired_gravity": [0.0, 0.0, -1.0]},
     # )
     # 约束机身高度不要抬得过高，避免推箱子中后段为了拿进度奖励而抬身前探。
     # base_height = RewTerm(
@@ -325,10 +292,10 @@ class TerminationsCfg:
         func=mdp.goal_reached,
         params={
             "command_name": "box_goal",
-            "distance_threshold": 0.10,#0.06
-            "yaw_threshold": 0.15,#0.15
-            "box_speed_threshold": 0.15,#0.06
-            "robot_speed_threshold": 0.15,#0.06
+            "distance_threshold": 0.06,
+            "yaw_threshold": 0.12,
+            "box_speed_threshold": 0.10,
+            "robot_speed_threshold": 0.10,
             "settle_steps": 4,
         },
     )

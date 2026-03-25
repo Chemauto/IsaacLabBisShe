@@ -596,3 +596,27 @@ def orientation_l2(
     # 应用平方函数增强对比度 / Apply square to enhance contrast
     # 接近 1 的值会更大，接近 0 的值会更小 / Values near 1 become larger, values near 0 become smaller
     return torch.square(normalized)
+
+def exp_tracking_reward(error: torch.Tensor, std: float) -> torch.Tensor:
+    """Map a non-negative tracking error to (0, 1] with an exponential kernel."""
+    return torch.exp(-error / std)
+
+def box_goal_distance_exp(
+    env: ManagerBasedRLEnv,
+    std: float,
+    command_name: str,
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """箱子到目标点距离奖励（指数核函数）/ Reward moving the box center close to the target point with an exponential kernel."""
+    _, distance = _box_goal_delta(env, command_name, box_cfg)
+    return exp_tracking_reward(distance, std)
+
+def box_goal_yaw_distance_exp(
+    env: ManagerBasedRLEnv,
+    std: float,
+    command_name: str,
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """Reward the box for aligning its yaw with the target yaw using an exponential kernel."""
+    error_yaw = box_goal_yaw_error(env, command_name, box_cfg)
+    return exp_tracking_reward(error_yaw, std)
