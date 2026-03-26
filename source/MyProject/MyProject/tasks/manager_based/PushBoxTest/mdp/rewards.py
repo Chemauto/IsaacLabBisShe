@@ -146,82 +146,6 @@ def box_goal_distance_tanh(
     return 1.0 - torch.tanh(distance / std)
 
 
-def box_goal_progress(
-    env: ManagerBasedRLEnv,
-    command_name: str,
-    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
-) -> torch.Tensor:
-    """箱子向目标点进展奖励（增量奖励）/ Reward step-wise progress of the box towards the goal.
-
-    奖励箱子在每一步中向目标点接近的程度，而不是绝对距离。
-    Rewards how much the box gets closer to the goal at each step, rather than absolute distance.
-
-    逻辑 / Logic:
-        1. 获取当前箱子到目标点的距离 / Get current box-to-goal distance
-        2. 从环境缓存中读取上一步的距离 / Get previous distance from environment buffer
-        3. 如果是第一次调用，初始化缓存 / If first call, initialize buffer
-        4. 检测回合重置（episode_length_buf == 0），重置对应环境的缓存 / Detect episode reset, reset corresponding buffers
-        5. 计算进展 = 上一步距离 - 当前距离 / Compute progress = previous_distance - current_distance
-        6. 更新缓存为当前距离 / Update buffer to current distance
-
-    关键特点 / Key Features:
-        - 增量奖励：只奖励"改善"的部分，而非绝对状态 / Incremental reward: only rewards "improvement", not absolute state
-        - 正值：箱子接近目标点 / Positive: box gets closer to goal
-        - 负值：箱子远离目标点 / Negative: box moves away from goal
-        - 零值：箱子距离不变 / Zero: distance unchanged
-
-    作用 / Purpose:
-        - 鼓励持续进展，而非停留在好的位置 / Encourage continuous progress, not staying at good position
-        - 避免局部最优：即使已经很接近，仍需要继续改进 / Avoid local optimum: even when close, keep improving
-        - 提供细粒度的学习信号 / Provide fine-grained learning signal
-
-    注意 / Note:
-        - 使用环境缓存存储历史状态（前一步距离）/ Uses environment buffer to store history (previous distance)
-        - 需要正确处理回合重置，避免跨回合的数据污染 / Must handle episode reset properly to avoid cross-episode contamination
-
-    Args:
-        env: 强化学习环境 / RL environment
-        command_name: 命令名称 / Command name
-        box_cfg: 箱子场景实体配置 / Box scene entity configuration
-
-    Returns:
-        torch.Tensor: 形状为 (num_envs,) 的进展奖励张量 /
-                     Shape (num_envs,), progress reward tensor
-            - 正值表示箱子接近目标点 / Positive: box getting closer
-            - 负值表示箱子远离目标点 / Negative: box moving away
-    """
-    # 获取当前箱子到目标点的距离 / Get current box-to-goal distance
-    _, current_distance = _box_goal_delta(env, command_name, box_cfg)
-
-    # 缓存名称 / Buffer name
-    buffer_name = "_push_box_prev_goal_distance"
-
-    # 如果缓存不存在，初始化为当前距离 / If buffer doesn't exist, initialize with current distance
-    if not hasattr(env, buffer_name):
-        setattr(env, buffer_name, current_distance.clone())
-
-    # 获取上一步的距离 / Get previous distance
-    previous_distance = getattr(env, buffer_name)
-
-    # 处理回合重置：重置的环境需要更新缓存 / Handle episode reset: update buffer for reset environments
-    if hasattr(env, "episode_length_buf"):
-        # 找出所有重置的环境 / Find all reset environments
-        reset_ids = env.episode_length_buf == 0
-        # 克隆避免修改原始数据 / Clone to avoid modifying original data
-        previous_distance = previous_distance.clone()
-        # 将重置环境的上一步距离设为当前距离 / Set previous distance to current for reset environments
-        previous_distance[reset_ids] = current_distance[reset_ids]
-
-    # 计算进展：上一步距离 - 当前距离 / Compute progress: previous - current
-    # 如果距离减小（接近目标），progress 为正 / If distance decreases (closer), progress is positive
-    # 如果距离增加（远离目标），progress 为负 / If distance increases (away), progress is negative
-    progress = previous_distance - current_distance
-
-    # 更新缓存为当前距离，供下一步使用 / Update buffer to current distance for next step
-    setattr(env, buffer_name, current_distance.clone())
-
-    return progress
-
 
 def box_goal_yaw_distance_tanh(
     env: ManagerBasedRLEnv,
@@ -385,34 +309,6 @@ def robot_box_distance_tanh(
     return 1.0 - torch.tanh(distance / std)
 
 
-def face_to_object_cosine(
-    env: ManagerBasedRLEnv,
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
-) -> torch.Tensor:
-    """Reward the robot for facing the box before pushing.
-
-    论文对应项 / Paper term:
-        Face to object: ``cos⟨θ_b, x_o - x_b⟩``
-
-    这里将机器人朝向向量和“机器人到物体”的单位方向向量做余弦相似度。
-    奖励越接近 1，表示机器人越正对着箱子；越接近 -1，表示机器人背对箱子。
-    """
-
-    robot: RigidObject = env.scene[robot_cfg.name]
-    box: RigidObject = env.scene[box_cfg.name]
-
-    forward_axis_b = torch.tensor([1.0, 0.0, 0.0], device=env.device, dtype=robot.data.root_quat_w.dtype).unsqueeze(0)
-    forward_axis_b = forward_axis_b.expand(env.num_envs, -1)
-    robot_forward_xy = quat_apply(robot.data.root_quat_w, forward_axis_b)[:, :2]
-
-    robot_to_box_xy = box.data.root_pos_w[:, :2] - robot.data.root_pos_w[:, :2]
-    robot_to_box_xy = robot_to_box_xy / torch.clamp(torch.norm(robot_to_box_xy, dim=1, keepdim=True), min=1.0e-6)
-
-    return torch.sum(robot_forward_xy * robot_to_box_xy, dim=1)
-
-
-face_to_box_cosine = face_to_object_cosine
 
 
 def head_point_in_box_penalty(
@@ -526,76 +422,6 @@ def box_goal_success_bonus(
         box_cfg=box_cfg,
     ).float()
 
-
-def orientation_l2(
-    env: ManagerBasedRLEnv,
-    desired_gravity: list[float],
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-) -> torch.Tensor:
-    """机器人姿态奖励（保持直立）/ Reward the robot for keeping the body aligned with the desired gravity direction.
-
-    奖励机器人保持期望的姿态方向，通常用于鼓励四足机器人保持直立。
-    Rewards robot for maintaining desired orientation direction, typically used to encourage quadruped to stay upright.
-
-    逻辑 / Logic:
-        1. 获取资产对象（通常是机器人）/ Get asset object (typically robot)
-        2. 将期望重力向量转换为张量 / Convert desired gravity vector to tensor
-        3. 计算当前投影重力与期望重力的余弦相似度 / Compute cosine similarity between current projected gravity and desired
-        4. 归一化到 [0, 1] 范围：normalized = 0.5 * cos_dist + 0.5 / Normalize to [0, 1]: normalized = 0.5 * cos_dist + 0.5
-        5. 应用平方函数增强对比度 / Apply square function to enhance contrast
-
-    数学原理 / Mathematical Principle:
-        - projected_gravity_b: 重力在机器人坐标系中的投影 / Gravity projection in robot frame
-        - 对于直立机器人，projected_gravity_b ≈ [0, 0, -1] / For upright robot, projected_gravity_b ≈ [0, 0, -1]
-        - cos_dist = dot(projected_gravity_b, desired_gravity) / Cosine distance
-        - 当完全对齐时，cos_dist = 1，normalized = 1，reward = 1 / When aligned: cos_dist=1, normalized=1, reward=1
-        - 当完全相反时，cos_dist = -1，normalized = 0，reward = 0 / When opposite: cos_dist=-1, normalized=0, reward=0
-
-    为什么使用平方？/ Why square?
-        - 增强对齐与不对齐的对比 / Enhance contrast between aligned and misaligned
-        - 对接近正确的姿态给予更高奖励 / Give higher reward for nearly correct orientation
-        - 惩罚偏离更严厉 / Penalize deviations more severely
-
-    作用 / Purpose:
-        - 鼓励四足机器人保持直立姿态 / Encourage quadruped to maintain upright posture
-        - 防止翻倒 / Prevent falling over
-        - 这是标准的运动控制奖励 / This is a standard locomotion reward
-
-    参考来源 / Reference:
-        遵循 Unitree 运动控制奖励的设计思想。
-        Follows the same idea as reference Unitree locomotion rewards.
-        对于平地上的 Go2 机器人，期望重力为 [0, 0, -1]。
-        Uses desired gravity [0, 0, -1] for an upright Go2 on flat ground.
-
-    Args:
-        env: 强化学习环境 / RL environment
-        desired_gravity: 期望的重力方向向量 / Desired gravity direction vector, typically [0, 0, -1] for upright
-        asset_cfg: 资产场景实体配置（通常是机器人）/ Asset scene entity configuration (typically robot)
-
-    Returns:
-        torch.Tensor: 形状为 (num_envs,) 的奖励张量，范围 [0, 1] /
-                     Shape (num_envs,), reward tensor in range [0, 1]
-            - 1.0: 姿态完全对齐（直立）/ 1.0: orientation perfectly aligned (upright)
-            - 0.0: 姿态完全相反（倒立）/ 0.0: orientation completely opposite (inverted)
-    """
-    asset: RigidObject = env.scene[asset_cfg.name]
-
-    # 将期望重力向量转换为张量 / Convert desired gravity vector to tensor
-    desired_gravity_tensor = torch.tensor(
-        desired_gravity, device=env.device, dtype=asset.data.projected_gravity_b.dtype
-    )
-
-    # 计算余弦相似度（点积）/ Compute cosine similarity (dot product)
-    # projected_gravity_b 是重力在机器人坐标系中的投影 / projected_gravity_b is gravity projection in robot frame
-    cos_dist = torch.sum(asset.data.projected_gravity_b * desired_gravity_tensor, dim=-1)
-
-    # 归一化到 [0, 1] 范围 / Normalize to [0, 1] range
-    # cos_dist ∈ [-1, 1] → normalized ∈ [0, 1] / cos_dist in [-1, 1] → normalized in [0, 1]
-    normalized = 0.5 * cos_dist + 0.5
-
-    # 应用平方函数增强对比度 / Apply square to enhance contrast
-    # 接近 1 的值会更大，接近 0 的值会更小 / Values near 1 become larger, values near 0 become smaller
-    return torch.square(normalized)
 
 def exp_tracking_reward(error: torch.Tensor, std: float) -> torch.Tensor:
     """Map a non-negative tracking error to (0, 1] with an exponential kernel."""

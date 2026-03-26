@@ -11,7 +11,7 @@ from pathlib import Path
 
 DEFAULT_TASK = "Template-Push-Box-Go2-v0"
 DEFAULT_EXPERIMENT = "push_box"
-DEFAULT_RUN_NAME = "from_short"
+DEFAULT_RUN_NAME = "from_short_push"
 DEFAULT_LOAD_RUN = "^test$"
 DEFAULT_CHECKPOINT_NAME = "ShortPush.pt"
 DEFAULT_LOAD_WEIGHTS_ONLY = False
