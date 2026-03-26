@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import re
@@ -71,6 +72,12 @@ parser.add_argument(
     type=str,
     default="/tmp/envtest_start.txt",
     help="启动开关文件。写入 1 表示开始执行策略，写入 0 表示待机静止。",
+)
+parser.add_argument(
+    "--status_json_file",
+    type=str,
+    default="/tmp/envtest_live_status.json",
+    help="运行状态 JSON 文件。player 会持续写出 robot_pose / goal / start / model_use 等字段，供外部轮询反馈使用。",
 )
 parser.add_argument(
     "--reset_file",
@@ -746,6 +753,50 @@ def _render_status_panel(snapshot: StatusSnapshot):
         pass
 
 
+def _write_status_json(snapshot: StatusSnapshot, file_path: str) -> None:
+    """把当前运行状态原子写入 JSON 文件，供外部轮询。"""
+
+    if not file_path:
+        return
+
+    payload = {
+        "timestamp": round(time.time(), 6),
+        "model_use": snapshot.model_use,
+        "skill": snapshot.skill,
+        "scene_id": snapshot.scene_id,
+        "start": snapshot.start,
+        "unified_obs_dim": snapshot.unified_obs_dim,
+        "policy_obs_dim": snapshot.policy_obs_dim,
+        "pose_command": list(snapshot.pose_command) if snapshot.pose_command is not None else None,
+        "vel_command": list(snapshot.vel_command) if snapshot.vel_command is not None else None,
+        "robot_pose": list(snapshot.robot_pose) if snapshot.robot_pose is not None else None,
+        "goal": list(snapshot.goal) if snapshot.goal is not None else None,
+        "platform_1": None if snapshot.platform_1 is None else {
+            "name": snapshot.platform_1.name,
+            "position": list(snapshot.platform_1.position),
+            "size": list(snapshot.platform_1.size),
+        },
+        "platform_2": None if snapshot.platform_2 is None else {
+            "name": snapshot.platform_2.name,
+            "position": list(snapshot.platform_2.position),
+            "size": list(snapshot.platform_2.size),
+        },
+        "box": None if snapshot.box is None else {
+            "name": snapshot.box.name,
+            "position": list(snapshot.box.position),
+            "size": list(snapshot.box.size),
+        },
+    }
+
+    status_path = os.path.abspath(file_path)
+    os.makedirs(os.path.dirname(status_path), exist_ok=True)
+    temp_path = f"{status_path}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as file:
+        json.dump(payload, file, ensure_ascii=False)
+        file.write("\n")
+    os.replace(temp_path, status_path)
+
+
 def _reset_robot_only(env, robot):
     """只重置机器人，不恢复箱子和障碍物。"""
 
@@ -1132,6 +1183,7 @@ def main():
                 goal_command=current_goal_for_display,
             )
             _render_status_panel(status_snapshot)
+            _write_status_json(status_snapshot, args_cli.status_json_file)
             last_status_panel_time = time.time()
 
         if args_cli.max_steps > 0 and step_count >= args_cli.max_steps:
