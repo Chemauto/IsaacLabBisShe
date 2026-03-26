@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 GOAL_FRONT_GAP = 0.03
 GOAL_LATERAL_MARGIN = 0.03
+PAIR_GOAL_FRONT_GAP = 0.0
 HEIGHT_SCAN_ASSETS = (
     ("left_wall", (WALL_LENGTH, WALL_THICKNESS, WALL_HEIGHT)),
     ("right_wall", (WALL_LENGTH, WALL_THICKNESS, WALL_HEIGHT)),
@@ -80,6 +81,87 @@ def _scene_asset_size(
         return fallback_size
 
     return tuple(float(value) for value in size)
+
+
+def _scene_asset_position_and_size(
+    env: "ManagerBasedEnv",
+    asset_name: str,
+    fallback_size: tuple[float, float, float],
+) -> tuple[torch.Tensor, tuple[float, float, float]] | None:
+    """读取当前障碍物在环境坐标系下的位置和尺寸；缺失时返回 `None`。"""
+
+    try:
+        asset = env.scene[asset_name]
+    except KeyError:
+        return None
+
+    asset_pos_e = asset.data.root_pos_w[:, :3] - env.scene.env_origins
+    size = _scene_asset_size(env, asset_name, fallback_size)
+    return asset_pos_e, size
+
+
+def _compute_centered_pair_push_goal(
+    env: "ManagerBasedEnv",
+    support_box_size: tuple[float, float, float],
+) -> tuple[torch.Tensor, dict] | None:
+    """若左右障碍组成一整面墙，则把箱子目标放到墙体正中。"""
+
+    candidate_pairs = (
+        ("left_high_obstacle", HIGH_OBSTACLE_SIZE, "right_high_obstacle", HIGH_OBSTACLE_SIZE),
+        ("left_low_obstacle", LOW_OBSTACLE_SIZE, "right_low_obstacle", LOW_OBSTACLE_SIZE),
+        ("left_high_obstacle", HIGH_OBSTACLE_SIZE, "right_low_obstacle", LOW_OBSTACLE_SIZE),
+        ("left_low_obstacle", LOW_OBSTACLE_SIZE, "right_high_obstacle", HIGH_OBSTACLE_SIZE),
+    )
+
+    for left_name, left_fallback, right_name, right_fallback in candidate_pairs:
+        left_state = _scene_asset_position_and_size(env, left_name, left_fallback)
+        right_state = _scene_asset_position_and_size(env, right_name, right_fallback)
+        if left_state is None or right_state is None:
+            continue
+
+        left_pos_e, left_size = left_state
+        right_pos_e, right_size = right_state
+        goal = torch.zeros((env.num_envs, 4), dtype=left_pos_e.dtype, device=left_pos_e.device)
+
+        left_front_x = left_pos_e[:, 0] - 0.5 * left_size[0]
+        right_front_x = right_pos_e[:, 0] - 0.5 * right_size[0]
+        goal[:, 0] = torch.minimum(left_front_x, right_front_x) - 0.5 * support_box_size[0] - PAIR_GOAL_FRONT_GAP
+
+        left_inner_y = left_pos_e[:, 1] - 0.5 * left_size[1]
+        right_inner_y = right_pos_e[:, 1] + 0.5 * right_size[1]
+        goal[:, 1] = 0.5 * (left_inner_y + right_inner_y)
+        goal[:, 2] = 0.5 * support_box_size[2]
+        goal[:, 3] = 0.0
+
+        barrier_y_min = torch.minimum(left_pos_e[:, 1] - 0.5 * left_size[1], right_pos_e[:, 1] - 0.5 * right_size[1])
+        barrier_y_max = torch.maximum(left_pos_e[:, 1] + 0.5 * left_size[1], right_pos_e[:, 1] + 0.5 * right_size[1])
+        combined_size = torch.stack(
+            (
+                torch.full_like(goal[:, 0], max(left_size[0], right_size[0])),
+                barrier_y_max - barrier_y_min,
+                torch.full_like(goal[:, 0], max(left_size[2], right_size[2])),
+            ),
+            dim=-1,
+        )
+        combined_position = torch.stack(
+            (
+                0.5 * (left_pos_e[:, 0] + right_pos_e[:, 0]),
+                0.5 * (barrier_y_min + barrier_y_max),
+                0.5 * (left_pos_e[:, 2] + right_pos_e[:, 2]),
+            ),
+            dim=-1,
+        )
+        debug_info = {
+            "box_size": support_box_size,
+            "box_position": env.scene["support_box"].data.root_pos_w[:, :3] - env.scene.env_origins,
+            "selected_obstacle_names": [f"{left_name}+{right_name}"] * env.num_envs,
+            "selected_obstacle_sizes": combined_size,
+            "selected_obstacle_positions": combined_position,
+            "goal": goal,
+        }
+        return goal, debug_info
+
+    return None
 
 
 def velocity_commands(env: "ManagerBasedEnv") -> torch.Tensor:
@@ -247,6 +329,12 @@ def compute_push_goal_from_scene(env: "ManagerBasedEnv") -> torch.Tensor:
 
     box_pos_e = box.data.root_pos_w[:, :3] - env_origins
     support_box_size = _scene_asset_size(env, "support_box", BOX_SIZE)
+
+    centered_pair_goal = _compute_centered_pair_push_goal(env, support_box_size)
+    if centered_pair_goal is not None:
+        selected_goal, debug_info = centered_pair_goal
+        setattr(env, "_envtest_push_goal_debug", debug_info)
+        return selected_goal
 
     candidates: list[torch.Tensor] = []
     candidate_names: list[str] = []

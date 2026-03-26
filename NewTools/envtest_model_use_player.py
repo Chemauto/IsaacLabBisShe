@@ -190,7 +190,7 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
     ),
     3: SkillSpec(
         name="push_box",
-        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "PushPolicy", "PushNewNoHeightRestrain.pt"),
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "PushPolicy", "PushBox.pt"),
         obs_terms=PUSH_HIGH_LEVEL_OBS_TERMS,
         obs_dim=23,
         checkpoint_format="rsl_rl_checkpoint",
@@ -210,6 +210,14 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
 
 PUSH_LOW_LEVEL_POLICY_PATH = os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkRoughNewTransfer.pt")
 PUSH_HIGH_LEVEL_DECIMATION = 10
+# Must stay in sync with PushBoxTest.ActionsCfg.pre_trained_policy_action in
+# source/MyProject/MyProject/tasks/manager_based/PushBoxTest/push_box_env_cfg.py.
+PUSH_ACTION_SCALE = (0.8, 0.6, 0.6)
+PUSH_ACTION_CLIP = (
+    (-0.6, 0.6),
+    (-0.5, 0.5),
+    (-0.3, 0.3),
+)
 
 
 def _make_activation(name: str) -> nn.Module:
@@ -457,9 +465,14 @@ def _default_push_goal(env) -> torch.Tensor:
 
 
 def _process_push_actions(raw_actions: torch.Tensor) -> torch.Tensor:
-    """对齐当前 `PushBoxTest` 配置：高层动作不再额外缩放或裁剪。"""
+    """对齐 `PushBoxTest`：高层动作先缩放，再按训练范围裁剪。"""
 
-    return raw_actions
+    action_scale = raw_actions.new_tensor(PUSH_ACTION_SCALE).view(1, -1)
+    action_clip = raw_actions.new_tensor(PUSH_ACTION_CLIP)
+    action_clip_min = action_clip[:, 0].view(1, -1)
+    action_clip_max = action_clip[:, 1].view(1, -1)
+    processed_actions = raw_actions * action_scale
+    return torch.maximum(torch.minimum(processed_actions, action_clip_max), action_clip_min)
 
 
 def _process_navigation_actions(raw_actions: torch.Tensor) -> torch.Tensor:
