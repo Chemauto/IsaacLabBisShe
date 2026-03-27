@@ -17,7 +17,6 @@ deploy/
 ## 导出 deploy 配置与策略
 最常用的是直接传 `task` 和 `checkpoint`：
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe
 bash deploy/scripts/export_policy_and_deploy.sh \
   --task Template-Velocity-Go2-Walk-BiShe-Pit-v0 \
   --checkpoint /path/to/model_XXXX.pt
@@ -26,7 +25,6 @@ bash deploy/scripts/export_policy_and_deploy.sh \
 
 如果只想生成 `deploy.yaml`：
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe
 bash deploy/scripts/export_policy_and_deploy.sh \
   --task Template-Velocity-Go2-Walk-BiShe-Pit-v0 \
   --skip-policy-export
@@ -50,32 +48,32 @@ Velocity:
 ```
 编译：
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2/build
+cd deploy/robots/go2/build
 cmake ..
 make -j4
 ```
 运行：
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2/build
+cd deploy/robots/go2/build
 ./go2_ctrl --network lo
 ```
 
 实机时把 `lo` 换成真实网卡名，例如 `enp2s0`。
 
 ## MuJoCo heightmap 联调
-当前 rough / bishe 策略需要 `rt/sportmodestate` 和 `rt/heightmap`。`unitree_mujoco` 已补了 `rt/heightmap` 发布、viewer 可视化和 sim2sim 监控脚本。
+当前 rough / bishe 策略需要 `rt/sportmodestate` 和 `rt/heightmap`。当前仓库的 `Mujoco/` 已带 Python 仿真、viewer 可视化和 sim2sim 监控脚本。
 启动 MuJoCo：
 ```bash
-cd /home/xcj/work/unitree/unitree_mujoco/simulate_python
+cd Mujoco/simulate_python
 bash run_simulator.sh
 ```
 新终端看完整 sim2sim 状态：
 ```bash
-cd /home/xcj/work/unitree/unitree_mujoco/simulate_python
-export LD_LIBRARY_PATH=/home/xcj/cyclonedds/build/lib:$LD_LIBRARY_PATH
+cd Mujoco/simulate_python
+export LD_LIBRARY_PATH=${CYCLONEDDS_BUILD:-$HOME/cyclonedds/build}/lib:$LD_LIBRARY_PATH
 python3 test/monitor_sim2sim.py
 ```
-`monitor_sim2sim.py` 默认会打印 `lowstate`、`sportmodestate`、`lowcmd`、`heightmap grid` 和 `heightmap delta grid`。MuJoCo viewer 中会显示 `height_scan` 命中点和稀疏射线。详细流程见 `/home/xcj/work/unitree/unitree_mujoco/simulate_python/SIM2SIM_DEBUG.md`。
+`monitor_sim2sim.py` 默认会打印 `lowstate`、`sportmodestate`、`lowcmd`、`heightmap grid` 和 `heightmap delta grid`。MuJoCo viewer 中会显示 `height_scan` 命中点和稀疏射线。详细流程见 `Mujoco/simulate_python/SIM2SIM_DEBUG.md`。
 
 ## 常见问题
 - 报 `Observation term 'xxx' is not registered`：`deploy.yaml` 的 observation 和 deploy runtime 不一致。
