@@ -8,6 +8,7 @@ from __future__ import annotations
 import torch
 from typing import TYPE_CHECKING
 
+import isaaclab.sim as sim_utils
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
@@ -66,6 +67,23 @@ def box_pose(
     box_quat_w = math_utils.quat_unique(box.data.root_quat_w)
     # 拼接位置和姿态 / Concatenate position and orientation
     return torch.cat([box_pos_e, box_quat_w], dim=-1)
+
+
+def box_size(
+    env: ManagerBasedRLEnv,
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """箱子实际尺寸 / Actual box size in the environment."""
+    box: RigidObject = env.scene[box_cfg.name]
+    cache_name = "_push_box_scales"
+    if not hasattr(env, cache_name):
+        scales = []
+        for prim_path in box.root_physx_view.prim_paths:
+            scales.append(sim_utils.resolve_prim_scale(sim_utils.get_prim_at_path(prim_path)))
+        setattr(env, cache_name, torch.tensor(scales, device="cpu", dtype=torch.float32))
+    scales = getattr(env, cache_name).to(device=env.device, dtype=box.data.root_pos_w.dtype)
+    base_size = torch.tensor(getattr(env.cfg.scene, box_cfg.name).spawn.size, device=env.device, dtype=scales.dtype)
+    return scales * base_size.unsqueeze(0)
 
 
 def robot_position(

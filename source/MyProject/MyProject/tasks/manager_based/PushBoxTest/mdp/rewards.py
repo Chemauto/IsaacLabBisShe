@@ -103,89 +103,80 @@ def box_goal_yaw_error(
     return yaw_error_abs(box_yaw, goal_yaw)
 
 
-def box_goal_distance_tanh(
+# def box_goal_distance_tanh(
+#     env: ManagerBasedRLEnv,
+#     std: float,
+#     command_name: str,
+#     box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+# ) -> torch.Tensor:
+#     """箱子到目标点距离奖励（tanh 核函数）/ Reward moving the box center close to the target point.
+
+#     使用 tanh 核函数奖励箱子接近目标点。距离越近，奖励越高。
+#     Uses tanh kernel function to reward box getting closer to goal. Closer distance = higher reward.
+
+#     逻辑 / Logic:
+#         1. 获取箱子到目标点的距离 / Get box-to-goal distance
+#         2. 使用 tanh 函数将距离映射到 [0, 1] 范围 / Use tanh to map distance to [0, 1] range
+#         3. 公式：reward = 1 - tanh(distance / std) / Formula: reward = 1 - tanh(distance / std)
+
+#     数学特性 / Mathematical Properties:
+#         - 当 distance = 0 时，reward = 1（最大奖励）/ When distance = 0, reward = 1 (max reward)
+#         - 当 distance >> std 时，reward → 0（奖励趋于 0）/ When distance >> std, reward → 0
+#         - std 控制奖励的衰减速度 / std controls reward decay rate
+#         - tanh 函数提供平滑的非线性映射 / tanh provides smooth non-linear mapping
+
+#     作用 / Purpose:
+#         - 鼓励机器人将箱子推向目标点 / Encourage robot to push box towards goal
+#         - 提供密集的引导信号 / Provide dense guidance signal
+#         - 避免奖励稀疏问题（即使离得很远也有小奖励）/ Avoid sparse reward (small reward even when far)
+
+#     Args:
+#         env: 强化学习环境 / RL environment
+#         std: tanh 函数的标准差参数，控制奖励衰减速度 / Standard deviation parameter for tanh, controls reward decay rate
+#         command_name: 命令名称 / Command name
+#         box_cfg: 箱子场景实体配置 / Box scene entity configuration
+
+#     Returns:
+#         torch.Tensor: 形状为 (num_envs,) 的奖励张量，范围 [0, 1] /
+#                      Shape (num_envs,), reward tensor in range [0, 1]
+#     """
+#     # 获取箱子到目标点的距离 / Get box-to-goal distance
+#     _, distance = _box_goal_delta(env, command_name, box_cfg)
+#     # 使用 tanh 核函数计算奖励：距离越小，奖励越高 / Use tanh kernel: smaller distance → higher reward
+#     return 1.0 - torch.tanh(distance / std)
+
+
+
+# def box_goal_yaw_distance_tanh(
+#     env: ManagerBasedRLEnv,
+#     std: float,
+#     command_name: str,
+#     box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+# ) -> torch.Tensor:
+#     """Reward the box for aligning its yaw with the target yaw."""
+#     error_yaw = box_goal_yaw_error(env, command_name, box_cfg)
+#     return 1.0 - torch.tanh(error_yaw / std)
+
+
+def face_to_object(
     env: ManagerBasedRLEnv,
-    std: float,
-    command_name: str,
-    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
-) -> torch.Tensor:
-    """箱子到目标点距离奖励（tanh 核函数）/ Reward moving the box center close to the target point.
-
-    使用 tanh 核函数奖励箱子接近目标点。距离越近，奖励越高。
-    Uses tanh kernel function to reward box getting closer to goal. Closer distance = higher reward.
-
-    逻辑 / Logic:
-        1. 获取箱子到目标点的距离 / Get box-to-goal distance
-        2. 使用 tanh 函数将距离映射到 [0, 1] 范围 / Use tanh to map distance to [0, 1] range
-        3. 公式：reward = 1 - tanh(distance / std) / Formula: reward = 1 - tanh(distance / std)
-
-    数学特性 / Mathematical Properties:
-        - 当 distance = 0 时，reward = 1（最大奖励）/ When distance = 0, reward = 1 (max reward)
-        - 当 distance >> std 时，reward → 0（奖励趋于 0）/ When distance >> std, reward → 0
-        - std 控制奖励的衰减速度 / std controls reward decay rate
-        - tanh 函数提供平滑的非线性映射 / tanh provides smooth non-linear mapping
-
-    作用 / Purpose:
-        - 鼓励机器人将箱子推向目标点 / Encourage robot to push box towards goal
-        - 提供密集的引导信号 / Provide dense guidance signal
-        - 避免奖励稀疏问题（即使离得很远也有小奖励）/ Avoid sparse reward (small reward even when far)
-
-    Args:
-        env: 强化学习环境 / RL environment
-        std: tanh 函数的标准差参数，控制奖励衰减速度 / Standard deviation parameter for tanh, controls reward decay rate
-        command_name: 命令名称 / Command name
-        box_cfg: 箱子场景实体配置 / Box scene entity configuration
-
-    Returns:
-        torch.Tensor: 形状为 (num_envs,) 的奖励张量，范围 [0, 1] /
-                     Shape (num_envs,), reward tensor in range [0, 1]
-    """
-    # 获取箱子到目标点的距离 / Get box-to-goal distance
-    _, distance = _box_goal_delta(env, command_name, box_cfg)
-    # 使用 tanh 核函数计算奖励：距离越小，奖励越高 / Use tanh kernel: smaller distance → higher reward
-    return 1.0 - torch.tanh(distance / std)
-
-
-
-def box_goal_yaw_distance_tanh(
-    env: ManagerBasedRLEnv,
-    std: float,
-    command_name: str,
-    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
-) -> torch.Tensor:
-    """Reward the box for aligning its yaw with the target yaw."""
-    error_yaw = box_goal_yaw_error(env, command_name, box_cfg)
-    return 1.0 - torch.tanh(error_yaw / std)
-
-
-def robot_goal_yaw_error_abs(
-    env: ManagerBasedRLEnv,
-    command_name: str,
     activate_distance_threshold: float | None = None,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
 ) -> torch.Tensor:
-    """Penalize robot yaw mismatch w.r.t. the commanded goal yaw.
-
-    This term is meant for the final placement stage. Optionally, it can be
-    activated only when the box is already close enough to the goal so that the
-    robot is not forced to align too early while still trying to push.
-    """
-    # 1. 获取机器人和目标命令  
+    """Reward the robot for facing the box."""
     robot = env.scene[robot_cfg.name]
-    goal_command = env.command_manager.get_command(command_name)
-    # 2. 提取目标朝向 
-    _, goal_yaw = split_box_goal_command(goal_command)
-    # 3. 获取机器人当前朝向
-    robot_yaw = quat_to_yaw(robot.data.root_quat_w)
-    # 4. 计算朝向误差（绝对值） 
-    error_yaw = yaw_error_abs(robot_yaw, goal_yaw)
-    # 5. 可选的条件激活
-    if activate_distance_threshold is not None:
-        _, box_distance = _box_goal_delta(env, command_name, box_cfg)
-        error_yaw = error_yaw * (box_distance < activate_distance_threshold).float()
+    box = env.scene[box_cfg.name]
 
-    return error_yaw
+    to_box = box.data.root_pos_w[:, :2] - robot.data.root_pos_w[:, :2]
+    robot_yaw = quat_to_yaw(robot.data.root_quat_w)
+    box_heading = torch.atan2(to_box[:, 1], to_box[:, 0])
+    reward = 0.5 * (torch.cos(box_heading - robot_yaw) + 1.0)
+
+    if activate_distance_threshold is not None:
+        reward = reward * (torch.norm(to_box, dim=1) < activate_distance_threshold).float()
+
+    return reward
 
 
 def box_goal_settled_mask(
@@ -203,40 +194,12 @@ def box_goal_settled_mask(
     返回一个布尔掩码，表示哪些环境满足"箱子到达目标且系统稳定"的条件。
     Returns a boolean mask indicating which environments satisfy "box at goal AND system settled".
 
-    逻辑 / Logic:
-        1. 获取机器人和箱子对象 / Get robot and box objects
-        2. 计算箱子到目标点的距离 / Compute box-to-goal distance
-        3. 计算箱子的线速度（xy 平面）/ Compute box linear velocity (xy-plane)
-        4. 计算机器人的线速度（xy 平面）/ Compute robot linear velocity (xy-plane)
-        5. 检查三个条件是否同时满足 / Check if all three conditions are met:
-           - 距离 < distance_threshold（箱子足够接近目标）/ Distance < threshold (box close enough to goal)
-           - 箱子速度 < box_speed_threshold（箱子几乎静止）/ Box speed < threshold (box nearly stationary)
-           - 机器人速度 < robot_speed_threshold（机器人几乎静止）/ Robot speed < threshold (robot nearly stationary)
-
-    为什么需要检查速度？/ Why check speeds?
-        - 仅检查距离可能误判：箱子"经过"目标点但未停止 / Only checking distance may misclassify: box "passes" goal but doesn't stop
-        - 需要确保任务真正完成，而不是暂时经过 / Need to ensure task is actually done, not just passing through
-        - 机器人也需要停止，避免"推完就跑"的行为 / Robot also needs to stop, avoid "push and run" behavior
-
     作用 / Purpose:
         - 用于成功判定 / Used for success determination
         - 可作为回合终止条件 / Can be used as episode termination condition
         - 可用于触发额外奖励 / Can be used to trigger bonus rewards
 
-    Args:
-        env: 强化学习环境 / RL environment
-        command_name: 命令名称 / Command name
-        distance_threshold: 距离阈值（米）/ Distance threshold in meters, default 0.08 (8cm)
-        box_speed_threshold: 箱子速度阈值（米/秒）/ Box speed threshold in m/s, default 0.05
-        robot_speed_threshold: 机器人速度阈值（米/秒）/ Robot speed threshold in m/s, default 0.08
-        robot_cfg: 机器人场景实体配置 / Robot scene entity configuration
-        box_cfg: 箱子场景实体配置 / Box scene entity configuration
 
-    Returns:
-        torch.Tensor: 形状为 (num_envs,) 的布尔掩码 /
-                     Shape (num_envs,), boolean mask
-            - True: 箱子到达目标且系统已稳定 / True: box at goal and system settled
-            - False: 条件不满足 / False: conditions not met
     """
     robot: RigidObject = env.scene[robot_cfg.name]
     box: RigidObject = env.scene[box_cfg.name]
@@ -260,103 +223,103 @@ def box_goal_settled_mask(
     )
 
 
-def robot_box_distance_tanh(
-    env: ManagerBasedRLEnv,
-    std: float,
-    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
-    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
-) -> torch.Tensor:
-    """机器人与箱子距离奖励（鼓励保持接触）/ Reward the robot for staying close enough to interact with the box.
+# def robot_box_distance_tanh(
+#     env: ManagerBasedRLEnv,
+#     std: float,
+#     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+#     box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+# ) -> torch.Tensor:
+#     """机器人与箱子距离奖励（鼓励保持接触）/ Reward the robot for staying close enough to interact with the box.
 
-    使用 tanh 核函数奖励机器人接近箱子。距离越近，奖励越高。
-    Uses tanh kernel function to reward robot getting closer to box. Closer distance = higher reward.
+#     使用 tanh 核函数奖励机器人接近箱子。距离越近，奖励越高。
+#     Uses tanh kernel function to reward robot getting closer to box. Closer distance = higher reward.
 
-    逻辑 / Logic:
-        1. 获取机器人和箱子对象 / Get robot and box objects
-        2. 计算机器人到箱子的 xy 平面距离 / Compute robot-to-box distance in xy-plane
-        3. 使用 tanh 函数将距离映射到 [0, 1] 范围 / Use tanh to map distance to [0, 1] range
-        4. 公式：reward = 1 - tanh(distance / std) / Formula: reward = 1 - tanh(distance / std)
+#     逻辑 / Logic:
+#         1. 获取机器人和箱子对象 / Get robot and box objects
+#         2. 计算机器人到箱子的 xy 平面距离 / Compute robot-to-box distance in xy-plane
+#         3. 使用 tanh 函数将距离映射到 [0, 1] 范围 / Use tanh to map distance to [0, 1] range
+#         4. 公式：reward = 1 - tanh(distance / std) / Formula: reward = 1 - tanh(distance / std)
 
-    为什么需要这个奖励？/ Why need this reward?
-        - 机器人必须靠近箱子才能推动它 / Robot must be close to box to push it
-        - 防止机器人"远程操控"或放弃任务 / Prevent robot from "remote control" or giving up
-        - 确保机器人保持与箱子的交互 / Ensure robot maintains interaction with box
+#     为什么需要这个奖励？/ Why need this reward?
+#         - 机器人必须靠近箱子才能推动它 / Robot must be close to box to push it
+#         - 防止机器人"远程操控"或放弃任务 / Prevent robot from "remote control" or giving up
+#         - 确保机器人保持与箱子的交互 / Ensure robot maintains interaction with box
 
-    作用 / Purpose:
-        - 鼓励机器人接近并保持与箱子的接触 / Encourage robot to approach and maintain contact with box
-        - 作为辅助奖励，避免机器人远离箱子 / Auxiliary reward to prevent robot from staying far from box
-        - 与其他奖励配合，平衡接近箱子与推向目标 / Works with other rewards to balance approaching vs pushing
+#     作用 / Purpose:
+#         - 鼓励机器人接近并保持与箱子的接触 / Encourage robot to approach and maintain contact with box
+#         - 作为辅助奖励，避免机器人远离箱子 / Auxiliary reward to prevent robot from staying far from box
+#         - 与其他奖励配合，平衡接近箱子与推向目标 / Works with other rewards to balance approaching vs pushing
 
-    Args:
-        env: 强化学习环境 / RL environment
-        std: tanh 函数的标准差参数，控制奖励衰减速度 / Standard deviation parameter for tanh, controls reward decay rate
-        robot_cfg: 机器人场景实体配置 / Robot scene entity configuration
-        box_cfg: 箱子场景实体配置 / Box scene entity configuration
+#     Args:
+#         env: 强化学习环境 / RL environment
+#         std: tanh 函数的标准差参数，控制奖励衰减速度 / Standard deviation parameter for tanh, controls reward decay rate
+#         robot_cfg: 机器人场景实体配置 / Robot scene entity configuration
+#         box_cfg: 箱子场景实体配置 / Box scene entity configuration
 
-    Returns:
-        torch.Tensor: 形状为 (num_envs,) 的奖励张量，范围 [0, 1] /
-                     Shape (num_envs,), reward tensor in range [0, 1]
-            - 1.0: 机器人与箱子重合（理论最大值）/ 1.0: robot overlaps box (theoretical max)
-            - 0.0: 距离远大于 std / 0.0: distance much larger than std
-    """
-    robot: RigidObject = env.scene[robot_cfg.name]
-    box: RigidObject = env.scene[box_cfg.name]
+#     Returns:
+#         torch.Tensor: 形状为 (num_envs,) 的奖励张量，范围 [0, 1] /
+#                      Shape (num_envs,), reward tensor in range [0, 1]
+#             - 1.0: 机器人与箱子重合（理论最大值）/ 1.0: robot overlaps box (theoretical max)
+#             - 0.0: 距离远大于 std / 0.0: distance much larger than std
+#     """
+#     robot: RigidObject = env.scene[robot_cfg.name]
+#     box: RigidObject = env.scene[box_cfg.name]
 
-    # 计算机器人到箱子的 xy 平面距离 / Compute robot-to-box distance in xy-plane
-    distance = torch.norm(box.data.root_pos_w[:, :2] - robot.data.root_pos_w[:, :2], dim=1)
+#     # 计算机器人到箱子的 xy 平面距离 / Compute robot-to-box distance in xy-plane
+#     distance = torch.norm(box.data.root_pos_w[:, :2] - robot.data.root_pos_w[:, :2], dim=1)
 
-    # 使用 tanh 核函数：距离越近，奖励越高 / Use tanh kernel: closer distance → higher reward
-    return 1.0 - torch.tanh(distance / std)
-
-
+#     # 使用 tanh 核函数：距离越近，奖励越高 / Use tanh kernel: closer distance → higher reward
+#     return 1.0 - torch.tanh(distance / std)
 
 
-def head_point_in_box_penalty(
-    env: ManagerBasedRLEnv,
-    head_local_offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    footprint_margin: float = 0.02,
-    top_surface_margin: float = 0.0,
-    head_body_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names="Head_.*"),
-    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
-) -> torch.Tensor:
-    """Penalize the robot when a head proxy point projects inside the box top footprint.
 
-    几何规则 / Geometry:
-        1. 在机器人的头部刚体上取一个点（默认取 `Head_.*` 刚体原点） /
-           Take a point on the robot head rigid body (defaults to the `Head_.*` body origin)
-        2. 将该点转换到世界坐标，再投到箱子局部坐标系 / Transform the point to world, then into the box frame
-        3. 只有当该点的 XY 投影落入箱子的矩形 footprint,且 Z 严格高于箱子顶面，才返回 1 /
-           Return 1 only when the XY projection falls inside the box footprint and Z is strictly above the box top surface
 
-    Note:
-        - 如果后续发现刚体原点不在你想要的位置，可以再加 `head_local_offset` 微调 / `head_local_offset` can be used later if the head body origin is not ideal
-        - 这正对应“头不要到箱子上方”的约束 / This directly matches the requirement that the head must not move above the box
-    """
-    robot: RigidObject = env.scene[head_body_cfg.name]
-    box: RigidObject = env.scene[box_cfg.name]
+# def head_point_in_box_penalty(
+#     env: ManagerBasedRLEnv,
+#     head_local_offset: tuple[float, float, float] = (0.0, 0.0, 0.0),
+#     footprint_margin: float = 0.02,
+#     top_surface_margin: float = 0.0,
+#     head_body_cfg: SceneEntityCfg = SceneEntityCfg("robot", body_names="Head_.*"),
+#     box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+# ) -> torch.Tensor:
+#     """Penalize the robot when a head proxy point projects inside the box top footprint.
 
-    head_body_id = head_body_cfg.body_ids[0]
-    head_body_pos_w = robot.data.body_pos_w[:, head_body_id, :]
-    head_body_quat_w = robot.data.body_quat_w[:, head_body_id, :]
-    head_offset_b = torch.tensor(head_local_offset, device=env.device, dtype=head_body_pos_w.dtype).unsqueeze(0)
-    head_offset_b = head_offset_b.expand(env.num_envs, -1)
-    head_point_w = head_body_pos_w + quat_apply(head_body_quat_w, head_offset_b)
+#     几何规则 / Geometry:
+#         1. 在机器人的头部刚体上取一个点（默认取 `Head_.*` 刚体原点） /
+#            Take a point on the robot head rigid body (defaults to the `Head_.*` body origin)
+#         2. 将该点转换到世界坐标，再投到箱子局部坐标系 / Transform the point to world, then into the box frame
+#         3. 只有当该点的 XY 投影落入箱子的矩形 footprint,且 Z 严格高于箱子顶面，才返回 1 /
+#            Return 1 only when the XY projection falls inside the box footprint and Z is strictly above the box top surface
 
-    head_point_b, _ = subtract_frame_transforms(
-        box.data.root_pos_w[:, :3],
-        box.data.root_quat_w,
-        head_point_w,
-    )
+#     Note:
+#         - 如果后续发现刚体原点不在你想要的位置，可以再加 `head_local_offset` 微调 / `head_local_offset` can be used later if the head body origin is not ideal
+#         - 这正对应“头不要到箱子上方”的约束 / This directly matches the requirement that the head must not move above the box
+#     """
+#     robot: RigidObject = env.scene[head_body_cfg.name]
+#     box: RigidObject = env.scene[box_cfg.name]
 
-    box_scene_cfg = getattr(env.cfg.scene, box_cfg.name)
-    box_size = box_scene_cfg.spawn.size
-    half_size_x = 0.5 * box_size[0] + footprint_margin
-    half_size_y = 0.5 * box_size[1] + footprint_margin
-    top_surface_z = 0.5 * box_size[2] + top_surface_margin
-    inside_x = torch.abs(head_point_b[:, 0]) <= half_size_x
-    inside_y = torch.abs(head_point_b[:, 1]) <= half_size_y
-    above_top_surface = head_point_b[:, 2] > top_surface_z
-    return (inside_x & inside_y & above_top_surface).float()
+#     head_body_id = head_body_cfg.body_ids[0]
+#     head_body_pos_w = robot.data.body_pos_w[:, head_body_id, :]
+#     head_body_quat_w = robot.data.body_quat_w[:, head_body_id, :]
+#     head_offset_b = torch.tensor(head_local_offset, device=env.device, dtype=head_body_pos_w.dtype).unsqueeze(0)
+#     head_offset_b = head_offset_b.expand(env.num_envs, -1)
+#     head_point_w = head_body_pos_w + quat_apply(head_body_quat_w, head_offset_b)
+
+#     head_point_b, _ = subtract_frame_transforms(
+#         box.data.root_pos_w[:, :3],
+#         box.data.root_quat_w,
+#         head_point_w,
+#     )
+
+#     box_scene_cfg = getattr(env.cfg.scene, box_cfg.name)
+#     box_size = box_scene_cfg.spawn.size
+#     half_size_x = 0.5 * box_size[0] + footprint_margin
+#     half_size_y = 0.5 * box_size[1] + footprint_margin
+#     top_surface_z = 0.5 * box_size[2] + top_surface_margin
+#     inside_x = torch.abs(head_point_b[:, 0]) <= half_size_x
+#     inside_y = torch.abs(head_point_b[:, 1]) <= half_size_y
+#     above_top_surface = head_point_b[:, 2] > top_surface_z
+#     return (inside_x & inside_y & above_top_surface).float()
 
 
 def box_goal_success_bonus(

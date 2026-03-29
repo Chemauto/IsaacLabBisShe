@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import MISSING
 from typing import TYPE_CHECKING
 
+import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObject
 from isaaclab.managers import CommandTerm, CommandTermCfg
 from isaaclab.markers import VisualizationMarkers, VisualizationMarkersCfg
@@ -72,11 +73,23 @@ class BoxGoalCommand(CommandTerm):
         self.metrics["error_pos_side"].fill_(side_error)
 
     def _resample_command(self, env_ids: Sequence[int]):
+        if isinstance(env_ids, slice):
+            env_ids = torch.arange(self.num_envs, device=self.device, dtype=torch.long)
+        elif not isinstance(env_ids, torch.Tensor):
+            env_ids = torch.tensor(list(env_ids), device=self.device, dtype=torch.long)
+
         r = torch.empty(len(env_ids), device=self.device)
         self.pos_command_e[env_ids] = 0.0
         self.pos_command_e[env_ids, 0] = r.uniform_(*self.cfg.ranges.pos_x)
         self.pos_command_e[env_ids, 1] = r.uniform_(*self.cfg.ranges.pos_y)
-        self.pos_command_e[env_ids, 2] = self.box.data.default_root_state[env_ids, 2]
+        cache_name = "_push_box_scales"
+        if not hasattr(self._env, cache_name):
+            scales = []
+            for prim_path in self.box.root_physx_view.prim_paths:
+                scales.append(sim_utils.resolve_prim_scale(sim_utils.get_prim_at_path(prim_path)))
+            setattr(self._env, cache_name, torch.tensor(scales, device="cpu", dtype=torch.float32))
+        scale_z = getattr(self._env, cache_name)[env_ids.cpu(), 2].to(device=self.device, dtype=self.pos_command_e.dtype)
+        self.pos_command_e[env_ids, 2] = self.box.data.default_root_state[env_ids, 2] * scale_z
         self.yaw_command_e[env_ids] = r.uniform_(*self.cfg.ranges.yaw)
         self.pos_command_w[env_ids] = self.pos_command_e[env_ids] + self._env.scene.env_origins[env_ids]
         self.initial_error_pos[env_ids] = torch.norm(

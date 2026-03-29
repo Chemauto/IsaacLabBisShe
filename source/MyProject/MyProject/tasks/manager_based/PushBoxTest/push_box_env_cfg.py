@@ -33,7 +33,7 @@ from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughTestEnvCfg()
 _REPO_ROOT = Path(__file__).resolve().parents[6]
-LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/WalkFlatButRoughSetTransfer.pt")
+LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/WalkRoughNewTransfer.pt")
 LOW_LEVEL_POLICY_PATH = str(_REPO_ROOT / LOW_LEVEL_POLICY_REL_PATH)
 #低层的环境和策略配置，推箱子这个技能是基于之前训练好的走路技能进行训练的，所以这里直接引用之前走路技能的环境配置和策略路径
 
@@ -145,6 +145,7 @@ class ObservationsCfg:
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))  # 3
         projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))  # 3
         box_position = ObsTerm(func=mdp.box_pose, noise=Unoise(n_min=-0.01, n_max=0.01))  # 7
+        box_size = ObsTerm(func=mdp.box_size)  # 3
         robot_position = ObsTerm(func=mdp.robot_position, noise=Unoise(n_min=-0.02, n_max=0.02))  # 3
         goal_command = ObsTerm(
             func=mdp.generated_commands,
@@ -164,11 +165,20 @@ class ObservationsCfg:
 class EventCfg:
     """Reset robot and box around a structured pushing setup."""
 
+    randomize_box_scale = EventTerm(
+        func=mdp.randomize_rigid_body_scale,
+        mode="prestartup",
+        params={
+            "scale_range": {"x": (0.6, 1.8), "y": (0.6, 1.8), "z": (0.8, 2.5)},
+            "asset_cfg": SceneEntityCfg("box"),
+        },
+    )
+
     reset_base = EventTerm(
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.1, 0.1), "y": (-0.2, 0.2), "yaw": (-0.5, 0.5)},
+            "pose_range": {"x": (-0.2, 0.2), "y": (-0.4, 0.4), "yaw": (-0.3, 0.3)},
             "velocity_range": {
                 "x": (0.0, 0.0),
                 "y": (0.0, 0.0),
@@ -181,10 +191,11 @@ class EventCfg:
     )
 
     reset_box = EventTerm(
-        func=mdp.reset_root_state_uniform,
+        func=mdp.reset_scaled_box_root_state_uniform,
+        # func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "pose_range": {"x": (-0.2, 0.2), "y": (-0.25, 0.25), "yaw": (-0.3, 0.3)},
+            "pose_range": {"x": (-0.3, 0.3), "y": (-0.3, 0.3), "yaw": (-0.3, 0.3)},
             "velocity_range": {
                 "x": (0.0, 0.0),
                 "y": (0.0, 0.0),
@@ -214,23 +225,16 @@ class RewardsCfg:
     # 稠密距离奖励，鼓励箱子中心始终靠近目标点。
     box_goal_distance = RewTerm(
         func=mdp.box_goal_distance_exp,
-        weight=4.0,
-        params={"std": 0.10, "command_name": "box_goal"},
-    ) #原来weight4.0,std0.10
+        weight=6.0,
+        params={"std": 0.15, "command_name": "box_goal"},
+    ) #原来weight4.0,std0.10,这个是没有限制高度的情况下，机器人行走能力更强
     # 鼓励箱子最终朝向也与目标 yaw 对齐，避免只到点不转向。
     box_goal_yaw = RewTerm(
         func=mdp.box_goal_yaw_distance_exp,
         weight=2.0,
         params={"std": 0.15, "command_name": "box_goal"},
-    )
+    )#原来weight2.0,std0.15,这个是没有限制高度的情况下，机器人行走能力更强
     
-    # 当箱子已经接近目标时，再约束机器人最终朝向与目标 yaw 对齐，避免过早干扰推箱主任务。
-    # robot_goal_yaw = RewTerm(
-    #     func=mdp.robot_goal_yaw_error_abs,
-    #     weight=-0.50,
-    #     params={"command_name": "box_goal", "activate_distance_threshold": 0.40},
-    # )
-    # 加入角度控制，最后0.3米内保证机器人的姿态
               #####################稀疏奖励#######################
     box_goal_success = RewTerm(
         func=mdp.box_goal_success_bonus,
@@ -253,7 +257,18 @@ class RewardsCfg:
         func=mdp.processed_action_rate_l2,
         weight=-0.20,#原来-0.20
         params={"action_name": "pre_trained_policy_action"},
+    )
+    # 鼓励机器人正对箱子，减少斜着切入和侧推。
+    face_to_object = RewTerm(
+        func=mdp.face_to_object,
+        weight=0.5,
+        params={"activate_distance_threshold": 0.8},
     )  
+    # thigh_collision_penalty = RewTerm(
+    #     func=mdp.undesired_contacts,
+    #     weight=-0.5,  # 原来: -3.0（加重，抑制用腹部/机身"扑地过坑"）
+    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_thigh"), "threshold": 1.0},    
+    # )    # 大腿部分，惩罚
     # head_collision_penalty = RewTerm(
     #     func=mdp.undesired_contacts,
     #     weight=-0.5,  # 原来: -3.0（加重，抑制用腹部/机身"扑地过坑"）
@@ -321,7 +336,7 @@ class CurriculumCfg:
 class LocomotionPushBoxEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the Go2 push-box skill."""
 
-    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=4.0)
+    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=4.0, replicate_physics=False)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     commands: CommandsCfg = CommandsCfg()
@@ -349,6 +364,7 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
 
     def __post_init__(self):
         super().__post_init__()
+        # self.scene.replicate_physics = True
         # self.decimation = LOW_LEVEL_ENV_CFG.decimation *1
         self.scene.num_envs = 50
         self.scene.env_spacing = 4.0
@@ -359,7 +375,7 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
         self.commands.box_goal.ranges.yaw = (0, 0)
         self.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
         self.events.reset_box.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
-
+        self.events.randomize_box_scale = None
 
 PushBoxEnvCfg = LocomotionPushBoxEnvCfg
 PushBoxEnvCfg_Play = LocomotionPushBoxEnvCfg_Play
