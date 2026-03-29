@@ -132,7 +132,7 @@ class ActionsCfg:
         low_level_actions=LOW_LEVEL_ENV_CFG.actions.joint_pos,
         low_level_observations=LOW_LEVEL_ENV_CFG.observations.policy,
         # action_scale=(0.8, 0.6, 0.6),
-        # action_clip=((-0.6, 0.6), (-0.5, 0.5), (-0.3, 0.3)),
+        action_clip=((-0.8, 0.8), (-0.8, 0.8), (-0.5, 0.5)),
     )
 
 
@@ -243,8 +243,8 @@ class RewardsCfg:
             "command_name": "box_goal",
             "distance_threshold": 0.10,#0.06
             "yaw_threshold": 0.12,#0.15
-            "box_speed_threshold": 0.10,#0.06
-            "robot_speed_threshold": 0.10,#0.06
+            "box_speed_threshold": 0.15,#0.06
+            "robot_speed_threshold": 0.15,#0.06
         },
     )
 
@@ -304,8 +304,8 @@ class TerminationsCfg:
             "command_name": "box_goal",
             "distance_threshold": 0.10,
             "yaw_threshold": 0.12,
-            "box_speed_threshold": 0.10,
-            "robot_speed_threshold": 0.10,
+            "box_speed_threshold": 0.15,
+            "robot_speed_threshold": 0.15,
             "settle_steps": 4,
         },
     )
