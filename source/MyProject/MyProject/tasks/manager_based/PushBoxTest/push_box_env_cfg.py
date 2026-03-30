@@ -33,7 +33,7 @@ from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
 LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughTestEnvCfg()
 _REPO_ROOT = Path(__file__).resolve().parents[6]
-LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/WalkFlatButRoughSetTransfer.pt")
+LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/WalkRoughNewTransfer.pt")
 LOW_LEVEL_POLICY_PATH = str(_REPO_ROOT / LOW_LEVEL_POLICY_REL_PATH)
 #低层的环境和策略配置，推箱子这个技能是基于之前训练好的走路技能进行训练的，所以这里直接引用之前走路技能的环境配置和策略路径
 
@@ -70,7 +70,7 @@ class MySceneCfg(InteractiveSceneCfg):
     box = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Box",
         spawn=sim_utils.CuboidCfg(
-            size=(0.4, 0.8, 0.2),
+            size=(0.6, 0.8, 0.2),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 rigid_body_enabled=True,
                 max_linear_velocity=10.0,
@@ -132,7 +132,7 @@ class ActionsCfg:
         low_level_actions=LOW_LEVEL_ENV_CFG.actions.joint_pos,
         low_level_observations=LOW_LEVEL_ENV_CFG.observations.policy,
         # action_scale=(0.8, 0.6, 0.6),
-        # action_clip=((-0.6, 0.6), (-0.5, 0.5), (-0.3, 0.3)),
+        action_clip=((-0.5, 1.0), (-1.0, 1.0), (-0.5, 0.5)),
     )
 
 
@@ -214,13 +214,13 @@ class RewardsCfg:
     # 稠密距离奖励，鼓励箱子中心始终靠近目标点。
     box_goal_distance = RewTerm(
         func=mdp.box_goal_distance_exp,
-        weight=4.0,
+        weight=5.0,
         params={"std": 0.10, "command_name": "box_goal"},
     ) #原来weight4.0,std0.10
     # 鼓励箱子最终朝向也与目标 yaw 对齐，避免只到点不转向。
     box_goal_yaw = RewTerm(
         func=mdp.box_goal_yaw_distance_exp,
-        weight=2.0,
+        weight=2.5,
         params={"std": 0.15, "command_name": "box_goal"},
     )
     
@@ -254,6 +254,10 @@ class RewardsCfg:
         weight=-0.20,#原来-0.20
         params={"action_name": "pre_trained_policy_action"},
     )  
+    face_to_object = RewTerm(
+        func=mdp.face_to_object,
+        weight=0.5,
+    )
     # head_collision_penalty = RewTerm(
     #     func=mdp.undesired_contacts,
     #     weight=-0.5,  # 原来: -3.0（加重，抑制用腹部/机身"扑地过坑"）

@@ -446,3 +446,17 @@ def box_goal_yaw_distance_exp(
     """Reward the box for aligning its yaw with the target yaw using an exponential kernel."""
     error_yaw = box_goal_yaw_error(env, command_name, box_cfg)
     return exp_tracking_reward(error_yaw, std)
+
+
+def face_to_object(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    robot = env.scene[robot_cfg.name]
+    box = env.scene[box_cfg.name]
+
+    to_box = box.data.root_pos_w[:, :2] - robot.data.root_pos_w[:, :2]
+    robot_yaw = quat_to_yaw(robot.data.root_quat_w)
+    box_heading = torch.atan2(to_box[:, 1], to_box[:, 0])
+    return torch.cos(box_heading - robot_yaw)
