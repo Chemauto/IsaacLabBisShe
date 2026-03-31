@@ -140,113 +140,6 @@ def move_in_command_direction(
     return reward
 
 
-def feet_height(
-    env: ManagerBasedRLEnv,
-    command_name: str,
-    asset_cfg: SceneEntityCfg,
-    target_height: float,
-    std: float,
-    tanh_mult: float,
-) -> torch.Tensor:
-    """Spot风格抬脚奖励（世界系）。
-
-    说明：
-    1. 先计算脚端高度相对目标高度的平方误差。
-    2. 用脚端平面速度的 tanh 作为“摆动门控”，避免静止脚拿分。
-    3. 采用 exp(-err/std) 将奖励压缩到 (0, 1]，数值更稳定、便于调权重。
-    """
-    asset: RigidObject = env.scene[asset_cfg.name]
-    foot_z_target_error = torch.square(asset.data.body_pos_w[:, asset_cfg.body_ids, 2] - target_height)
-    foot_velocity_tanh = torch.tanh(
-        tanh_mult * torch.linalg.norm(asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :2], dim=2)
-    )
-    reward = foot_z_target_error * foot_velocity_tanh
-    return torch.exp(-torch.sum(reward, dim=1) / std)
-
-
-def feet_height_pit_gated(
-    env: ManagerBasedRLEnv,
-    command_name: str,
-    asset_cfg: SceneEntityCfg,
-    sensor_cfg: SceneEntityCfg,
-    target_height: float,
-    std: float,
-    tanh_mult: float,
-    obstacle_height_threshold: float = 0.08,
-    min_obstacle_rays: int = 2,
-    forward_min_x: float = 0.05,
-    rear_max_x: float = -0.05,
-) -> torch.Tensor:
-    """仅在“前方检测到遮挡物”时激活的 Spot 风格抬脚奖励。
-
-    门控逻辑：
-    1. 将射线命中点变换到 yaw 对齐机体系，分别取前方与后方射线。
-    2. 用后方命中高度均值作为“参考地面高度”。
-    3. 当前方命中高度明显高于参考地面（被障碍物遮挡）且命中数量达标时，门控为 1；否则为 0。
-    """
-    # 先计算基础抬脚奖励（Spot 风格指数核）。
-    base_reward = feet_height(
-        env=env,
-        command_name=command_name,
-        asset_cfg=asset_cfg,
-        target_height=target_height,
-        std=std,
-        tanh_mult=tanh_mult,
-    )
-
-    # 读取高度扫描数据。
-    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
-
-    # 将命中点变换到 yaw 对齐机体系，筛选“前方”射线。
-    robot: RigidObject = env.scene["robot"]
-    num_rays = sensor.data.ray_hits_w.shape[1]
-    hit_z_w = sensor.data.ray_hits_w[..., 2]
-    rel_hits_w = sensor.data.ray_hits_w - sensor.data.pos_w.unsqueeze(1)
-    rel_hits_yaw = quat_apply_inverse(
-        yaw_quat(robot.data.root_quat_w).unsqueeze(1).repeat(1, num_rays, 1).reshape(-1, 4),
-        rel_hits_w.reshape(-1, 3),
-    ).view(env.num_envs, num_rays, 3)
-    x_coords = rel_hits_yaw[..., 0]
-    forward_mask = x_coords > forward_min_x
-    rear_mask = x_coords < rear_max_x
-
-    # 使用后方射线的命中高度作为参考地面高度。
-    rear_mask_f = rear_mask.float()
-    rear_count = rear_mask_f.sum(dim=1).clamp_min(1.0)
-    rear_ref_z = (hit_z_w * rear_mask_f).sum(dim=1) / rear_count
-
-    # 前方命中高度高于参考地面，视为前方有遮挡物。
-    obstacle_hit_mask = ((hit_z_w - rear_ref_z.unsqueeze(1)) > obstacle_height_threshold) & forward_mask
-    obstacle_gate = (obstacle_hit_mask.sum(dim=1) >= min_obstacle_rays).float()
-    return base_reward * obstacle_gate
-
-
-def feet_height_body(
-    env: ManagerBasedRLEnv,
-    command_name: str,
-    asset_cfg: SceneEntityCfg,
-    target_height: float,
-    std: float,
-    tanh_mult: float,
-) -> torch.Tensor:
-    """Spot风格抬脚奖励（机体系）。
-
-    与 feet_height 相同，只是先把脚端位置/速度转换到机体系，再计算高度误差与摆动门控。
-    """
-    asset: RigidObject = env.scene[asset_cfg.name]
-    cur_footpos_translated = asset.data.body_pos_w[:, asset_cfg.body_ids, :] - asset.data.root_pos_w[:, :].unsqueeze(1)
-    footpos_in_body_frame = torch.zeros(env.num_envs, len(asset_cfg.body_ids), 3, device=env.device)
-    cur_footvel_translated = asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :] - asset.data.root_lin_vel_w[
-        :, :
-    ].unsqueeze(1)
-    footvel_in_body_frame = torch.zeros(env.num_envs, len(asset_cfg.body_ids), 3, device=env.device)
-    for i in range(len(asset_cfg.body_ids)):
-        footpos_in_body_frame[:, i, :] = quat_apply_inverse(asset.data.root_quat_w, cur_footpos_translated[:, i, :])
-        footvel_in_body_frame[:, i, :] = quat_apply_inverse(asset.data.root_quat_w, cur_footvel_translated[:, i, :])
-    foot_z_target_error = torch.square(footpos_in_body_frame[:, :, 2] - target_height).view(env.num_envs, -1)
-    foot_velocity_tanh = torch.tanh(tanh_mult * torch.norm(footvel_in_body_frame[:, :, :2], dim=2))
-    reward = foot_z_target_error * foot_velocity_tanh
-    return torch.exp(-torch.sum(reward, dim=1) / std)
 
 
 def stand_still_joint_deviation_l1(
@@ -295,17 +188,6 @@ def air_time_variance_penalty(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg
     )
 
 
-# def foot_clearance_reward(
-#     env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, target_height: float, std: float, tanh_mult: float
-# ) -> torch.Tensor:
-#     """Reward the swinging feet for clearing a specified height off the ground"""
-#     asset: RigidObject = env.scene[asset_cfg.name]
-#     foot_z_target_error = torch.square(asset.data.body_pos_w[:, asset_cfg.body_ids, 2] - target_height)
-#     foot_velocity_tanh = torch.tanh(tanh_mult * torch.norm(asset.data.body_lin_vel_w[:, asset_cfg.body_ids, :2], dim=2))
-#     reward = foot_z_target_error * foot_velocity_tanh
-#     return torch.exp(-torch.sum(reward, dim=1) / std)
-
-
 def air_time_variance_penalty(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     """Penalize variance in the amount of time each foot spends in the air/on the ground relative to each other"""
     # extract the used quantities (to enable type-hinting)
@@ -318,3 +200,11 @@ def air_time_variance_penalty(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg
     return torch.var(torch.clip(last_air_time, max=0.5), dim=1) + torch.var(
         torch.clip(last_contact_time, max=0.5), dim=1
     )
+
+def energy(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize the energy used by the robot's joints."""
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    qvel = asset.data.joint_vel[:, asset_cfg.joint_ids]
+    qfrc = asset.data.applied_torque[:, asset_cfg.joint_ids]
+    return torch.sum(torch.abs(qvel) * torch.abs(qfrc), dim=-1)

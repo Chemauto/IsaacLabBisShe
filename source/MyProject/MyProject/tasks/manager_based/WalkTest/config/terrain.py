@@ -288,68 +288,6 @@ HIGH_DOUBLE_PLATFORM_TERRAINS_PLAY_CFG = TerrainGeneratorCfg(
 
 
 
-
-# 以坑洞为主的混合地形 - 用于毕业设计的低层动作训练
-# 各种地形的训练
-BISHE_Test_MIX_TERRAINS_CFG = TerrainGeneratorCfg(
-    size=(8.0, 8.0),
-    border_width=20.0,
-    num_rows=10,
-    num_cols=20,
-    horizontal_scale=0.1,
-    vertical_scale=0.005,
-    slope_threshold=0.75,
-    use_cache=False,
-    sub_terrains={
-        # Pit-dominant mix: 40% pit + 40% stairs + 10% boxes + 10% rough
-        "easy_pit": terrain_gen.MeshPitTerrainCfg(
-            proportion=0.15,
-            pit_depth_range=(0.05, 0.20),
-            platform_width=2.0,
-            double_pit=False,
-        ),
-        "medium_pit": terrain_gen.MeshPitTerrainCfg(
-            proportion=0.20,
-            pit_depth_range=(0.20, 0.30),
-            platform_width=2.0,
-            double_pit=False,
-        ),
-        "hard_pit": terrain_gen.MeshPitTerrainCfg(
-            proportion=0.05,
-            pit_depth_range=(0.25, 0.35),
-            platform_width=2.0,
-            double_pit=False,
-        ),
-        "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-            proportion=0.20,
-            step_height_range=(0.05, 0.23),
-            step_width=0.3,
-            platform_width=3.0,
-            border_width=1.0,
-            holes=False,
-        ),
-        "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.20,
-            step_height_range=(0.05, 0.23),
-            step_width=0.3,
-            platform_width=3.0,
-            border_width=1.0,
-            holes=False,
-        ),
-        "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-            proportion=0.10,
-            grid_width=0.45,
-            grid_height_range=(0.05, 0.2),
-            platform_width=2.0,
-        ),
-        "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-            proportion=0.10,
-            noise_range=(0.02, 0.10),
-            noise_step=0.02,
-            border_width=0.25,
-        ),
-    },
-)
 #复杂地形
 ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     size=(8.0, 8.0),
@@ -418,5 +356,49 @@ STAIR_TERRAINS_CFG = TerrainGeneratorCfg(
             border_width=1.0,
             holes=False,
         ),
+    },
+)
+
+
+COBBLESTONE_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    difficulty_range=(0.0, 1.0),
+    use_cache=False,
+    sub_terrains={
+        "flat": terrain_gen.MeshPlaneTerrainCfg(proportion=1.0),
+        # "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
+        #     proportion=0.1, noise_range=(0.01, 0.06), noise_step=0.01, border_width=0.25
+        # ),
+        # "hf_pyramid_slope": terrain_gen.HfPyramidSlopedTerrainCfg(
+        #     proportion=0.1, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
+        # ),
+        # "hf_pyramid_slope_inv": terrain_gen.HfInvertedPyramidSlopedTerrainCfg(
+        #     proportion=0.1, slope_range=(0.0, 0.4), platform_width=2.0, border_width=0.25
+        # ),
+        # "boxes": terrain_gen.MeshRandomGridTerrainCfg(
+        #     proportion=0.2, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
+        # ),
+        # "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+        #     proportion=0.2,
+        #     step_height_range=(0.05, 0.23),
+        #     step_width=0.3,
+        #     platform_width=3.0,
+        #     border_width=1.0,
+        #     holes=False,
+        # ),
+        # "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+        #     proportion=0.2,
+        #     step_height_range=(0.05, 0.23),
+        #     step_width=0.3,
+        #     platform_width=3.0,
+        #     border_width=1.0,
+        #     holes=False,
+        # ),
     },
 )
