@@ -358,8 +358,8 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
         self.scene.env_spacing = 4.0
         self.observations.policy.enable_corruption = False
         self.curriculum.goal_range = None
-        self.commands.box_goal.ranges.pos_x = (2.27, 2.27)
-        self.commands.box_goal.ranges.pos_y = (-0.5, -0.5)
+        self.commands.box_goal.ranges.pos_x = (1.7, 1.7)
+        self.commands.box_goal.ranges.pos_y = (0.0, 0.0)
         self.commands.box_goal.ranges.yaw = (0, 0)
         self.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
         self.events.reset_box.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}

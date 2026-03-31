@@ -11,9 +11,9 @@ from pathlib import Path
 
 DEFAULT_TASK = "Template-Push-Box-Go2-v0"
 DEFAULT_EXPERIMENT = "push_box"
-DEFAULT_RUN_NAME = "from_short_push"
+DEFAULT_RUN_NAME = "from_newnewnew"
 DEFAULT_LOAD_RUN = "^test$"
-DEFAULT_CHECKPOINT_NAME = "ShortPush.pt"
+DEFAULT_CHECKPOINT_NAME = "0331.pt"
 DEFAULT_LOAD_WEIGHTS_ONLY = False
 DEFAULT_DEVICE = "cuda:0"
 #文件夹形式” rsl_rl/logs/rsl_rl/DEFAULT_EXPERIMENT/DEFAULT_LOAD_RUN/DEFAULT_CHECKPOINT_NAME
