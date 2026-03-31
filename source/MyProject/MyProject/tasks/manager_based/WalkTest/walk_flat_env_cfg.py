@@ -267,7 +267,7 @@ class RewardsCfg:
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)#防止倾倒
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)#防止关节力矩过大
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)#防止关节加速度过大
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.1)#防止速度变化过大
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.05)#防止速度变化过大
     energy = RewTerm(func=walkmdp.energy, weight=-2e-5)#节能，使用最简单容易的方法
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
@@ -287,7 +287,7 @@ class RewardsCfg:
         },
     )#减少不必要的碰撞
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)#防止倾倒
-    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-10.0)#关节受限
+    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-3.0)#关节受限
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
@@ -309,7 +309,7 @@ class RewardsCfg:
 
     base_height = RewTerm(
         func=mdp.base_height_l2,
-        weight=-5.0,
+        weight=-10.0,
         params={"target_height": 0.20},
     )#限制高度
 
