@@ -17,7 +17,7 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.walk_rough_env_cfg:VelocityGo2WalkRoughEnvCfg",
+        "env_cfg_entry_point": f"{__name__}.walk_rough_env_cfg:Go2WalkRoughEnvCfg",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2WalkRoughPPORunnerCfg",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_walk_rough_ppo_cfg.yaml",
     },
@@ -30,7 +30,7 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.walk_rough_env_cfg:VelocityGo2WalkRoughEnvCfg_Play",
+        "env_cfg_entry_point": f"{__name__}.walk_rough_env_cfg:Go2WalkRoughEnvCfg_Play",
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2WalkRoughPPORunnerCfg",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_walk_rough_ppo_cfg.yaml",
     },

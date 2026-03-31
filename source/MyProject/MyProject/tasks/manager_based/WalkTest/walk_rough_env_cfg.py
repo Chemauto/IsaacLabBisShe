@@ -24,7 +24,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR, ISAACLAB_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
-from MyProject.tasks.manager_based.WalkTest.config.terrain import STAIR_TERRAINS_CFG
+from MyProject.tasks.manager_based.WalkTest.config.terrain import STAIR_TERRAINS_CFG,COBBLESTONE_ROAD_CFG
 import MyProject.tasks.manager_based.WalkTest.mdp as walkmdp
 ##
 # Pre-defined configs
@@ -122,7 +122,7 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+        # base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
@@ -138,7 +138,6 @@ class ObservationsCfg:
             noise=Unoise(n_min=-0.1, n_max=0.1),
             clip=(-1.0, 1.0),
         )
-
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = True
@@ -146,71 +145,31 @@ class ObservationsCfg:
     # observation groups
     policy: PolicyCfg = PolicyCfg()
 
+    @configclass
+    class CriticCfg(ObsGroup):
+        """Observations for policy group."""
 
-# @configclass
-# class ObservationsCfg:
-#     """Observation specifications for the MDP."""
+        # observation terms (order preserved)
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+        )
+        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        actions = ObsTerm(func=mdp.last_action)
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            clip=(-1.0, 1.0),
+        )
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+    # observation groups
+    critic: CriticCfg = CriticCfg()
 
-#     @configclass
-#     class PolicyCfg(ObsGroup):
-#         """Observations for policy group."""
-
-#         # observation terms (order preserved)
-#         # base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
-#         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
-#         projected_gravity = ObsTerm(
-#             func=mdp.projected_gravity,
-#             noise=Unoise(n_min=-0.05, n_max=0.05),
-#         )
-#         velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
-#         joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
-#         joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
-#         actions = ObsTerm(func=mdp.last_action)
-#         height_scan = ObsTerm(
-#             func=mdp.height_scan,
-#             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-#             noise=Unoise(n_min=-0.1, n_max=0.1),
-#             clip=(-1.0, 1.0),
-#         )
-
-#         def __post_init__(self):
-#             self.history_length = 3
-#             self.enable_corruption = True
-#             self.concatenate_terms = True
-
-#     # observation groups
-#     policy: PolicyCfg = PolicyCfg()
-
-#     @configclass
-#     class CriticCfg(ObsGroup):
-#         """Observations for critic group."""
-
-#         # observation terms (order preserved)
-#         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
-#         base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
-#         projected_gravity = ObsTerm(
-#             func=mdp.projected_gravity,
-#         )
-#         velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
-#         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
-#         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-#         actions = ObsTerm(func=mdp.last_action)
-#         height_scan = ObsTerm(
-#             func=mdp.height_scan,
-#             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-#             clip=(-1.0, 1.0),
-#         )
-#         # height_scanner = ObsTerm(func=mdp.height_scan,
-#         #     params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-#         #     clip=(-1.0, 5.0),
-#         # )
-
-#         def __post_init__(self):
-#             self.history_length = 3
-#             # self.enable_corruption = True
-#             self.concatenate_terms = True
-#     # privileged observations
-#     critic: CriticCfg = CriticCfg()
 
 @configclass
 class EventCfg:
@@ -222,9 +181,9 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.8, 0.8),
-            "dynamic_friction_range": (0.6, 0.6),
-            "restitution_range": (0.0, 0.0),
+            "static_friction_range": (0.5, 1.2),#原本0.8
+            "dynamic_friction_range": (0.5, 1.2),#原本0.6
+            "restitution_range": (0.0, 0.15),
             "num_buckets": 64,
         },
     )
@@ -254,8 +213,8 @@ class EventCfg:
         mode="reset",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "force_range": (0.0, 0.0),
-            "torque_range": (-0.0, 0.0),
+            "force_range": (-5.0, 5.0),#暂定给的
+            "torque_range": (-1.0, 1.0),#暂定给的
         },
     )
 
@@ -280,7 +239,7 @@ class EventCfg:
         mode="reset",
         params={
             "position_range": (1.0, 1.0),
-            "velocity_range": (0.0, 0.0),
+            "velocity_range": (-0.2, 0.2)#原本都是0,
         },
     )
 
@@ -292,7 +251,6 @@ class EventCfg:
         params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
     )
 
-
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
@@ -300,19 +258,20 @@ class RewardsCfg:
     # -- task
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    )
+    )#跟踪线速度
     track_ang_vel_z_exp = RewTerm(
         func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    )
+    )#惩罚角速度
     # -- penalties
-    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)#防止上下
+    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)#防止倾倒
+    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)#防止关节力矩过大
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)#防止关节加速度过大
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.05)#防止速度变化过大
+    energy = RewTerm(func=walkmdp.energy, weight=-2e-5)#节能，使用最简单容易的方法
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.05,
+        weight=0.15,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
@@ -322,11 +281,13 @@ class RewardsCfg:
     undesired_contacts = RewTerm(
         func=mdp.undesired_contacts,
         weight=-1.0,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
-    )
-    # -- optional penalties
+        params={
+            "threshold": 1.0,
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["Head_.*", ".*_hip", ".*_thigh", ".*_calf"]),
+        },
+    )#减少不必要的碰撞
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)#防止倾倒
-    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-5.0)
+    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-3.0)#关节受限
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
@@ -334,23 +295,23 @@ class RewardsCfg:
     )#防止腿朝向内部
     feet_slide = RewTerm(
         func=mdp.feet_slide,
-        weight=-0.0,
+        weight=-0.1,
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
         },
     )#防止滑倒
-
-    base_height = RewTerm(
-        func=mdp.base_height_l2,
-        weight=-0.0,
-        params={"target_height": 0.20},
-    )
     air_time_variance = RewTerm(
         func=walkmdp.air_time_variance_penalty,
-        weight=-0.0,
+        weight=-1.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
+
+    # base_height = RewTerm(
+    #     func=mdp.base_height_l2,
+    #     weight=-10.0,
+    #     params={"target_height": 0.20},
+    # )#限制高度
 
 
 @configclass
@@ -377,7 +338,7 @@ class CurriculumCfg:
 
 
 @configclass
-class VelocityGo2WalkRoughEnvCfg(ManagerBasedRLEnvCfg):
+class Go2WalkRoughEnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
 
     # Scene settings
@@ -402,27 +363,11 @@ class VelocityGo2WalkRoughEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
         self.sim.physics_material = self.scene.terrain.physics_material
         self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
-        # Scale down terrain for smaller robot
+
         self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
         self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
         self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
-        # Disable push robot event for stability
-        self.events.push_robot = None
-        # Disable base COM randomization
-        self.events.base_com = None
-        # Disable undesired contacts penalty
-        self.rewards.undesired_contacts = None
-        # Flat terrain settings (commented out for rough terrain)
-        # self.scene.terrain.terrain_type = "plane"
-        # self.scene.terrain.terrain_generator = None
-        # Disable height scan (optional, for flat terrain)
-        # self.scene.height_scanner = None
-        # self.observations.policy.height_scan = None
-        # Disable terrain curriculum (optional, for flat terrain)
-        # self.curriculum.terrain_levels = None
 
-        # update sensor update periods
-        # we tick all the sensors based on the smallest update period (physics update period)
         if self.scene.height_scanner is not None:
             self.scene.height_scanner.update_period = self.decimation * self.sim.dt
         if self.scene.contact_forces is not None:
@@ -438,120 +383,33 @@ class VelocityGo2WalkRoughEnvCfg(ManagerBasedRLEnvCfg):
                 self.scene.terrain.terrain_generator.curriculum = False
         self.terminations.base_contact.params["sensor_cfg"].body_names = "base"
 
+        # 传感器的扫描频率
+        if self.scene.height_scanner is not None:
+            self.scene.height_scanner.update_period = self.decimation * self.sim.dt
+        if self.scene.contact_forces is not None:
+            self.scene.contact_forces.update_period = self.sim.dt
+
 
 @configclass
-class VelocityGo2WalkRoughFlatEnvCfg(VelocityGo2WalkRoughEnvCfg):
+class Go2WalkRoughEnvCfg_Play(Go2WalkRoughEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()
-        self.scene.terrain.terrain_type = "plane"
-        self.scene.terrain.terrain_generator = None
-
-        self.curriculum.terrain_levels = None
-        
-        self.events.push_robot = EventTerm(
-        func=mdp.push_by_setting_velocity,
-        mode="interval",
-        interval_range_s=(10.0, 15.0),
-        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
-        )#外力突然推一下
-        self.events.base_external_force_torque = EventTerm(
-              func=mdp.apply_external_force_torque,
-              mode="reset",
-              params={
-                  "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-                  "force_range": (0.0, 50.0),
-                  "torque_range": (0.0, 10.0),
-              },
-        )#持续的外力推动
-        self.events.base_com = EventTerm(
-            func=mdp.randomize_rigid_body_com,
-            mode="startup",
-            params={
-                "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-                "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
-            },
-        )#关节适当的错位
-        self.rewards.base_height.weight = -3.0
-        self.rewards.feet_air_time.weight = 0.15
-        self.rewards.air_time_variance.weight = -1.0
-        self.rewards.feet_slide.weight = -0.1
-
-
-
-@configclass
-class VelocityGo2WalkRoughEnvCfg_Play(VelocityGo2WalkRoughEnvCfg):
-    """Configuration for the locomotion velocity-tracking environment."""
-    def __post_init__(self) -> None:
-        # post init of parent
-        super().__post_init__()
-        # self.scene.terrain.terrain_type = "plane"
-        # self.scene.terrain.terrain_generator = None
-        # self.curriculum.terrain_levels = None
 
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
         # spawn the robot randomly in the grid (instead of their terrain levels)
         self.scene.terrain.max_init_terrain_level = None
-        # self.scene.terrain.terrain_type = "plane"
-        # self.scene.terrain.terrain_generator = None
         # reduce the number of terrains to save memory
         if self.scene.terrain.terrain_generator is not None:
             self.scene.terrain.terrain_generator.num_rows = 5
             self.scene.terrain.terrain_generator.num_cols = 5
             self.scene.terrain.terrain_generator.curriculum = False
-
         # disable randomization for play
         self.observations.policy.enable_corruption = False
         # remove random pushing event
+        self.events.physics_material = None     # 禁止域随机化
         self.events.base_external_force_torque = None
         self.events.push_robot = None
         self.events.base_com =  None
-
-
-
-@configclass
-class VelocityGo2WalkRoughFlatEnvCfg_Play(VelocityGo2WalkRoughFlatEnvCfg):
-    """Configuration for the locomotion velocity-tracking environment."""
-    def __post_init__(self) -> None:
-        # post init of parent
-        super().__post_init__()
-        self.scene.num_envs = 50
-        self.scene.env_spacing = 2.5
-        # disable randomization for play
-        self.observations.policy.enable_corruption = False
-        # remove random pushing event
-        self.events.base_external_force_torque = None
-        self.events.push_robot = None
-
-        
-
-
-
-
-
-@configclass
-class VelocityGo2WalkRoughEnvCfg_Ros(VelocityGo2WalkRoughEnvCfg_Play):
-    """Configuration for the locomotion velocity-tracking environment."""
-    def __post_init__(self) -> None:
-        # post init of parent
-        super().__post_init__()
-
-
-@configclass
-class VelocityGo2WalkRoughTestEnvCfg(VelocityGo2WalkRoughEnvCfg):
-    """Configuration for the locomotion velocity-tracking environment."""
-
-    def __post_init__(self):
-         # post init of parent
-        super().__post_init__()
-        # change terrain to flat
-        self.scene.terrain.terrain_type = "plane"
-        self.scene.terrain.terrain_generator = None
-        # # no height scan
-        # self.scene.height_scanner = None
-        # self.observations.policy.height_scan = None
-        # 这样的时候sim2real的时候由于数据一直在发，没必要去改观测了，保持和训练环境一致就好
-        # no terrain curriculum
-        self.curriculum.terrain_levels = None
