@@ -44,8 +44,8 @@ from MyProject.tasks.manager_based.WalkTest.agents.rsl_rl_ppo_cfg import Go2Walk
 TASK_NAME = "Template-Velocity-Go2-Walk-Flat-v0"
 #这个也得修改任务
 # TASK_NAME = "Template-Naviation-Test-Unitree-Go2-v0"
-CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/New/WalkFlatNew.pt"
-OUTPUT_TS_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/New/WalkFlatNewTransfer.pt"
+CHECKPOINT_PATH = "/home/robot/work/IsaacLabBisShe/ModelBackup/WalkPolicy/WalkFlatLowHeight.pt"
+OUTPUT_TS_PATH = "/home/robot/work/IsaacLabBisShe/ModelBackup/TransPolicy/WalkFlatLowHeightTransfer.pt"
 
 # =========================
 # 4. 构建 env 和 agent cfg
@@ -106,7 +106,7 @@ obs_dim = None
 # 从之前的日志中我们看到观察维度是235
 # Actor MLP: MLP((0): Linear(in_features=235, out_features=128, bias=True)...)
 
-obs_dim = 235
+obs_dim = 232
 print(f"✅ 从日志中获取观察维度: {obs_dim}")
 
 # 验证 actor 的输入维度

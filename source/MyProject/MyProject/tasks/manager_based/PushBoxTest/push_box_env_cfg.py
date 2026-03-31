@@ -28,12 +28,13 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import MyProject.tasks.manager_based.PushBoxTest.mdp as mdp
 from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo2WalkRoughTestEnvCfg
-
+from MyProject.tasks.manager_based.WalkTest.walk_flat_env_cfg import Go2WalkFlatEnvCfg
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
-LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughTestEnvCfg()
+# LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughTestEnvCfg()
+LOW_LEVEL_ENV_CFG = Go2WalkFlatEnvCfg()
 _REPO_ROOT = Path(__file__).resolve().parents[6]
-LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/WalkRoughNewTransfer.pt")
+LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/WalkFlatLowHeightTransfer.pt")
 LOW_LEVEL_POLICY_PATH = str(_REPO_ROOT / LOW_LEVEL_POLICY_REL_PATH)
 #低层的环境和策略配置，推箱子这个技能是基于之前训练好的走路技能进行训练的，所以这里直接引用之前走路技能的环境配置和策略路径
 
@@ -237,10 +238,10 @@ class RewardsCfg:
         weight=15.0,
         params={
             "command_name": "box_goal",
-            "distance_threshold": 0.10,#0.06
-            "yaw_threshold": 0.12,#0.15
-            "box_speed_threshold": 0.10,#0.06
-            "robot_speed_threshold": 0.10,#0.06
+            "distance_threshold": 0.12,#0.06
+            "yaw_threshold": 0.15,#0.15
+            "box_speed_threshold": 0.20,#0.06
+            "robot_speed_threshold": 0.20,#0.06
         },
     )
 
@@ -291,10 +292,10 @@ class TerminationsCfg:
         func=mdp.goal_reached,
         params={
             "command_name": "box_goal",
-            "distance_threshold": 0.10,
-            "yaw_threshold": 0.12,
-            "box_speed_threshold": 0.10,
-            "robot_speed_threshold": 0.10,
+            "distance_threshold": 0.12,
+            "yaw_threshold": 0.15,
+            "box_speed_threshold": 0.20,
+            "robot_speed_threshold": 0.20,
             "settle_steps": 4,
         },
     )
