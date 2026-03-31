@@ -325,30 +325,31 @@ class RewardsCfg:
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
     )
     # -- optional penalties
-    # flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)#防止倾倒
-    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)#防止倾倒
+    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-5.0)
     joint_deviation_hip = RewTerm(
         func=mdp.joint_deviation_l1,
         weight=-0.1,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_joint"])},
     )#防止腿朝向内部
-    # feet_slide = RewTerm(
-    #     func=mdp.feet_slide,
-    #     weight=-0.1,
-    #     params={
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
-    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-    #     },
-    # )#防止滑倒
-    # air_time_variance = RewTerm(
-    #     func=walkmdp.air_time_variance_penalty,
-    #     weight=-0.3,
-    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
-    # )
+    feet_slide = RewTerm(
+        func=mdp.feet_slide,
+        weight=-0.0,
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+        },
+    )#防止滑倒
+
     base_height = RewTerm(
         func=mdp.base_height_l2,
         weight=-0.0,
         params={"target_height": 0.20},
+    )
+    air_time_variance = RewTerm(
+        func=walkmdp.air_time_variance_penalty,
+        weight=-0.0,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
 
 
@@ -446,8 +447,36 @@ class VelocityGo2WalkRoughFlatEnvCfg(VelocityGo2WalkRoughEnvCfg):
         super().__post_init__()
         self.scene.terrain.terrain_type = "plane"
         self.scene.terrain.terrain_generator = None
+
         self.curriculum.terrain_levels = None
-        self.rewards.base_height.weight = -1.0
+        
+        self.events.push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(10.0, 15.0),
+        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+        )#外力突然推一下
+        self.events.base_external_force_torque = EventTerm(
+              func=mdp.apply_external_force_torque,
+              mode="reset",
+              params={
+                  "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+                  "force_range": (0.0, 50.0),
+                  "torque_range": (0.0, 10.0),
+              },
+        )#持续的外力推动
+        self.events.base_com = EventTerm(
+            func=mdp.randomize_rigid_body_com,
+            mode="startup",
+            params={
+                "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+                "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
+            },
+        )#关节适当的错位
+        self.rewards.base_height.weight = -3.0
+        self.rewards.feet_air_time.weight = 0.15
+        self.rewards.air_time_variance.weight = -1.0
+        self.rewards.feet_slide.weight = -0.1
 
 
 
@@ -461,11 +490,6 @@ class VelocityGo2WalkRoughEnvCfg_Play(VelocityGo2WalkRoughEnvCfg):
         # self.scene.terrain.terrain_generator = None
         # self.curriculum.terrain_levels = None
 
-#         self.commands.base_velocity.ranges.lin_vel_x = (1.0, 1.0)  #
-#         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)  # 
-#         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)  # 
-#         self.commands.base_velocity.ranges.heading = (0.0, 0.0)  # unused when heading_command is False
-        # make a smaller scene for play
         self.scene.num_envs = 50
         self.scene.env_spacing = 2.5
         # spawn the robot randomly in the grid (instead of their terrain levels)
@@ -483,6 +507,10 @@ class VelocityGo2WalkRoughEnvCfg_Play(VelocityGo2WalkRoughEnvCfg):
         # remove random pushing event
         self.events.base_external_force_torque = None
         self.events.push_robot = None
+        self.events.base_com =  None
+
+
+
 @configclass
 class VelocityGo2WalkRoughFlatEnvCfg_Play(VelocityGo2WalkRoughFlatEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
@@ -498,6 +526,11 @@ class VelocityGo2WalkRoughFlatEnvCfg_Play(VelocityGo2WalkRoughFlatEnvCfg):
         self.events.push_robot = None
 
         
+
+
+
+
+
 @configclass
 class VelocityGo2WalkRoughEnvCfg_Ros(VelocityGo2WalkRoughEnvCfg_Play):
     """Configuration for the locomotion velocity-tracking environment."""
