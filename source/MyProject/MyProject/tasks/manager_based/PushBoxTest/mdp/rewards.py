@@ -437,6 +437,7 @@ def box_goal_distance_exp(
     _, distance = _box_goal_delta(env, command_name, box_cfg)
     return exp_tracking_reward(distance, std)
 
+
 def box_goal_yaw_distance_exp(
     env: ManagerBasedRLEnv,
     std: float,
@@ -446,6 +447,15 @@ def box_goal_yaw_distance_exp(
     """Reward the box for aligning its yaw with the target yaw using an exponential kernel."""
     error_yaw = box_goal_yaw_error(env, command_name, box_cfg)
     return exp_tracking_reward(error_yaw, std)
+
+
+def forward_x_velocity_reward(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Paper-style forward velocity term: max(v_b,x, 0)."""
+    robot = env.scene[robot_cfg.name]
+    return torch.clamp(robot.data.root_lin_vel_b[:, 0], min=0.0,max=1.0)
 
 
 def face_to_object(

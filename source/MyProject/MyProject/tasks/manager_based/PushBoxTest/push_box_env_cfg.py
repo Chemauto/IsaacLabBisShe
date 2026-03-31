@@ -27,7 +27,7 @@ from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import MyProject.tasks.manager_based.PushBoxTest.mdp as mdp
-from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo2WalkRoughTestEnvCfg
+# from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo2WalkRoughTestEnvCfg
 from MyProject.tasks.manager_based.WalkTest.walk_flat_env_cfg import Go2WalkFlatEnvCfg
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
@@ -115,7 +115,7 @@ class CommandsCfg:
         resampling_time_range=(12.0, 12.0),
         debug_vis=True,
         ranges=mdp.BoxGoalCommandCfg.Ranges(
-            pos_x=(0.5, 3.5),
+            pos_x=(1.0, 4.0),
             pos_y=(-1.0, 1.0),
             yaw=(-3.1416/3, 3.1416/3),
         ),
@@ -215,7 +215,7 @@ class RewardsCfg:
     # 稠密距离奖励，鼓励箱子中心始终靠近目标点。
     box_goal_distance = RewTerm(
         func=mdp.box_goal_distance_exp,
-        weight=5.0,
+        weight=6.0,
         params={"std": 0.10, "command_name": "box_goal"},
     ) #原来weight4.0,std0.10
     # 鼓励箱子最终朝向也与目标 yaw 对齐，避免只到点不转向。
@@ -224,6 +224,7 @@ class RewardsCfg:
         weight=2.5,
         params={"std": 0.15, "command_name": "box_goal"},
     )
+
     
     # 当箱子已经接近目标时，再约束机器人最终朝向与目标 yaw 对齐，避免过早干扰推箱主任务。
     # robot_goal_yaw = RewTerm(
@@ -257,7 +258,12 @@ class RewardsCfg:
     )  
     face_to_object = RewTerm(
         func=mdp.face_to_object,
-        weight=0.5,
+        weight=1.0,
+    )
+    # 论文 Table VIII: Negative x-velocity penalty, 实现为 max(v_b,x, 0)
+    forward_x_velocity = RewTerm(
+        func=mdp.forward_x_velocity_reward,
+        weight=2.0,
     )
     # head_collision_penalty = RewTerm(
     #     func=mdp.undesired_contacts,
