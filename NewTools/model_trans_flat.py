@@ -33,7 +33,7 @@ from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 # =========================
 # 注意：现在 source 目录已经在 sys.path 中
 from MyProject.tasks.manager_based.WalkTest.walk_flat_env_cfg import (
-    VelocityGo2WalkFlatEnvCfg,
+    Go2WalkFlatEnvCfg,
 )
 
 # from MyProject.tasks.manager_based.NaviationTest.naviation_test_env_cfg import (
@@ -53,7 +53,7 @@ OUTPUT_TS_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/New/WalkFla
 # env_cfg = LocomotionNaviationTestEnvCfg()
 # agent_cfg = NaviationTestPPORunnerCfg()
 #修改环境和智能体配置
-env_cfg = VelocityGo2WalkFlatEnvCfg()
+env_cfg = Go2WalkFlatEnvCfg()
 agent_cfg = Go2WalkFlatPPORunnerCfg()
 # 这里需要修改
 

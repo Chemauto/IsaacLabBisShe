@@ -181,9 +181,9 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.8, 0.8),
-            "dynamic_friction_range": (0.6, 0.6),
-            "restitution_range": (0.0, 0.0),
+            "static_friction_range": (0.5, 1.2),#原本0.8
+            "dynamic_friction_range": (0.5, 1.2),#原本0.6
+            "restitution_range": (0.0, 0.15),
             "num_buckets": 64,
         },
     )
@@ -239,7 +239,7 @@ class EventCfg:
         mode="reset",
         params={
             "position_range": (1.0, 1.0),
-            "velocity_range": (0.0, 0.0),
+            "velocity_range": (-0.2, 0.2)#原本都是0,
         },
     )
 
