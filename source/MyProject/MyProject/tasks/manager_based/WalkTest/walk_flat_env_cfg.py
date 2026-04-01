@@ -310,7 +310,7 @@ class RewardsCfg:
     base_height = RewTerm(
         func=mdp.base_height_l2,
         weight=-10.0,
-        params={"target_height": 0.20},
+        params={"target_height": 0.30},#原来0.20
     )#限制高度
 
 

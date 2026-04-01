@@ -42,10 +42,10 @@ from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
 import MyProject.tasks.manager_based.NaviationTest.mdp as mdp
 from MyProject.tasks.manager_based.NaviationTest.config.terrain import TWO_PIT_TERRAINS_CFG
-from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import VelocityGo2WalkRoughEnvCfg
-LOW_LEVEL_ENV_CFG = VelocityGo2WalkRoughEnvCfg()
+from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import Go2WalkRoughEnvCfg
+LOW_LEVEL_ENV_CFG = Go2WalkRoughEnvCfg()
 _REPO_ROOT = Path(__file__).resolve().parents[6]
-LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/WalkRoughNewTransfer.pt")
+LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/WalkRoughTransfer.pt")
 LOW_LEVEL_POLICY_PATH = str(_REPO_ROOT / LOW_LEVEL_POLICY_REL_PATH)
 #分层的强化学习的方式，低层的强化学习为之前已经训练好的在平地上行走的策略
 #如果需要训练好的话，这个层次的策略也应该训练好一点
