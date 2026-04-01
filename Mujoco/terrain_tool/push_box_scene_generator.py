@@ -77,7 +77,7 @@ class TerrainGenerator:
         geom.attrib["mass"] = str(mass)
         geom.attrib["friction"] = list_to_str(friction)
         geom.attrib["rgba"] = "0.82 0.47 0.22 1.0"
-        geom.attrib["group"] = "2"
+        geom.attrib["group"] = "0"
 
     def Save(self):
         self.scene.write(OUTPUT_SCENE_PATH)
