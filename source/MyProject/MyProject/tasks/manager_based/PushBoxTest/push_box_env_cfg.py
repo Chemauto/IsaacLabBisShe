@@ -92,7 +92,7 @@ class MySceneCfg(InteractiveSceneCfg):
                 roughness=0.6,
             ),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(1.0, 0.0, 0.1)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.8, 0.0, 0.1)),
     )
 
     contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
@@ -115,7 +115,7 @@ class CommandsCfg:
         resampling_time_range=(12.0, 12.0),
         debug_vis=True,
         ranges=mdp.BoxGoalCommandCfg.Ranges(
-            pos_x=(1.0, 4.0),
+            pos_x=(1.0, 3.0),
             pos_y=(-1.0, 1.0),
             yaw=(-3.1416/3, 3.1416/3),
         ),
@@ -213,11 +213,18 @@ class RewardsCfg:
               #####################稠密奖励#######################
 
     # 稠密距离奖励，鼓励箱子中心始终靠近目标点。
-    box_goal_distance = RewTerm(
+    box_goal_distance_fine_gained = RewTerm(
         func=mdp.box_goal_distance_exp,
-        weight=6.0,
+        weight=4.0,
         params={"std": 0.10, "command_name": "box_goal"},
     ) #原来weight4.0,std0.10
+
+    box_goal_distance = RewTerm(
+        func=mdp.box_goal_distance_exp,
+        weight=2.0,
+        params={"std": 0.60, "command_name": "box_goal"},
+    ) #原来weight4.0,std0.10
+
     # 鼓励箱子最终朝向也与目标 yaw 对齐，避免只到点不转向。
     box_goal_yaw = RewTerm(
         func=mdp.box_goal_yaw_distance_exp,
@@ -249,7 +256,7 @@ class RewardsCfg:
     ###############################姿态奖励函数################################## 
 
     # 惩罚横滚和俯仰，让机器人身体更平稳，减少接触时侧翻风险。
-    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)
+    flat_orientation = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)
     # 惩罚裁剪后高层命令变化过快，避免原始大动作数值爆炸污染训练。
     action_rate = RewTerm(
         func=mdp.processed_action_rate_l2,
@@ -263,7 +270,7 @@ class RewardsCfg:
     # 论文 Table VIII: Negative x-velocity penalty, 实现为 max(v_b,x, 0)
     forward_x_velocity = RewTerm(
         func=mdp.forward_x_velocity_reward,
-        weight=2.0,
+        weight=1.0,
     )
     # head_collision_penalty = RewTerm(
     #     func=mdp.undesired_contacts,
