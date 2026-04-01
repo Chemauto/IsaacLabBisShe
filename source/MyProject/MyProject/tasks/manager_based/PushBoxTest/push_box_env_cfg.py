@@ -71,7 +71,7 @@ class MySceneCfg(InteractiveSceneCfg):
     box = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Box",
         spawn=sim_utils.CuboidCfg(
-            size=(0.6, 0.8, 0.2),
+            size=(0.6, 0.8, 0.24),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 rigid_body_enabled=True,
                 max_linear_velocity=10.0,
@@ -92,7 +92,7 @@ class MySceneCfg(InteractiveSceneCfg):
                 roughness=0.6,
             ),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.8, 0.0, 0.1)),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.8, 0.0, 0.12)),
     )
 
     contact_forces = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=3, track_air_time=True)
