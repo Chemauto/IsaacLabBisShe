@@ -22,10 +22,7 @@
 from __future__ import annotations
 
 import argparse
-import json
-import math
 import os
-import re
 import sys
 import time
 from dataclasses import dataclass
@@ -112,54 +109,56 @@ simulation_app = app_launcher.app
 
 import gymnasium as gym
 import torch
-import torch.nn as nn
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
 
 import MyProject.tasks  # noqa: F401
 import MyProject.tasks.manager_based.EnvTest.mdp as envtest_mdp
-from MyProject.tasks.manager_based.EnvTest.observation_schema import (
+from MyProject.tasks.manager_based.EnvTest.config.assets import SCENE_ASSET_SIZE_FALLBACKS
+from MyProject.tasks.manager_based.EnvTest.mdp.actions import process_navigation_actions, process_push_actions
+from MyProject.tasks.manager_based.EnvTest.mdp.adapters import (
+    align_low_level_obs_to_play,
+    align_low_level_obs_to_training,
+    align_navigation_high_level_obs_to_play,
+    align_push_low_level_obs_to_training,
+    build_obs_slices,
+    print_obs_layout,
+    slice_observation,
+    validate_required_terms,
+)
+from MyProject.tasks.manager_based.EnvTest.mdp.skill_specs import (
+    CLIMB_LOW_LEVEL_OBS_DIM,
+    CLIMB_LOW_LEVEL_OBS_TERMS,
     NAVIGATION_HIGH_LEVEL_OBS_DIM,
     NAVIGATION_HIGH_LEVEL_OBS_TERMS,
+    PUSH_HIGH_LEVEL_OBS_DIM,
+    PUSH_HIGH_LEVEL_OBS_TERMS,
+    WALK_LOW_LEVEL_OBS_DIM,
+    WALK_LOW_LEVEL_OBS_TERMS,
 )
-from MyProject.tasks.manager_based.EnvTest.scene_layout import BOX_SIZE, HIGH_OBSTACLE_SIZE, LOW_OBSTACLE_SIZE
-from NewTools.envtest_control_flags import consume_one_shot_value
-from NewTools.envtest_navigation_bridge import align_navigation_goal_height, build_navigation_pose_command
-from NewTools.envtest_status_panel import AssetStatus, StatusSnapshot, render_status_block
+from MyProject.tasks.manager_based.EnvTest.utils.control_flags import consume_one_shot_value
+from MyProject.tasks.manager_based.EnvTest.utils.navigation_bridge import (
+    align_navigation_goal_height,
+    build_navigation_pose_command,
+)
+from MyProject.tasks.manager_based.EnvTest.utils.player_runtime import (
+    build_default_velocity_commands,
+    build_status_snapshot,
+    check_obs_dim,
+    initialize_control_files,
+    load_jit_policy,
+    load_policies,
+    read_explicit_goal_command_file,
+    read_float_vector_file,
+    reset_robot_only,
+    resolve_model_use,
+    resolve_runtime_velocity_commands,
+    resolve_start_flag,
+)
+from MyProject.tasks.manager_based.EnvTest.utils.status_panel import render_status_panel, write_status_json
 
 
-WALK_LOW_LEVEL_OBS_TERMS = (
-    "base_ang_vel",
-    "projected_gravity",
-    "velocity_commands",
-    "joint_pos",
-    "joint_vel",
-    "actions",
-    "height_scan",
-)
-CLIMB_LOW_LEVEL_OBS_TERMS = (
-    "base_lin_vel",
-    "base_ang_vel",
-    "projected_gravity",
-    "velocity_commands",
-    "joint_pos",
-    "joint_vel",
-    "actions",
-    "height_scan",
-)
-PUSH_HIGH_LEVEL_OBS_TERMS = (
-    "base_lin_vel",
-    "projected_gravity",
-    "box_in_robot_frame_pos",
-    "box_in_robot_frame_yaw",
-    "goal_in_box_frame_pos",
-    "goal_in_box_frame_yaw",
-    "push_actions",
-)
-WALK_LOW_LEVEL_OBS_DIM = 232
-CLIMB_LOW_LEVEL_OBS_DIM = 235
-PUSH_HIGH_LEVEL_OBS_DIM = 19
 CLIMB_PLAY_DEFAULT_VELOCITY = (0.75, 0.0, 0.0)
 STATUS_PANEL_REFRESH_INTERVAL = 0.2
 NAVIGATION_HIGH_LEVEL_DECIMATION = 10
@@ -167,13 +166,6 @@ STATUS_PLATFORM_ASSETS = (
     ("platform_1", ("left_high_obstacle", "left_low_obstacle")),
     ("platform_2", ("right_high_obstacle", "right_low_obstacle")),
 )
-SCENE_ASSET_SIZE_FALLBACKS = {
-    "left_low_obstacle": LOW_OBSTACLE_SIZE,
-    "right_low_obstacle": LOW_OBSTACLE_SIZE,
-    "left_high_obstacle": HIGH_OBSTACLE_SIZE,
-    "right_high_obstacle": HIGH_OBSTACLE_SIZE,
-    "support_box": BOX_SIZE,
-}
 
 
 @dataclass(frozen=True)
@@ -230,609 +222,6 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
 NAVIGATION_LOW_LEVEL_POLICY_PATH = os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkRoughTransfer.pt")
 PUSH_LOW_LEVEL_POLICY_PATH = os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkFlatLowHeightTransfer.pt")
 PUSH_HIGH_LEVEL_DECIMATION = 10
-# Must stay in sync with PushBoxTest.ActionsCfg.pre_trained_policy_action in
-# source/MyProject/MyProject/tasks/manager_based/PushBoxTest/push_box_env_cfg.py.
-PUSH_ACTION_SCALE = (1.0, 1.0, 1.0)
-PUSH_ACTION_CLIP = (
-    (-0.5, 1.0),
-    (-1.0, 1.0),
-    (-0.5, 0.5),
-)
-
-
-def _make_activation(name: str) -> nn.Module:
-    """根据名称创建激活层。"""
-
-    activation_name = name.lower()
-    if activation_name == "elu":
-        return nn.ELU()
-    if activation_name == "relu":
-        return nn.ReLU()
-    if activation_name == "tanh":
-        return nn.Tanh()
-    raise ValueError(f"Unsupported activation for checkpoint policy loading: {name}")
-
-
-def _load_rsl_rl_actor_from_checkpoint(spec: SkillSpec, device: torch.device | str) -> nn.Module:
-    """从 RSL-RL checkpoint 中恢复 actor，用于推理。"""
-
-    checkpoint = torch.load(spec.policy_path, map_location=device)
-    model_state_dict = checkpoint.get("model_state_dict")
-    if model_state_dict is None:
-        raise KeyError(f"Checkpoint does not contain 'model_state_dict': {spec.policy_path}")
-
-    actor_state_dict = {
-        key[len("actor."):]: value for key, value in model_state_dict.items() if key.startswith("actor.")
-    }
-    if not actor_state_dict:
-        raise KeyError(f"Checkpoint does not contain actor weights: {spec.policy_path}")
-
-    bias_layer_indices = sorted(int(key.split(".")[0]) for key in actor_state_dict if key.endswith(".bias"))
-    if not bias_layer_indices:
-        raise KeyError(f"Checkpoint actor is missing bias tensors: {spec.policy_path}")
-    output_dim = actor_state_dict[f"{bias_layer_indices[-1]}.bias"].shape[0]
-    layer_dims = [spec.obs_dim, *spec.actor_hidden_dims, output_dim]
-    layers: list[nn.Module] = []
-    for layer_index, (in_dim, out_dim) in enumerate(zip(layer_dims[:-1], layer_dims[1:])):
-        layers.append(nn.Linear(in_dim, out_dim))
-        if layer_index < len(layer_dims) - 2:
-            layers.append(_make_activation(spec.activation))
-
-    actor = nn.Sequential(*layers)
-    actor.load_state_dict(actor_state_dict)
-    actor.to(device)
-    actor.eval()
-    return actor
-
-
-def _load_policies(device: torch.device | str) -> dict[int, nn.Module]:
-    """加载所有高层技能策略。"""
-
-    policies: dict[int, nn.Module] = {}
-    for model_use, spec in SKILL_REGISTRY.items():
-        if not os.path.isfile(spec.policy_path):
-            raise FileNotFoundError(f"Policy file not found: {spec.policy_path}")
-        if spec.checkpoint_format == "jit":
-            policies[model_use] = torch.jit.load(spec.policy_path, map_location=device).eval()
-        elif spec.checkpoint_format == "rsl_rl_checkpoint":
-            policies[model_use] = _load_rsl_rl_actor_from_checkpoint(spec, device)
-        else:
-            raise ValueError(f"Unsupported checkpoint format '{spec.checkpoint_format}' for skill '{spec.name}'.")
-    return policies
-
-
-def _load_jit_policy(policy_path: str, description: str, device: torch.device | str) -> torch.jit.ScriptModule:
-    """加载一个 JIT 导出的策略。"""
-
-    if not os.path.isfile(policy_path):
-        raise FileNotFoundError(f"{description} policy file not found: {policy_path}")
-    return torch.jit.load(policy_path, map_location=device).eval()
-
-
-def _resolve_model_use(current_model_use: int) -> int:
-    """从 CLI 或外部文件中决定当前 model_use。"""
-
-    if args_cli.model_use_file and os.path.isfile(args_cli.model_use_file):
-        try:
-            with open(args_cli.model_use_file, "r", encoding="utf-8") as file:
-                file_value = int(file.read().strip())
-        except (OSError, ValueError):
-            file_value = current_model_use
-        if file_value == 0 or file_value in SKILL_REGISTRY:
-            return file_value
-    return current_model_use
-
-
-def _read_float_vector_file(file_path: str, expected_dim: int, fallback: torch.Tensor) -> torch.Tensor:
-    """从文本文件里读取定长浮点向量。
-
-    支持：
-    - `0.6 0.0 0.0`
-    - `0.6,0.0,0.0`
-    - `vx=0.6 vy=0.0 wz=0.0`
-    """
-
-    if not file_path or not os.path.isfile(file_path):
-        return fallback
-
-    try:
-        with open(file_path, "r", encoding="utf-8") as file:
-            text = file.read()
-    except OSError:
-        return fallback
-
-    values = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", text)
-    if len(values) < expected_dim:
-        return fallback
-
-    try:
-        parsed = [float(value) for value in values[:expected_dim]]
-    except ValueError:
-        return fallback
-
-    vector = torch.tensor(parsed, dtype=fallback.dtype, device=fallback.device)
-    return vector.unsqueeze(0).repeat(fallback.shape[0], 1)
-
-
-def _resolve_start_flag() -> bool:
-    """决定当前是否进入执行阶段。"""
-
-    if args_cli.auto_start:
-        return True
-    if not args_cli.start_file or not os.path.isfile(args_cli.start_file):
-        return False
-
-    try:
-        with open(args_cli.start_file, "r", encoding="utf-8") as file:
-            text = file.read().strip().lower()
-    except OSError:
-        return False
-
-    return text in ("1", "true", "run", "start", "yes", "y")
-
-
-def _ensure_parent_dir(file_path: str):
-    """确保控制文件父目录存在。"""
-
-    parent = os.path.dirname(file_path)
-    if parent:
-        os.makedirs(parent, exist_ok=True)
-
-
-def _write_text_file(file_path: str, content: str):
-    """写入控制文件。"""
-
-    _ensure_parent_dir(file_path)
-    with open(file_path, "w", encoding="utf-8") as file:
-        file.write(content.strip() + "\n")
-
-
-def _initialize_control_files():
-    """启动时重置控制文件，避免读取到上一次运行残留的旧值。"""
-
-    _write_text_file(args_cli.model_use_file, str(args_cli.model_use))
-    _write_text_file(
-        args_cli.velocity_command_file,
-        f"{args_cli.lin_vel_x} {args_cli.lin_vel_y} {args_cli.ang_vel_z}",
-    )
-    # push_box 默认使用场景自动推导的目标点，不直接写死成 0 0 0。
-    _write_text_file(args_cli.goal_command_file, "auto")
-    _write_text_file(args_cli.start_file, "1" if args_cli.auto_start else "0")
-    _write_text_file(args_cli.reset_file, "0")
-
-
-def _read_goal_command_file(file_path: str, fallback: torch.Tensor) -> torch.Tensor:
-    """读取 push_box 目标点。
-
-    行为：
-    - 文件不存在：使用场景自动目标
-    - 内容是 `auto` / `scene` / 空：使用场景自动目标
-    - 内容是三个数：使用显式目标点，yaw 默认补 0
-    - 内容是四个数：使用显式目标点和目标 yaw
-    """
-
-    explicit_goal = _read_explicit_goal_command_file(file_path, fallback)
-    return fallback if explicit_goal is None else explicit_goal
-
-
-def _parse_goal_command_text(text: str) -> list[float] | None:
-    """把目标点文本解析成 `[x, y, z, yaw]`。"""
-
-    normalized_text = text.strip().lower()
-    if normalized_text in ("", "auto", "scene", "default"):
-        return None
-
-    values = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", normalized_text)
-    if len(values) < 3:
-        return None
-
-    try:
-        parsed = [float(value) for value in values[:4]]
-    except ValueError:
-        return None
-
-    if len(parsed) == 3:
-        parsed.append(0.0)
-    elif len(parsed) < 4:
-        return None
-    return parsed
-
-
-def _read_explicit_goal_command_file(file_path: str, template: torch.Tensor) -> torch.Tensor | None:
-    """只读取显式 pose command；`auto` / 空 / 缺失都返回 `None`。"""
-
-    if not file_path or not os.path.isfile(file_path):
-        return None
-
-    try:
-        with open(file_path, "r", encoding="utf-8") as file:
-            text = file.read()
-    except OSError:
-        return None
-
-    parsed = _parse_goal_command_text(text)
-    if parsed is None:
-        return None
-
-    vector = torch.tensor(parsed, dtype=template.dtype, device=template.device)
-    return vector.unsqueeze(0).repeat(template.shape[0], 1)
-
-
-def _build_default_velocity_commands(num_envs: int, device: torch.device | str) -> torch.Tensor:
-    """构造 walk / climb 使用的默认速度命令。"""
-
-    single_command = torch.tensor(
-        [args_cli.lin_vel_x, args_cli.lin_vel_y, args_cli.ang_vel_z], dtype=torch.float32, device=device
-    )
-    return single_command.unsqueeze(0).repeat(num_envs, 1)
-
-
-def _resolve_runtime_velocity_commands(model_use: int, velocity_commands: torch.Tensor) -> torch.Tensor:
-    """对齐各技能 Play 配置的默认速度命令。"""
-
-    if args_cli.scene_id == 2 and model_use == 2 and torch.allclose(velocity_commands, torch.zeros_like(velocity_commands)):
-        climb_velocity = torch.tensor(
-            CLIMB_PLAY_DEFAULT_VELOCITY, dtype=velocity_commands.dtype, device=velocity_commands.device
-        )
-        return climb_velocity.unsqueeze(0).repeat(velocity_commands.shape[0], 1)
-    return velocity_commands
-
-
-def _default_push_goal(env) -> torch.Tensor:
-    """按当前场景中的箱子/障碍尺寸自动生成 push goal。"""
-
-    return envtest_mdp.compute_push_goal_from_scene(env)
-
-
-def _process_push_actions(raw_actions: torch.Tensor) -> torch.Tensor:
-    """对齐 `PushBoxTest`：高层动作先缩放，再按训练范围裁剪。"""
-
-    action_scale = raw_actions.new_tensor(PUSH_ACTION_SCALE).view(1, -1)
-    action_clip = raw_actions.new_tensor(PUSH_ACTION_CLIP)
-    action_clip_min = action_clip[:, 0].view(1, -1)
-    action_clip_max = action_clip[:, 1].view(1, -1)
-    processed_actions = raw_actions * action_scale
-    return torch.maximum(torch.minimum(processed_actions, action_clip_max), action_clip_min)
-
-
-def _process_navigation_actions(raw_actions: torch.Tensor) -> torch.Tensor:
-    """对齐 NavigationTest：高层动作按训练时的 `[-1, 1]` 范围裁剪。"""
-
-    return torch.clamp(raw_actions, min=-1.0, max=1.0)
-
-
-def _align_low_level_obs_to_training(
-    env,
-    policy_obs: torch.Tensor,
-    term_slices: dict[str, slice],
-    term_names: tuple[str, ...],
-    last_actions: torch.Tensor,
-    include_support_box: bool = True,
-) -> torch.Tensor:
-    """把切片后的低层观测对齐到 rough-walk 训练时的 ObservationManager 行为。"""
-
-    aligned_obs = policy_obs.clone()
-    local_slices = _build_local_obs_slices(term_names, term_slices)
-
-    if hasattr(env, "episode_length_buf"):
-        last_actions[env.episode_length_buf == 0, :] = 0.0
-
-    aligned_obs[:, local_slices["actions"]] = last_actions
-    if include_support_box:
-        aligned_obs[:, local_slices["height_scan"]] = policy_obs[:, local_slices["height_scan"]]
-    else:
-        aligned_obs[:, local_slices["height_scan"]] = envtest_mdp.height_scan_without_box(env)
-    if "base_lin_vel" in local_slices:
-        aligned_obs[:, local_slices["base_lin_vel"]] += torch.empty_like(
-            aligned_obs[:, local_slices["base_lin_vel"]]
-        ).uniform_(-0.1, 0.1)
-    if "base_ang_vel" in local_slices:
-        aligned_obs[:, local_slices["base_ang_vel"]] += torch.empty_like(
-            aligned_obs[:, local_slices["base_ang_vel"]]
-        ).uniform_(-0.2, 0.2)
-    if "projected_gravity" in local_slices:
-        aligned_obs[:, local_slices["projected_gravity"]] += torch.empty_like(
-            aligned_obs[:, local_slices["projected_gravity"]]
-        ).uniform_(-0.05, 0.05)
-    if "joint_pos" in local_slices:
-        aligned_obs[:, local_slices["joint_pos"]] += torch.empty_like(
-            aligned_obs[:, local_slices["joint_pos"]]
-        ).uniform_(-0.01, 0.01)
-    if "joint_vel" in local_slices:
-        aligned_obs[:, local_slices["joint_vel"]] += torch.empty_like(
-            aligned_obs[:, local_slices["joint_vel"]]
-        ).uniform_(-1.5, 1.5)
-    aligned_obs[:, local_slices["height_scan"]] += torch.empty_like(
-        aligned_obs[:, local_slices["height_scan"]]
-    ).uniform_(-0.1, 0.1)
-    aligned_obs[:, local_slices["height_scan"]] = torch.clamp(
-        aligned_obs[:, local_slices["height_scan"]], min=-1.0, max=1.0
-    )
-    return aligned_obs
-
-
-def _align_push_low_level_obs_to_training(
-    env,
-    policy_obs: torch.Tensor,
-    term_slices: dict[str, slice],
-    push_low_level_last_actions: torch.Tensor,
-) -> torch.Tensor:
-    """Push-box 分支复用 rough-walk 低层观测，但要屏蔽 support_box。"""
-
-    return _align_low_level_obs_to_training(
-        env,
-        policy_obs,
-        term_slices,
-        WALK_LOW_LEVEL_OBS_TERMS,
-        push_low_level_last_actions,
-        include_support_box=False,
-    )
-
-
-def _align_navigation_high_level_obs_to_play(policy_obs: torch.Tensor) -> torch.Tensor:
-    """对齐 NaviationBiSheEnvCfg_Play：不加噪声，只保留裁剪。"""
-
-    aligned_obs = policy_obs.clone()
-    local_slices = {"height_scan": slice(10, NAVIGATION_HIGH_LEVEL_OBS_DIM)}
-    aligned_obs[:, local_slices["height_scan"]] = torch.clamp(aligned_obs[:, local_slices["height_scan"]], -1.0, 1.0)
-    return aligned_obs
-
-
-def _build_obs_slices(env, group_name: str = "policy") -> dict[str, slice]:
-    """把统一观测中的每个 term 映射到切片区间。"""
-
-    obs_manager = env.observation_manager
-    term_names = obs_manager.active_terms[group_name]
-    term_dims = obs_manager.group_obs_term_dim[group_name]
-
-    slices: dict[str, slice] = {}
-    start = 0
-    for term_name, term_dim in zip(term_names, term_dims):
-        flat_dim = math.prod(term_dim)
-        slices[term_name] = slice(start, start + flat_dim)
-        start += flat_dim
-    return slices
-
-
-def _build_local_obs_slices(term_names: tuple[str, ...], term_slices: dict[str, slice]) -> dict[str, slice]:
-    """为切片后的局部观测重新建立 term 对应区间。"""
-
-    local_slices: dict[str, slice] = {}
-    start = 0
-    for term_name in term_names:
-        term_slice = term_slices[term_name]
-        term_dim = term_slice.stop - term_slice.start
-        local_slices[term_name] = slice(start, start + term_dim)
-        start += term_dim
-    return local_slices
-
-
-def _align_low_level_obs_to_play(
-    policy_obs: torch.Tensor,
-    term_slices: dict[str, slice],
-    term_names: tuple[str, ...],
-) -> torch.Tensor:
-    """对齐 walk/climb Play 模式下的低层观测后处理。"""
-
-    aligned_obs = policy_obs.clone()
-    local_slices = _build_local_obs_slices(term_names, term_slices)
-    aligned_obs[:, local_slices["height_scan"]] = torch.clamp(
-        aligned_obs[:, local_slices["height_scan"]], min=-1.0, max=1.0
-    )
-    return aligned_obs
-
-
-def _slice_observation(unified_obs: torch.Tensor, term_slices: dict[str, slice], term_names: tuple[str, ...]) -> torch.Tensor:
-    """按给定 term 名称顺序，从统一观测中拼出某个技能需要的输入。"""
-
-    parts = [unified_obs[:, term_slices[term_name]] for term_name in term_names]
-    return torch.cat(parts, dim=-1)
-
-
-def _validate_required_terms(term_slices: dict[str, slice]):
-    """确保统一观测中已经包含各技能需要的全部 term。"""
-
-    required_terms = (
-        set(WALK_LOW_LEVEL_OBS_TERMS)
-        | set(CLIMB_LOW_LEVEL_OBS_TERMS)
-        | set(PUSH_HIGH_LEVEL_OBS_TERMS)
-        | set(NAVIGATION_HIGH_LEVEL_OBS_TERMS)
-    )
-    missing_terms = sorted(required_terms.difference(term_slices))
-    if missing_terms:
-        raise RuntimeError(f"EnvTest unified observation is missing terms: {missing_terms}")
-
-
-def _print_obs_layout(term_slices: dict[str, slice]):
-    """打印统一观测的 term 切片布局，便于后续排查。"""
-
-    print("[INFO] EnvTest unified observation layout:")
-    for term_name, term_slice in term_slices.items():
-        print(f"  - {term_name:<18} -> [{term_slice.start:>3}, {term_slice.stop:>3})")
-
-
-def _check_obs_dim(model_use: int, obs: torch.Tensor):
-    """检查切片后的观测维度是否和策略要求一致。"""
-
-    expected_dim = SKILL_REGISTRY[model_use].obs_dim
-    if obs.shape[1] != expected_dim:
-        raise RuntimeError(
-            f"Observation dim mismatch for model_use={model_use}. "
-            f"Expected {expected_dim}, got {obs.shape[1]}."
-        )
-
-
-def _tensor_row_to_tuple(tensor: torch.Tensor | None) -> tuple[float, ...] | None:
-    """把单环境 tensor 转成 Python tuple，便于终端显示。"""
-
-    if tensor is None:
-        return None
-
-    row = tensor[0] if tensor.ndim > 1 else tensor
-    return tuple(float(value) for value in row.detach().cpu().tolist())
-
-
-def _scene_asset_size(env, asset_name: str) -> tuple[float, float, float]:
-    """从当前 scene cfg 读取物体尺寸，取不到时回退到场景常量。"""
-
-    fallback_size = SCENE_ASSET_SIZE_FALLBACKS[asset_name]
-    scene_cfg = getattr(env.cfg, "scene", None)
-    if scene_cfg is None or not hasattr(scene_cfg, asset_name):
-        return fallback_size
-
-    asset_cfg = getattr(scene_cfg, asset_name)
-    if asset_cfg is None or not hasattr(asset_cfg, "spawn"):
-        return fallback_size
-
-    size = getattr(asset_cfg.spawn, "size", None)
-    if size is None:
-        return fallback_size
-    return tuple(float(value) for value in size)
-
-
-def _scene_asset_status(env, asset_name: str) -> AssetStatus | None:
-    """读取当前场景物体的位置和尺寸；物体缺失时返回 `None`。"""
-
-    try:
-        asset = env.scene[asset_name]
-    except KeyError:
-        return None
-
-    asset_pos_e = asset.data.root_pos_w[:, :3] - env.scene.env_origins
-    return AssetStatus(
-        name=asset_name,
-        position=_tensor_row_to_tuple(asset_pos_e),
-        size=_scene_asset_size(env, asset_name),
-    )
-
-
-def _select_platform_status(env, asset_names: tuple[str, ...]) -> AssetStatus | None:
-    """按固定槽位顺序选取左/右通路中的障碍物。"""
-
-    for asset_name in asset_names:
-        asset_status = _scene_asset_status(env, asset_name)
-        if asset_status is not None:
-            return asset_status
-    return None
-
-
-def _skill_name_for_model_use(model_use: int) -> str | None:
-    """把当前 model_use 映射成技能名。"""
-
-    if model_use == 0:
-        return "idle"
-    if model_use in SKILL_REGISTRY:
-        return SKILL_REGISTRY[model_use].name
-    return None
-
-
-def _build_status_snapshot(
-    env,
-    model_use: int,
-    start_flag: bool,
-    unified_obs_dim: int,
-    policy_obs_dim: int | None,
-    velocity_command: torch.Tensor,
-    pose_command: torch.Tensor | None,
-    goal_command: torch.Tensor | None,
-) -> StatusSnapshot:
-    """汇总当前终端状态面板需要的运行时信息。"""
-
-    robot = env.scene["robot"]
-    robot_pose_e = robot.data.root_pos_w[:, :3] - env.scene.env_origins
-    platform_statuses = {
-        label: _select_platform_status(env, asset_names) for label, asset_names in STATUS_PLATFORM_ASSETS
-    }
-
-    return StatusSnapshot(
-        model_use=model_use,
-        skill=_skill_name_for_model_use(model_use),
-        scene_id=args_cli.scene_id,
-        start=start_flag,
-        unified_obs_dim=unified_obs_dim,
-        policy_obs_dim=policy_obs_dim,
-        pose_command=_tensor_row_to_tuple(pose_command),
-        vel_command=_tensor_row_to_tuple(velocity_command),
-        robot_pose=_tensor_row_to_tuple(robot_pose_e),
-        goal=_tensor_row_to_tuple(goal_command),
-        platform_1=platform_statuses["platform_1"],
-        platform_2=platform_statuses["platform_2"],
-        box=_scene_asset_status(env, "support_box"),
-    )
-
-
-def _render_status_panel(snapshot: StatusSnapshot):
-    """在终端中覆盖刷新当前状态。"""
-
-    if not sys.stdout.isatty():
-        return
-
-    try:
-        sys.stdout.write("\033[2J\033[H")
-        sys.stdout.write(render_status_block(snapshot))
-        sys.stdout.write("\n")
-        sys.stdout.flush()
-    except OSError:
-        pass
-
-
-def _write_status_json(snapshot: StatusSnapshot, file_path: str) -> None:
-    """把当前运行状态原子写入 JSON 文件，供外部轮询。"""
-
-    if not file_path:
-        return
-
-    payload = {
-        "timestamp": round(time.time(), 6),
-        "model_use": snapshot.model_use,
-        "skill": snapshot.skill,
-        "scene_id": snapshot.scene_id,
-        "start": snapshot.start,
-        "unified_obs_dim": snapshot.unified_obs_dim,
-        "policy_obs_dim": snapshot.policy_obs_dim,
-        "pose_command": list(snapshot.pose_command) if snapshot.pose_command is not None else None,
-        "vel_command": list(snapshot.vel_command) if snapshot.vel_command is not None else None,
-        "robot_pose": list(snapshot.robot_pose) if snapshot.robot_pose is not None else None,
-        "goal": list(snapshot.goal) if snapshot.goal is not None else None,
-        "platform_1": None if snapshot.platform_1 is None else {
-            "name": snapshot.platform_1.name,
-            "position": list(snapshot.platform_1.position),
-            "size": list(snapshot.platform_1.size),
-        },
-        "platform_2": None if snapshot.platform_2 is None else {
-            "name": snapshot.platform_2.name,
-            "position": list(snapshot.platform_2.position),
-            "size": list(snapshot.platform_2.size),
-        },
-        "box": None if snapshot.box is None else {
-            "name": snapshot.box.name,
-            "position": list(snapshot.box.position),
-            "size": list(snapshot.box.size),
-        },
-    }
-
-    status_path = os.path.abspath(file_path)
-    os.makedirs(os.path.dirname(status_path), exist_ok=True)
-    temp_path = f"{status_path}.tmp"
-    with open(temp_path, "w", encoding="utf-8") as file:
-        json.dump(payload, file, ensure_ascii=False)
-        file.write("\n")
-    os.replace(temp_path, status_path)
-
-
-def _reset_robot_only(env, robot):
-    """只重置机器人，不恢复箱子和障碍物。"""
-
-    default_root_state = robot.data.default_root_state.clone()
-    default_root_state[:, :3] += env.scene.env_origins
-    robot.write_root_pose_to_sim(default_root_state[:, :7])
-    robot.write_root_velocity_to_sim(default_root_state[:, 7:13])
-
-    default_joint_pos = robot.data.default_joint_pos.clone()
-    default_joint_vel = robot.data.default_joint_vel.clone()
-    robot.write_joint_state_to_sim(default_joint_pos, default_joint_vel)
-    robot.set_joint_position_target(default_joint_pos)
-    robot.set_joint_velocity_target(default_joint_vel)
 
 
 def main():
@@ -843,7 +232,7 @@ def main():
     if args_cli.model_use != 0 and args_cli.model_use not in SKILL_REGISTRY:
         raise ValueError(f"--model_use must be one of {[0, *sorted(SKILL_REGISTRY)]}.")
 
-    _initialize_control_files()
+    initialize_control_files(args_cli)
 
     env_cfg = parse_env_cfg(
         args_cli.task,
@@ -864,15 +253,15 @@ def main():
     action_dim = env.unwrapped.scene["robot"].data.joint_pos.shape[1]
     expected_action_shape = (num_envs, action_dim)
 
-    policies = _load_policies(device)
-    navigation_low_level_policy = _load_jit_policy(
+    policies = load_policies(SKILL_REGISTRY, device)
+    navigation_low_level_policy = load_jit_policy(
         NAVIGATION_LOW_LEVEL_POLICY_PATH, "Navigation low-level", device
     )
-    push_low_level_policy = _load_jit_policy(PUSH_LOW_LEVEL_POLICY_PATH, "Push low-level", device)
+    push_low_level_policy = load_jit_policy(PUSH_LOW_LEVEL_POLICY_PATH, "Push low-level", device)
 
-    term_slices = _build_obs_slices(env.unwrapped)
-    _validate_required_terms(term_slices)
-    _print_obs_layout(term_slices)
+    term_slices = build_obs_slices(env.unwrapped)
+    validate_required_terms(term_slices)
+    print_obs_layout(term_slices)
     unified_obs_dim = env.unwrapped.observation_manager.group_obs_dim["policy"][0]
     print("[INFO] Control files have been reset at startup.")
     print(f"[INFO] model_use file: {args_cli.model_use_file}")
@@ -881,7 +270,13 @@ def main():
     print(f"[INFO] start file: {args_cli.start_file} (auto_start={args_cli.auto_start})")
     print(f"[INFO] reset file: {args_cli.reset_file}")
 
-    base_velocity_commands = _build_default_velocity_commands(num_envs, device)
+    base_velocity_commands = build_default_velocity_commands(
+        args_cli.lin_vel_x,
+        args_cli.lin_vel_y,
+        args_cli.ang_vel_z,
+        num_envs,
+        device,
+    )
     zero_pose_command = torch.zeros((num_envs, 4), dtype=torch.float32, device=device)
     zero_push_goal_command = torch.zeros((num_envs, 4), dtype=torch.float32, device=device)
     zero_push_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
@@ -906,10 +301,15 @@ def main():
 
     while simulation_app.is_running():
         start_time = time.time()
-        current_model_use = _resolve_model_use(current_model_use)
-        current_velocity_commands = _read_float_vector_file(args_cli.velocity_command_file, 3, base_velocity_commands)
-        current_velocity_commands = _resolve_runtime_velocity_commands(current_model_use, current_velocity_commands)
-        explicit_pose_command = _read_explicit_goal_command_file(args_cli.goal_command_file, zero_push_goal_command)
+        current_model_use = resolve_model_use(args_cli.model_use_file, SKILL_REGISTRY, current_model_use)
+        current_velocity_commands = read_float_vector_file(args_cli.velocity_command_file, 3, base_velocity_commands)
+        current_velocity_commands = resolve_runtime_velocity_commands(
+            args_cli.scene_id,
+            current_model_use,
+            current_velocity_commands,
+            CLIMB_PLAY_DEFAULT_VELOCITY,
+        )
+        explicit_pose_command = read_explicit_goal_command_file(args_cli.goal_command_file, zero_push_goal_command)
         robot = env.unwrapped.scene["robot"]
         if explicit_pose_command is None:
             navigation_goal_command = None
@@ -919,7 +319,7 @@ def main():
         current_goal_for_display = navigation_goal_command if current_model_use == 4 else explicit_pose_command
         current_pose_for_display = None if current_model_use == 4 else explicit_pose_command
         current_velocity_for_display = current_velocity_commands
-        start_flag = _resolve_start_flag()
+        start_flag = resolve_start_flag(args_cli.auto_start, args_cli.start_file)
         current_policy_obs_dim = SKILL_REGISTRY[current_model_use].obs_dim if start_flag and current_model_use in SKILL_REGISTRY else None
         reset_token = consume_one_shot_value(
             args_cli.reset_file,
@@ -983,7 +383,7 @@ def main():
 
         if reset_mode == 2:
             with torch.inference_mode():
-                _reset_robot_only(env.unwrapped, robot)
+                reset_robot_only(env.unwrapped, robot)
             push_last_processed_actions.zero_()
             push_current_processed_actions.zero_()
             push_low_level_last_actions.zero_()
@@ -1058,13 +458,13 @@ def main():
                     push_actions=zero_push_actions,
                 )
                 unified_obs = env.unwrapped.observation_manager.compute_group("policy")
-                policy_obs = _slice_observation(unified_obs, term_slices, SKILL_REGISTRY[current_model_use].obs_terms)
-                policy_obs = _align_low_level_obs_to_play(
+                policy_obs = slice_observation(unified_obs, term_slices, SKILL_REGISTRY[current_model_use].obs_terms)
+                policy_obs = align_low_level_obs_to_play(
                     policy_obs,
                     term_slices,
                     SKILL_REGISTRY[current_model_use].obs_terms,
                 )
-                _check_obs_dim(current_model_use, policy_obs)
+                check_obs_dim(SKILL_REGISTRY, current_model_use, policy_obs)
                 actions = policies[current_model_use](policy_obs)
             elif current_model_use == 4:
                 if navigation_goal_command is None:
@@ -1078,9 +478,9 @@ def main():
                         push_actions=zero_push_actions,
                     )
                     unified_obs = env.unwrapped.observation_manager.compute_group("policy")
-                    navigation_high_obs = _slice_observation(unified_obs, term_slices, SKILL_REGISTRY[4].obs_terms)
-                    navigation_high_obs = _align_navigation_high_level_obs_to_play(navigation_high_obs)
-                    _check_obs_dim(4, navigation_high_obs)
+                    navigation_high_obs = slice_observation(unified_obs, term_slices, SKILL_REGISTRY[4].obs_terms)
+                    navigation_high_obs = align_navigation_high_level_obs_to_play(navigation_high_obs)
+                    check_obs_dim(SKILL_REGISTRY, 4, navigation_high_obs)
                     navigation_raw_actions = policies[4](navigation_high_obs)
                     if navigation_raw_actions.shape != navigation_current_processed_actions.shape:
                         raise RuntimeError(
@@ -1088,7 +488,7 @@ def main():
                             f"Expected {tuple(navigation_current_processed_actions.shape)}, "
                             f"got {tuple(navigation_raw_actions.shape)}."
                         )
-                    navigation_current_processed_actions.copy_(_process_navigation_actions(navigation_raw_actions))
+                    navigation_current_processed_actions.copy_(process_navigation_actions(navigation_raw_actions))
 
                 current_velocity_for_display = navigation_current_processed_actions
                 env.unwrapped.set_runtime_observation_buffers(
@@ -1098,8 +498,8 @@ def main():
                     push_actions=zero_navigation_actions,
                 )
                 unified_obs = env.unwrapped.observation_manager.compute_group("policy")
-                policy_obs = _slice_observation(unified_obs, term_slices, WALK_LOW_LEVEL_OBS_TERMS)
-                policy_obs = _align_low_level_obs_to_training(
+                policy_obs = slice_observation(unified_obs, term_slices, WALK_LOW_LEVEL_OBS_TERMS)
+                policy_obs = align_low_level_obs_to_training(
                     env.unwrapped,
                     policy_obs,
                     term_slices,
@@ -1116,7 +516,7 @@ def main():
                 navigation_low_level_last_actions.copy_(actions)
                 navigation_high_level_counter = (navigation_high_level_counter + 1) % NAVIGATION_HIGH_LEVEL_DECIMATION
             else:
-                scene_push_goal = _default_push_goal(env.unwrapped)
+                scene_push_goal = envtest_mdp.compute_push_goal_from_scene(env.unwrapped)
                 push_goal_command = scene_push_goal if explicit_pose_command is None else explicit_pose_command
                 current_goal_for_display = push_goal_command
                 if push_high_level_counter == 0:
@@ -1128,8 +528,8 @@ def main():
                         push_actions=push_last_processed_actions,
                     )
                     unified_obs = env.unwrapped.observation_manager.compute_group("policy")
-                    push_high_obs = _slice_observation(unified_obs, term_slices, SKILL_REGISTRY[3].obs_terms)
-                    _check_obs_dim(3, push_high_obs)
+                    push_high_obs = slice_observation(unified_obs, term_slices, SKILL_REGISTRY[3].obs_terms)
+                    check_obs_dim(SKILL_REGISTRY, 3, push_high_obs)
 
                     current_push_goal_tuple = tuple(round(v, 4) for v in push_goal_command[0].detach().cpu().tolist())
                     if current_push_goal_tuple != previous_logged_push_goal:
@@ -1161,7 +561,7 @@ def main():
                             f"Expected {tuple(push_last_processed_actions.shape)}, got {tuple(push_raw_actions.shape)}."
                         )
 
-                    push_current_processed_actions.copy_(_process_push_actions(push_raw_actions))
+                    push_current_processed_actions.copy_(process_push_actions(push_raw_actions))
                     push_last_processed_actions.copy_(push_current_processed_actions)
 
                 # 再把裁剪后的高层动作写入低层速度命令槽位，供 rough-walk 低层策略执行。
@@ -1172,8 +572,8 @@ def main():
                     push_actions=push_current_processed_actions,
                 )
                 unified_obs = env.unwrapped.observation_manager.compute_group("policy")
-                policy_obs = _slice_observation(unified_obs, term_slices, WALK_LOW_LEVEL_OBS_TERMS)
-                policy_obs = _align_push_low_level_obs_to_training(
+                policy_obs = slice_observation(unified_obs, term_slices, WALK_LOW_LEVEL_OBS_TERMS)
+                policy_obs = align_push_low_level_obs_to_training(
                     env.unwrapped, policy_obs, term_slices, push_low_level_last_actions
                 )
                 if policy_obs.shape[1] != WALK_LOW_LEVEL_OBS_DIM:
@@ -1203,7 +603,7 @@ def main():
             print(f"[INFO] 当前策略输出维度: {actions.shape[1]}")
 
         if time.time() - last_status_panel_time >= STATUS_PANEL_REFRESH_INTERVAL:
-            status_snapshot = _build_status_snapshot(
+            status_snapshot = build_status_snapshot(
                 env.unwrapped,
                 model_use=current_model_use,
                 start_flag=start_flag,
@@ -1212,9 +612,13 @@ def main():
                 velocity_command=current_velocity_for_display,
                 pose_command=current_pose_for_display,
                 goal_command=current_goal_for_display,
+                scene_id=args_cli.scene_id,
+                skill_registry=SKILL_REGISTRY,
+                platform_assets=STATUS_PLATFORM_ASSETS,
+                fallback_sizes=SCENE_ASSET_SIZE_FALLBACKS,
             )
-            _render_status_panel(status_snapshot)
-            _write_status_json(status_snapshot, args_cli.status_json_file)
+            render_status_panel(status_snapshot)
+            write_status_json(status_snapshot, args_cli.status_json_file)
             last_status_panel_time = time.time()
 
         if args_cli.max_steps > 0 and step_count >= args_cli.max_steps:

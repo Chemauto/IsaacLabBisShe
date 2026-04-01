@@ -26,18 +26,18 @@ from isaaclab.utils import configclass
 from isaaclab.utils.assets import ISAAC_NUCLEUS_DIR
 
 import MyProject.tasks.manager_based.EnvTest.mdp as mdp
-from MyProject.tasks.manager_based.EnvTest.scene_layout import (
+from MyProject.tasks.manager_based.EnvTest.config.assets import (
     ACTIVE_LAYOUT_POSITIONS,
     BOX_SIZE,
     HIGH_OBSTACLE_SIZE,
     LOW_OBSTACLE_SIZE,
-    SCENE_LAYOUTS,
     WALL_CENTER_X,
     WALL_CENTER_Y,
     WALL_HEIGHT,
     WALL_LENGTH,
     WALL_THICKNESS,
 )
+from MyProject.tasks.manager_based.EnvTest.config.layout import OPTIONAL_SCENE_ASSET_NAMES, get_scene_layout
 
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
@@ -79,15 +79,6 @@ def _box_cfg(
         init_state=RigidObjectCfg.InitialStateCfg(pos=pos),
     )
 
-
-def _get_scene_layout(scene_id: int) -> dict:
-    """根据 scene_id 获取固定场景定义。"""
-
-    if not 0 <= scene_id < len(SCENE_LAYOUTS):
-        raise ValueError(f"scene_id must be in [0, {len(SCENE_LAYOUTS) - 1}], but received {scene_id}.")
-    return SCENE_LAYOUTS[scene_id]
-
-
 def _apply_scene_layout(scene_cfg: "MySceneCfg", scene_id: int):
     """按场景编号裁剪可选障碍物。
 
@@ -95,15 +86,8 @@ def _apply_scene_layout(scene_cfg: "MySceneCfg", scene_id: int):
     不需要的障碍物会直接被设为 None，InteractiveScene 解析时会自动跳过。
     """
 
-    layout = _get_scene_layout(scene_id)
-    optional_assets = (
-        "left_low_obstacle",
-        "right_low_obstacle",
-        "left_high_obstacle",
-        "right_high_obstacle",
-        "support_box",
-    )
-    for asset_name in optional_assets:
+    layout = get_scene_layout(scene_id)
+    for asset_name in OPTIONAL_SCENE_ASSET_NAMES:
         if not layout[asset_name]:
             setattr(scene_cfg, asset_name, None)
 

@@ -12,7 +12,7 @@ import isaaclab.utils.math as math_utils
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import subtract_frame_transforms
 
-from MyProject.tasks.manager_based.EnvTest.scene_layout import (
+from MyProject.tasks.manager_based.EnvTest.config.assets import (
     BOX_SIZE,
     HIGH_OBSTACLE_SIZE,
     LOW_OBSTACLE_SIZE,

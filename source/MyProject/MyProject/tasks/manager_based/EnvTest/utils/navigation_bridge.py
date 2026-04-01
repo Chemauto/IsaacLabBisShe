@@ -6,13 +6,13 @@ import torch
 
 
 def _wrap_to_pi(angle: torch.Tensor) -> torch.Tensor:
-    """把角度规范到 [-pi, pi)。"""
+    """Wrap angles to [-pi, pi)."""
 
     return torch.remainder(angle + math.pi, 2.0 * math.pi) - math.pi
 
 
 def _yaw_from_quat_w(quat_w: torch.Tensor) -> torch.Tensor:
-    """从 Isaac Lab 使用的 `(w, x, y, z)` 四元数提取 yaw。"""
+    """Extract yaw from Isaac Lab `(w, x, y, z)` quaternions."""
 
     w = quat_w[:, 0]
     x = quat_w[:, 1]
@@ -27,7 +27,7 @@ def align_navigation_goal_height(
     goal_command: torch.Tensor,
     default_root_height: torch.Tensor,
 ) -> torch.Tensor:
-    """把导航目标的 z 分量对齐到训练时使用的默认 root height。"""
+    """Align navigation goal z to the training-time default root height."""
 
     if goal_command.shape[-1] != 4:
         raise ValueError(f"goal_command must have shape (*, 4), got {tuple(goal_command.shape)}")
@@ -49,7 +49,7 @@ def build_navigation_pose_command(
     robot_quat_w: torch.Tensor,
     goal_command_w: torch.Tensor,
 ) -> torch.Tensor:
-    """把世界系目标 `[x, y, z, yaw]` 转成导航策略需要的 base-frame pose command。"""
+    """Convert world-frame `[x, y, z, yaw]` goals into base-frame pose commands."""
 
     if goal_command_w.shape[-1] != 4:
         raise ValueError(f"goal_command_w must have shape (*, 4), got {tuple(goal_command_w.shape)}")
@@ -65,3 +65,4 @@ def build_navigation_pose_command(
     pose_command[:, 2] = delta_world[:, 2]
     pose_command[:, 3] = _wrap_to_pi(goal_command_w[:, 3] - robot_yaw)
     return pose_command
+

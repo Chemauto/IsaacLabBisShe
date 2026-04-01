@@ -4,7 +4,7 @@ import os
 
 
 def _write_flag(file_path: str, value: str):
-    """写回控制标志文件。"""
+    """Write back one-shot control flags."""
 
     parent = os.path.dirname(file_path)
     if parent:
@@ -18,7 +18,7 @@ def consume_one_shot_value(
     accepted_tokens: tuple[str, ...],
     clear_value: str = "0",
 ) -> str | None:
-    """消费一次性控制标志值；命中后自动清回默认值。"""
+    """Consume one-shot control text and clear the file on success."""
 
     if not file_path or not os.path.isfile(file_path):
         return None
@@ -41,6 +41,7 @@ def consume_one_shot_flag(
     true_tokens: tuple[str, ...] = ("1", "true", "on", "reset"),
     clear_value: str = "0",
 ) -> bool:
-    """消费一次性控制标志；命中后自动清回默认值。"""
+    """Consume one-shot control flags as a boolean."""
 
     return consume_one_shot_value(file_path, accepted_tokens=true_tokens, clear_value=clear_value) is not None
+
