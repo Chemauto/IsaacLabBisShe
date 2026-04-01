@@ -40,6 +40,18 @@ class TerrainGenerator:
         self.root = self.scene.getroot()
         self.worldbody = self.root.find("worldbody")
 
+
+    def AddBox(self,
+               position=[1.0, 0.0, 0.0],
+               euler=[0.0, 0.0, 0.0], 
+               size=[0.1, 0.1, 0.1]):
+        geo = xml_et.SubElement(self.worldbody, "geom")
+        geo.attrib["pos"] = list_to_str(position)
+        geo.attrib["type"] = "box"
+        geo.attrib["size"] = list_to_str(
+            0.5 * np.array(size))  # half size of box for mujoco
+        quat = euler_to_quat(euler[0], euler[1], euler[2])
+        geo.attrib["quat"] = list_to_str(quat)
     # Add movable box to scene
     def AddMovableBox(
         self,
@@ -74,4 +86,5 @@ class TerrainGenerator:
 if __name__ == "__main__":
     generator = TerrainGenerator()
     generator.AddMovableBox()
+    generator.AddBox(position=[3.0, 0.0, 0.25], euler=[0, 0, 0.0], size=[2, 1.5, 0.5])
     generator.Save()
