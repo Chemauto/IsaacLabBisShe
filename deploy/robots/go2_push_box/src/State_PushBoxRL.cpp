@@ -1,6 +1,7 @@
 #include "State_PushBoxRL.h"
 
 #include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <stdexcept>
 
@@ -50,6 +51,10 @@ State_PushBoxRL::State_PushBoxRL(int state_mode, std::string state_string)
 {
     step_dt_ = cfg_["step_dt"].as<float>(0.02f);
     high_level_decimation_ = cfg_["high_level_decimation"].as<int>(10);
+    enable_success_stop_ = cfg_["enable_success_stop"].as<bool>(true);
+    success_distance_threshold_ = cfg_["success_distance_threshold"].as<float>(0.12f);
+    success_yaw_threshold_ = cfg_["success_yaw_threshold"].as<float>(0.15f);
+    success_settle_steps_ = cfg_["success_settle_steps"].as<int>(4);
 
     joint_ids_map_ = read_vector<int>(cfg_, "joint_ids_map");
     default_joint_pos_ = read_vector<float>(cfg_, "default_joint_pos");
@@ -111,6 +116,8 @@ void State_PushBoxRL::enter()
         std::fill(last_low_level_actions_.begin(), last_low_level_actions_.end(), 0.0f);
         processed_joint_targets_ = default_joint_pos_;
         high_level_counter_ = 0;
+        success_settle_counter_ = 0;
+        success_latched_ = false;
     }
 
     policy_thread_running_ = true;
@@ -149,6 +156,12 @@ void State_PushBoxRL::policy_loop()
 
 void State_PushBoxRL::update_policy_step()
 {
+    update_success_status();
+    if (success_latched_) {
+        hold_position();
+        return;
+    }
+
     if (high_level_counter_ == 0) {
         bool has_external_obs = false;
         const auto high_level_obs = build_high_level_obs(&has_external_obs);
@@ -168,6 +181,52 @@ void State_PushBoxRL::update_policy_step()
     process_low_level_actions(raw_low_level_actions);
 
     high_level_counter_ = (high_level_counter_ + 1) % high_level_decimation_;
+}
+
+void State_PushBoxRL::update_success_status()
+{
+    if (!enable_success_stop_ || !push_box_obs_ || push_box_obs_->isTimeout()) {
+        success_settle_counter_ = 0;
+        return;
+    }
+
+    std::vector<float> obs;
+    {
+        std::lock_guard<std::mutex> lock(push_box_obs_->mutex_);
+        const auto& data = push_box_obs_->msg_.data();
+        if (data.size() != kPushObsDim) {
+            success_settle_counter_ = 0;
+            return;
+        }
+        obs.assign(data.begin(), data.end());
+    }
+
+    const float goal_dx = obs[11];
+    const float goal_dy = obs[12];
+    const float goal_yaw_error = std::abs(std::atan2(obs[14], obs[15]));
+    const float goal_distance = std::sqrt(goal_dx * goal_dx + goal_dy * goal_dy);
+    const bool reached = goal_distance < success_distance_threshold_ && goal_yaw_error < success_yaw_threshold_;
+
+    success_settle_counter_ = reached ? success_settle_counter_ + 1 : 0;
+    if (!success_latched_ && success_settle_counter_ >= success_settle_steps_) {
+        success_latched_ = true;
+        spdlog::info(
+            "Push-box goal reached. Latching stop with distance {:.4f} m and yaw error {:.4f} rad.",
+            goal_distance,
+            goal_yaw_error
+        );
+    }
+}
+
+void State_PushBoxRL::hold_position()
+{
+    std::fill(current_push_actions_.begin(), current_push_actions_.end(), 0.0f);
+    std::fill(last_push_actions_.begin(), last_push_actions_.end(), 0.0f);
+    std::fill(last_low_level_actions_.begin(), last_low_level_actions_.end(), 0.0f);
+    high_level_counter_ = 0;
+
+    std::lock_guard<std::mutex> lock(action_mutex_);
+    processed_joint_targets_ = default_joint_pos_;
 }
 
 std::vector<float> State_PushBoxRL::build_high_level_obs(bool* has_external_obs)
