@@ -31,7 +31,7 @@ from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 # =========================
 # 注意：现在 source 目录已经在 sys.path 中
 from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import (
-    VelocityGo2WalkRoughEnvCfg,
+    Go2WalkRoughEnvCfg,
 )
 
 # from MyProject.tasks.manager_based.NaviationTest.naviation_test_env_cfg import (
@@ -39,11 +39,11 @@ from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import (
 # )
 from MyProject.tasks.manager_based.WalkTest.agents.rsl_rl_ppo_cfg import Go2WalkRoughPPORunnerCfg
 # from MyProject.tasks.manager_based.NaviationTest.agents.rsl_rl_ppo_cfg import NaviationTestPPORunnerCfg
-TASK_NAME = "Template-Velocity-Go2-Walk-Rough-Flat-v0"
+TASK_NAME = "Template-Velocity-Go2-Walk-Rough-v0"
 #这个也得修改任务
 # TASK_NAME = "Template-Naviation-Test-Unitree-Go2-v0"
-CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/WalkPolicy/WalkFlatButRoughSet.pt"
-OUTPUT_TS_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/WalkFlatButRoughSetTransfer.pt"
+CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/WalkPolicy/WalkRoughNewNew.pt"
+OUTPUT_TS_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/WalkRoughNewNewTransfer.pt"
 
 # =========================
 # 4. 构建 env 和 agent cfg
@@ -51,7 +51,7 @@ OUTPUT_TS_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy
 # env_cfg = LocomotionNaviationTestEnvCfg()
 # agent_cfg = NaviationTestPPORunnerCfg()
 #修改环境和智能体配置
-env_cfg = VelocityGo2WalkRoughEnvCfg()
+env_cfg = Go2WalkRoughEnvCfg()
 agent_cfg = Go2WalkRoughPPORunnerCfg()
 # 这里需要修改
 
@@ -104,7 +104,7 @@ obs_dim = None
 # 从之前的日志中我们看到观察维度是235
 # Actor MLP: MLP((0): Linear(in_features=235, out_features=128, bias=True)...)
 
-obs_dim = 235
+obs_dim = 232
 print(f"✅ 从日志中获取观察维度: {obs_dim}")
 
 # 验证 actor 的输入维度
