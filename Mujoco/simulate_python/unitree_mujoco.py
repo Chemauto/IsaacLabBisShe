@@ -6,6 +6,7 @@ import threading
 
 from unitree_sdk2py.core.channel import ChannelFactoryInitialize
 from unitree_sdk2py_bridge import UnitreeSdk2Bridge, ElasticBand
+from push_box_sdk2py_bridge import PushBoxSdk2Bridge
 
 import config
 
@@ -40,7 +41,8 @@ def SimulationThread():
     global mj_data, mj_model, unitree_bridge
 
     ChannelFactoryInitialize(config.DOMAIN_ID, config.INTERFACE)
-    unitree = UnitreeSdk2Bridge(mj_model, mj_data, locker)
+    bridge_cls = PushBoxSdk2Bridge if getattr(config, "ENABLE_PUSH_BOX_OBS", False) else UnitreeSdk2Bridge
+    unitree = bridge_cls(mj_model, mj_data, locker)
     unitree_bridge = unitree
 
     if config.USE_JOYSTICK:

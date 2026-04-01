@@ -4,6 +4,8 @@
 
 ## 目录作用
 - `simulate_python/`：MuJoCo Python 仿真入口，发布 `rt/lowstate`、`rt/sportmodestate`、`rt/heightmap`，接收 `rt/lowcmd`。
+  - `unitree_sdk2py_bridge.py`：原始通用 bridge
+  - `push_box_sdk2py_bridge.py`：push-box 额外观测 bridge
 - `terrain_tool/`：地形生成工具，用来生成 `scene_terrain.xml` 或自定义 mine 场景。
 - `unitree_robots/`：机器人 XML、mesh、terrain scene、height field 图片等运行资源。
 
@@ -24,6 +26,45 @@ python3 test/monitor_sim2sim.py
 
 3. 再启动你的控制器，让它往 `rt/lowcmd` 发命令。
 
+## Push-box 场景
+
+push-box 现在已经合并到通用 MuJoCo 入口里，不再单独维护一份仿真主脚本。
+
+1. 启动 push-box 仿真：
+```bash
+cd Mujoco/simulate_python
+python3 unitree_mujoco.py
+```
+
+2. 查看 push-box 高层观测：
+```bash
+cd Mujoco/simulate_python
+python3 test/monitor_push_box_obs.py
+```
+
+需要保证 `config.py` 里这几个配置是对的：
+
+- `ROBOT_SCENE = "../unitree_robots/go2/scene_push_box.xml"`
+- `ENABLE_PUSH_BOX_OBS = True`
+
+新增 topic：
+
+- `rt/push_box_obs`
+
+`rt/push_box_obs` 当前发布 16 维状态：
+
+- `base_lin_vel(3)`
+- `projected_gravity(3)`
+- `box_in_robot_frame_pos(3)`
+- `box_in_robot_frame_yaw(sin, cos)`
+- `goal_in_box_frame_pos(3)`
+- `goal_in_box_frame_yaw(sin, cos)`
+
+说明：
+
+- `push_actions(3)` 不从 MuJoCo 发，因为它属于 deploy / policy 本地内部状态，更适合控制器侧自己维护。
+- `config.py` 默认把可移动箱子从 `rt/heightmap` 中剔除了，方便后续低层 walk policy 继续复用无箱子 height scan。
+
 ## 切换地形
 
 1. 生成普通 terrain：
@@ -36,6 +77,12 @@ python3 terrain_generator.py
 ```bash
 cd Mujoco/terrain_tool
 python3 mine_terrain_generator.py
+```
+
+如果要重新生成 push-box scene：
+```bash
+cd Mujoco/terrain_tool
+python3 push_box_scene_generator.py
 ```
 
 3. 修改 `simulate_python/config.py` 里的 `ROBOT_SCENE`，例如：

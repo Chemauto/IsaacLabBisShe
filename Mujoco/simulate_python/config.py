@@ -1,5 +1,5 @@
 ROBOT = "go2" # Robot name, "go2", "b2", "b2w", "h1", "go2w", "g1"
-ROBOT_SCENE = "../unitree_robots/" + ROBOT + "/scene.xml" # Robot scene
+ROBOT_SCENE = "../unitree_robots/" + ROBOT + "/scene_push_box.xml" # Robot scene
 DOMAIN_ID = 0 # Domain id (set to 0 for RL deployment)
 INTERFACE = "lo" # Interface
 
@@ -30,3 +30,13 @@ HEIGHTMAP_VIS_POINT_RADIUS = 0.015
 HEIGHTMAP_VIS_POINT_STRIDE = 1
 HEIGHTMAP_VIS_DRAW_RAYS = True
 HEIGHTMAP_VIS_RAY_STRIDE = 8
+
+# Push-box high-level observation publishing.
+# For normal walk/climb scenes, either set this to False or use a scene without support_box.
+ENABLE_PUSH_BOX_OBS = True
+PUSH_BOX_OBS_TOPIC = "rt/push_box_obs"
+PUSH_BOX_OBS_FRAME_ID = "base_link"
+PUSH_BOX_OBS_UPDATE_DT = 0.02
+PUSH_BOX_BODY_NAME = "support_box"
+PUSH_BOX_GOAL_POSITION = (1.7, 0.0, 0.12)
+PUSH_BOX_GOAL_YAW = 0.0
