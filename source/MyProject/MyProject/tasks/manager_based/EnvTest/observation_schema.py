@@ -16,10 +16,11 @@ UNIFIED_POLICY_TERM_DIMS: dict[str, int] = {
     "joint_vel": 12,
     "actions": 12,
     "height_scan": 187,
-    "box_pose": 7,
-    "robot_position": 3,
     "pose_command": 4,
-    "goal_command": 4,
+    "box_in_robot_frame_pos": 3,
+    "box_in_robot_frame_yaw": 2,
+    "goal_in_box_frame_pos": 3,
+    "goal_in_box_frame_yaw": 2,
     "push_actions": 3,
 }
 

@@ -280,10 +280,10 @@ class ObservationsCfg:
     当前总维度为：
     - 低层部分：235 维
     - navigation 额外部分：4 维
-    - 推箱子额外部分：17 维
-    - 并集总计：256 维
+    - 推箱子额外部分：13 维
+    - 并集总计：252 维
 
-    后续 `envtest_model_use_player.py` 会按 `model_use` 从这 256 维里切出各技能真正需要的部分。
+    后续 `envtest_model_use_player.py` 会按 `model_use` 从这 252 维里切出各技能真正需要的部分。
     """
 
     @configclass
@@ -311,12 +311,14 @@ class ObservationsCfg:
         pose_command = ObsTerm(func=mdp.pose_command)
 
         # ===== push_box 高层额外观测 =====
-        # support_box 的位姿；若当前场景没有箱子则返回 0（7）
-        box_pose = ObsTerm(func=mdp.box_pose)
-        # 机器人在环境坐标系中的位置（3）
-        robot_position = ObsTerm(func=mdp.robot_position)
-        # 推箱子目标点（4：x, y, z, yaw）
-        goal_command = ObsTerm(func=mdp.push_goal_command)
+        # support_box 在机器人坐标系中的位置（3）
+        box_in_robot_frame_pos = ObsTerm(func=mdp.box_in_robot_frame_pos)
+        # support_box 相对机器人朝向，用 sin/cos 编码（2）
+        box_in_robot_frame_yaw = ObsTerm(func=mdp.box_in_robot_frame_yaw)
+        # 推箱目标点在 support_box 坐标系中的位置（3）
+        goal_in_box_frame_pos = ObsTerm(func=mdp.goal_in_box_frame_pos)
+        # 推箱目标 yaw 相对 support_box yaw，用 sin/cos 编码（2）
+        goal_in_box_frame_yaw = ObsTerm(func=mdp.goal_in_box_frame_yaw)
         # 推箱子高层上一步裁剪后动作（3）
         push_actions = ObsTerm(func=mdp.push_actions)
 

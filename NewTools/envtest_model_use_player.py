@@ -13,10 +13,10 @@
 
 当前约定：
 - model_use=0: idle，机器人保持静止
-- model_use=1: walk（按 walk_rough 的 235 维观测接口）
+- model_use=1: walk（当前 walk JIT 的 232 维观测接口）
 - model_use=2: climb（235 维观测接口）
-- model_use=3: push_box（23 维高层观测 + 235 维低层 walk 观测）
-- model_use=4: navigation（197 维高层观测 + 235 维低层 walk 观测）
+- model_use=3: push_box（19 维高层观测 + 232 维低层 walk 观测）
+- model_use=4: navigation（197 维高层观测 + 232 维低层 walk 观测）
 """
 
 from __future__ import annotations
@@ -129,7 +129,16 @@ from NewTools.envtest_navigation_bridge import align_navigation_goal_height, bui
 from NewTools.envtest_status_panel import AssetStatus, StatusSnapshot, render_status_block
 
 
-LOW_LEVEL_OBS_TERMS = (
+WALK_LOW_LEVEL_OBS_TERMS = (
+    "base_ang_vel",
+    "projected_gravity",
+    "velocity_commands",
+    "joint_pos",
+    "joint_vel",
+    "actions",
+    "height_scan",
+)
+CLIMB_LOW_LEVEL_OBS_TERMS = (
     "base_lin_vel",
     "base_ang_vel",
     "projected_gravity",
@@ -142,12 +151,15 @@ LOW_LEVEL_OBS_TERMS = (
 PUSH_HIGH_LEVEL_OBS_TERMS = (
     "base_lin_vel",
     "projected_gravity",
-    "box_pose",
-    "robot_position",
-    "goal_command",
+    "box_in_robot_frame_pos",
+    "box_in_robot_frame_yaw",
+    "goal_in_box_frame_pos",
+    "goal_in_box_frame_yaw",
     "push_actions",
 )
-LOW_LEVEL_OBS_DIM = 235
+WALK_LOW_LEVEL_OBS_DIM = 232
+CLIMB_LOW_LEVEL_OBS_DIM = 235
+PUSH_HIGH_LEVEL_OBS_DIM = 19
 CLIMB_PLAY_DEFAULT_VELOCITY = (0.75, 0.0, 0.0)
 STATUS_PANEL_REFRESH_INTERVAL = 0.2
 NAVIGATION_HIGH_LEVEL_DECIMATION = 10
@@ -180,17 +192,17 @@ class SkillSpec:
 SKILL_REGISTRY: dict[int, SkillSpec] = {
     1: SkillSpec(
         name="walk",
-        # walk 这里明确对齐 walk_rough 的 235 维接口，直接使用 rough 低层策略。
-        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkRoughNewTransfer.pt"),
-        obs_terms=LOW_LEVEL_OBS_TERMS,
-        obs_dim=LOW_LEVEL_OBS_DIM,
+        # 当前可用 walk JIT 接口为 232 维，不再包含 base_lin_vel。
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkRoughTransfer.pt"),
+        obs_terms=WALK_LOW_LEVEL_OBS_TERMS,
+        obs_dim=WALK_LOW_LEVEL_OBS_DIM,
         checkpoint_format="jit",
     ),
     2: SkillSpec(
         name="climb",
         policy_path=os.path.join(REPO_ROOT, "ModelBackup", "BiShePolicy", "Climbdouble.pt"),
-        obs_terms=LOW_LEVEL_OBS_TERMS,
-        obs_dim=LOW_LEVEL_OBS_DIM,
+        obs_terms=CLIMB_LOW_LEVEL_OBS_TERMS,
+        obs_dim=CLIMB_LOW_LEVEL_OBS_DIM,
         checkpoint_format="rsl_rl_checkpoint",
         actor_hidden_dims=(512, 256, 128),
         activation="elu",
@@ -199,9 +211,9 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
         name="push_box",
         policy_path=os.path.join(REPO_ROOT, "ModelBackup", "PushPolicy", "PushBox.pt"),
         obs_terms=PUSH_HIGH_LEVEL_OBS_TERMS,
-        obs_dim=23,
+        obs_dim=PUSH_HIGH_LEVEL_OBS_DIM,
         checkpoint_format="rsl_rl_checkpoint",
-        actor_hidden_dims=(256, 128),
+        actor_hidden_dims=(512, 256, 128),
         activation="elu",
     ),
     4: SkillSpec(
@@ -215,15 +227,16 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
     ),
 }
 
-PUSH_LOW_LEVEL_POLICY_PATH = os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkRoughNewTransfer.pt")
+NAVIGATION_LOW_LEVEL_POLICY_PATH = os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkRoughTransfer.pt")
+PUSH_LOW_LEVEL_POLICY_PATH = os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkFlatLowHeightTransfer.pt")
 PUSH_HIGH_LEVEL_DECIMATION = 10
 # Must stay in sync with PushBoxTest.ActionsCfg.pre_trained_policy_action in
 # source/MyProject/MyProject/tasks/manager_based/PushBoxTest/push_box_env_cfg.py.
-PUSH_ACTION_SCALE = (0.8, 0.6, 0.6)
+PUSH_ACTION_SCALE = (1.0, 1.0, 1.0)
 PUSH_ACTION_CLIP = (
-    (-0.6, 0.6),
+    (-0.5, 1.0),
+    (-1.0, 1.0),
     (-0.5, 0.5),
-    (-0.3, 0.3),
 )
 
 
@@ -288,12 +301,12 @@ def _load_policies(device: torch.device | str) -> dict[int, nn.Module]:
     return policies
 
 
-def _load_push_low_level_policy(device: torch.device | str) -> torch.jit.ScriptModule:
-    """加载推箱子技能依赖的低层 rough-walk 策略。"""
+def _load_jit_policy(policy_path: str, description: str, device: torch.device | str) -> torch.jit.ScriptModule:
+    """加载一个 JIT 导出的策略。"""
 
-    if not os.path.isfile(PUSH_LOW_LEVEL_POLICY_PATH):
-        raise FileNotFoundError(f"Push low-level policy file not found: {PUSH_LOW_LEVEL_POLICY_PATH}")
-    return torch.jit.load(PUSH_LOW_LEVEL_POLICY_PATH, map_location=device).eval()
+    if not os.path.isfile(policy_path):
+        raise FileNotFoundError(f"{description} policy file not found: {policy_path}")
+    return torch.jit.load(policy_path, map_location=device).eval()
 
 
 def _resolve_model_use(current_model_use: int) -> int:
@@ -492,19 +505,14 @@ def _align_low_level_obs_to_training(
     env,
     policy_obs: torch.Tensor,
     term_slices: dict[str, slice],
+    term_names: tuple[str, ...],
     last_actions: torch.Tensor,
     include_support_box: bool = True,
 ) -> torch.Tensor:
     """把切片后的低层观测对齐到 rough-walk 训练时的 ObservationManager 行为。"""
 
     aligned_obs = policy_obs.clone()
-    local_slices: dict[str, slice] = {}
-    start = 0
-    for term_name in LOW_LEVEL_OBS_TERMS:
-        term_slice = term_slices[term_name]
-        term_dim = term_slice.stop - term_slice.start
-        local_slices[term_name] = slice(start, start + term_dim)
-        start += term_dim
+    local_slices = _build_local_obs_slices(term_names, term_slices)
 
     if hasattr(env, "episode_length_buf"):
         last_actions[env.episode_length_buf == 0, :] = 0.0
@@ -514,21 +522,26 @@ def _align_low_level_obs_to_training(
         aligned_obs[:, local_slices["height_scan"]] = policy_obs[:, local_slices["height_scan"]]
     else:
         aligned_obs[:, local_slices["height_scan"]] = envtest_mdp.height_scan_without_box(env)
-    aligned_obs[:, local_slices["base_lin_vel"]] += torch.empty_like(
-        aligned_obs[:, local_slices["base_lin_vel"]]
-    ).uniform_(-0.1, 0.1)
-    aligned_obs[:, local_slices["base_ang_vel"]] += torch.empty_like(
-        aligned_obs[:, local_slices["base_ang_vel"]]
-    ).uniform_(-0.2, 0.2)
-    aligned_obs[:, local_slices["projected_gravity"]] += torch.empty_like(
-        aligned_obs[:, local_slices["projected_gravity"]]
-    ).uniform_(-0.05, 0.05)
-    aligned_obs[:, local_slices["joint_pos"]] += torch.empty_like(
-        aligned_obs[:, local_slices["joint_pos"]]
-    ).uniform_(-0.01, 0.01)
-    aligned_obs[:, local_slices["joint_vel"]] += torch.empty_like(
-        aligned_obs[:, local_slices["joint_vel"]]
-    ).uniform_(-1.5, 1.5)
+    if "base_lin_vel" in local_slices:
+        aligned_obs[:, local_slices["base_lin_vel"]] += torch.empty_like(
+            aligned_obs[:, local_slices["base_lin_vel"]]
+        ).uniform_(-0.1, 0.1)
+    if "base_ang_vel" in local_slices:
+        aligned_obs[:, local_slices["base_ang_vel"]] += torch.empty_like(
+            aligned_obs[:, local_slices["base_ang_vel"]]
+        ).uniform_(-0.2, 0.2)
+    if "projected_gravity" in local_slices:
+        aligned_obs[:, local_slices["projected_gravity"]] += torch.empty_like(
+            aligned_obs[:, local_slices["projected_gravity"]]
+        ).uniform_(-0.05, 0.05)
+    if "joint_pos" in local_slices:
+        aligned_obs[:, local_slices["joint_pos"]] += torch.empty_like(
+            aligned_obs[:, local_slices["joint_pos"]]
+        ).uniform_(-0.01, 0.01)
+    if "joint_vel" in local_slices:
+        aligned_obs[:, local_slices["joint_vel"]] += torch.empty_like(
+            aligned_obs[:, local_slices["joint_vel"]]
+        ).uniform_(-1.5, 1.5)
     aligned_obs[:, local_slices["height_scan"]] += torch.empty_like(
         aligned_obs[:, local_slices["height_scan"]]
     ).uniform_(-0.1, 0.1)
@@ -550,6 +563,7 @@ def _align_push_low_level_obs_to_training(
         env,
         policy_obs,
         term_slices,
+        WALK_LOW_LEVEL_OBS_TERMS,
         push_low_level_last_actions,
         include_support_box=False,
     )
@@ -593,11 +607,15 @@ def _build_local_obs_slices(term_names: tuple[str, ...], term_slices: dict[str, 
     return local_slices
 
 
-def _align_low_level_obs_to_play(policy_obs: torch.Tensor, term_slices: dict[str, slice]) -> torch.Tensor:
+def _align_low_level_obs_to_play(
+    policy_obs: torch.Tensor,
+    term_slices: dict[str, slice],
+    term_names: tuple[str, ...],
+) -> torch.Tensor:
     """对齐 walk/climb Play 模式下的低层观测后处理。"""
 
     aligned_obs = policy_obs.clone()
-    local_slices = _build_local_obs_slices(LOW_LEVEL_OBS_TERMS, term_slices)
+    local_slices = _build_local_obs_slices(term_names, term_slices)
     aligned_obs[:, local_slices["height_scan"]] = torch.clamp(
         aligned_obs[:, local_slices["height_scan"]], min=-1.0, max=1.0
     )
@@ -614,7 +632,12 @@ def _slice_observation(unified_obs: torch.Tensor, term_slices: dict[str, slice],
 def _validate_required_terms(term_slices: dict[str, slice]):
     """确保统一观测中已经包含各技能需要的全部 term。"""
 
-    required_terms = set(LOW_LEVEL_OBS_TERMS) | set(PUSH_HIGH_LEVEL_OBS_TERMS) | set(NAVIGATION_HIGH_LEVEL_OBS_TERMS)
+    required_terms = (
+        set(WALK_LOW_LEVEL_OBS_TERMS)
+        | set(CLIMB_LOW_LEVEL_OBS_TERMS)
+        | set(PUSH_HIGH_LEVEL_OBS_TERMS)
+        | set(NAVIGATION_HIGH_LEVEL_OBS_TERMS)
+    )
     missing_terms = sorted(required_terms.difference(term_slices))
     if missing_terms:
         raise RuntimeError(f"EnvTest unified observation is missing terms: {missing_terms}")
@@ -842,7 +865,10 @@ def main():
     expected_action_shape = (num_envs, action_dim)
 
     policies = _load_policies(device)
-    rough_low_level_policy = _load_push_low_level_policy(device)
+    navigation_low_level_policy = _load_jit_policy(
+        NAVIGATION_LOW_LEVEL_POLICY_PATH, "Navigation low-level", device
+    )
+    push_low_level_policy = _load_jit_policy(PUSH_LOW_LEVEL_POLICY_PATH, "Push low-level", device)
 
     term_slices = _build_obs_slices(env.unwrapped)
     _validate_required_terms(term_slices)
@@ -1033,7 +1059,11 @@ def main():
                 )
                 unified_obs = env.unwrapped.observation_manager.compute_group("policy")
                 policy_obs = _slice_observation(unified_obs, term_slices, SKILL_REGISTRY[current_model_use].obs_terms)
-                policy_obs = _align_low_level_obs_to_play(policy_obs, term_slices)
+                policy_obs = _align_low_level_obs_to_play(
+                    policy_obs,
+                    term_slices,
+                    SKILL_REGISTRY[current_model_use].obs_terms,
+                )
                 _check_obs_dim(current_model_use, policy_obs)
                 actions = policies[current_model_use](policy_obs)
             elif current_model_use == 4:
@@ -1068,20 +1098,21 @@ def main():
                     push_actions=zero_navigation_actions,
                 )
                 unified_obs = env.unwrapped.observation_manager.compute_group("policy")
-                policy_obs = _slice_observation(unified_obs, term_slices, LOW_LEVEL_OBS_TERMS)
+                policy_obs = _slice_observation(unified_obs, term_slices, WALK_LOW_LEVEL_OBS_TERMS)
                 policy_obs = _align_low_level_obs_to_training(
                     env.unwrapped,
                     policy_obs,
                     term_slices,
+                    WALK_LOW_LEVEL_OBS_TERMS,
                     navigation_low_level_last_actions,
                     include_support_box=True,
                 )
-                if policy_obs.shape[1] != LOW_LEVEL_OBS_DIM:
+                if policy_obs.shape[1] != WALK_LOW_LEVEL_OBS_DIM:
                     raise RuntimeError(
                         f"Navigation low-level observation dim mismatch. "
-                        f"Expected {LOW_LEVEL_OBS_DIM}, got {policy_obs.shape[1]}."
+                        f"Expected {WALK_LOW_LEVEL_OBS_DIM}, got {policy_obs.shape[1]}."
                     )
-                actions = rough_low_level_policy(policy_obs)
+                actions = navigation_low_level_policy(policy_obs)
                 navigation_low_level_last_actions.copy_(actions)
                 navigation_high_level_counter = (navigation_high_level_counter + 1) % NAVIGATION_HIGH_LEVEL_DECIMATION
             else:
@@ -1141,16 +1172,16 @@ def main():
                     push_actions=push_current_processed_actions,
                 )
                 unified_obs = env.unwrapped.observation_manager.compute_group("policy")
-                policy_obs = _slice_observation(unified_obs, term_slices, LOW_LEVEL_OBS_TERMS)
+                policy_obs = _slice_observation(unified_obs, term_slices, WALK_LOW_LEVEL_OBS_TERMS)
                 policy_obs = _align_push_low_level_obs_to_training(
                     env.unwrapped, policy_obs, term_slices, push_low_level_last_actions
                 )
-                if policy_obs.shape[1] != LOW_LEVEL_OBS_DIM:
+                if policy_obs.shape[1] != WALK_LOW_LEVEL_OBS_DIM:
                     raise RuntimeError(
                         f"Push low-level observation dim mismatch. "
-                        f"Expected {LOW_LEVEL_OBS_DIM}, got {policy_obs.shape[1]}."
+                        f"Expected {WALK_LOW_LEVEL_OBS_DIM}, got {policy_obs.shape[1]}."
                     )
-                actions = rough_low_level_policy(policy_obs)
+                actions = push_low_level_policy(policy_obs)
                 push_low_level_last_actions.copy_(actions)
                 push_high_level_counter = (push_high_level_counter + 1) % PUSH_HIGH_LEVEL_DECIMATION
 

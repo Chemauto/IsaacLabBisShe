@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import isaaclab.utils.math as math_utils
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.utils.math import subtract_frame_transforms
 
 from MyProject.tasks.manager_based.EnvTest.scene_layout import (
     BOX_SIZE,
@@ -58,6 +59,38 @@ def _runtime_buffer(env: "ManagerBasedEnv", attr_name: str, dim: int) -> torch.T
         buffer = torch.zeros(expected_shape, dtype=torch.float32, device=device)
         setattr(env, attr_name, buffer)
     return buffer
+
+
+def _wrap_to_pi(angles: torch.Tensor) -> torch.Tensor:
+    """Wrap angles to [-pi, pi)."""
+
+    return (angles + torch.pi) % (2 * torch.pi) - torch.pi
+
+
+def _quat_to_yaw(quat: torch.Tensor) -> torch.Tensor:
+    """Extract yaw from wxyz quaternions."""
+
+    qw = quat[:, 0]
+    qx = quat[:, 1]
+    qy = quat[:, 2]
+    qz = quat[:, 3]
+    siny_cosp = 2.0 * (qw * qz + qx * qy)
+    cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+    return torch.atan2(siny_cosp, cosy_cosp)
+
+
+def _yaw_to_sin_cos(yaw: torch.Tensor) -> torch.Tensor:
+    """Encode yaw with sin/cos to avoid wrap-around discontinuities."""
+
+    return torch.stack((torch.sin(yaw), torch.cos(yaw)), dim=-1)
+
+
+def _zero_obs(env: "ManagerBasedEnv", dim: int) -> torch.Tensor:
+    """Allocate an all-zero observation tensor on the env device."""
+
+    num_envs = getattr(env, "num_envs", env.cfg.scene.num_envs)
+    device = getattr(env, "device", env.cfg.sim.device)
+    return torch.zeros((num_envs, dim), dtype=torch.float32, device=device)
 
 
 def _scene_asset_size(
@@ -304,11 +337,68 @@ def box_pose(env: "ManagerBasedEnv") -> torch.Tensor:
     return torch.cat((box_pos_e, box_quat_w), dim=-1)
 
 
+def box_in_robot_frame_pos(env: "ManagerBasedEnv") -> torch.Tensor:
+    """support_box 相对机器人根坐标系的位置；无箱子时返回 0。"""
+
+    try:
+        robot = env.scene["robot"]
+        box = env.scene["support_box"]
+    except KeyError:
+        return _zero_obs(env, 3)
+
+    box_pos_b, _ = subtract_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, box.data.root_pos_w[:, :3])
+    return box_pos_b
+
+
+def box_in_robot_frame_yaw(env: "ManagerBasedEnv") -> torch.Tensor:
+    """support_box 相对机器人朝向，用 sin/cos 编码；无箱子时返回 0。"""
+
+    try:
+        robot = env.scene["robot"]
+        box = env.scene["support_box"]
+    except KeyError:
+        return _zero_obs(env, 2)
+
+    robot_yaw = _quat_to_yaw(robot.data.root_quat_w)
+    box_yaw = _quat_to_yaw(box.data.root_quat_w)
+    relative_yaw = _wrap_to_pi(box_yaw - robot_yaw)
+    return _yaw_to_sin_cos(relative_yaw)
+
+
 def robot_position(env: "ManagerBasedEnv") -> torch.Tensor:
     """机器人根节点在环境坐标系下的位置。"""
 
     robot = env.scene["robot"]
     return robot.data.root_pos_w[:, :3] - env.scene.env_origins
+
+
+def goal_in_box_frame_pos(env: "ManagerBasedEnv") -> torch.Tensor:
+    """推箱目标点相对 support_box 坐标系的位置；无箱子时返回 0。"""
+
+    try:
+        box = env.scene["support_box"]
+    except KeyError:
+        return _zero_obs(env, 3)
+
+    goal_command = push_goal_command(env)
+    goal_pos_w = goal_command[:, :3] + env.scene.env_origins
+    goal_pos_b, _ = subtract_frame_transforms(box.data.root_pos_w, box.data.root_quat_w, goal_pos_w)
+    return goal_pos_b
+
+
+def goal_in_box_frame_yaw(env: "ManagerBasedEnv") -> torch.Tensor:
+    """推箱目标 yaw 相对 support_box yaw，用 sin/cos 编码；无箱子时返回 0。"""
+
+    try:
+        box = env.scene["support_box"]
+    except KeyError:
+        return _zero_obs(env, 2)
+
+    goal_command = push_goal_command(env)
+    goal_yaw = _wrap_to_pi(goal_command[:, 3])
+    box_yaw = _quat_to_yaw(box.data.root_quat_w)
+    relative_yaw = _wrap_to_pi(goal_yaw - box_yaw)
+    return _yaw_to_sin_cos(relative_yaw)
 
 
 def compute_push_goal_from_scene(env: "ManagerBasedEnv") -> torch.Tensor:
