@@ -145,13 +145,24 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))  # 3
         projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))  # 3
-        box_position = ObsTerm(func=mdp.box_pose, noise=Unoise(n_min=-0.01, n_max=0.01))  # 7
-        robot_position = ObsTerm(func=mdp.robot_position, noise=Unoise(n_min=-0.02, n_max=0.02))  # 3
-        goal_command = ObsTerm(
-            func=mdp.generated_commands,
+        box_in_robot_frame_pos = ObsTerm(
+            func=mdp.box_in_robot_frame_pos,
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+        )  # 3
+        box_in_robot_frame_yaw = ObsTerm(
+            func=mdp.box_in_robot_frame_yaw,
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+        )  # 2
+        goal_in_box_frame_pos = ObsTerm(
+            func=mdp.goal_in_box_frame_pos,
             params={"command_name": "box_goal"},
             noise=Unoise(n_min=-0.02, n_max=0.02),
-        )  # 4
+        )  # 3
+        goal_in_box_frame_yaw = ObsTerm(
+            func=mdp.goal_in_box_frame_yaw,
+            params={"command_name": "box_goal"},
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+        )  # 2
         actions = ObsTerm(func=mdp.processed_last_action, params={"action_name": "pre_trained_policy_action"})  # 3
 
         def __post_init__(self):

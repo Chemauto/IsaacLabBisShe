@@ -13,7 +13,7 @@ from isaaclab.assets import RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import subtract_frame_transforms
 
-from .goal_pose import split_box_goal_command
+from .goal_pose import quat_to_yaw, split_box_goal_command, wrap_to_pi
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -30,6 +30,11 @@ def processed_last_action(
     """
     action_term = env.action_manager.get_term(action_name)
     return action_term.processed_actions
+
+
+def _yaw_to_sin_cos(yaw: torch.Tensor) -> torch.Tensor:
+    """Encode yaw with sin/cos to avoid wrap-around discontinuities."""
+    return torch.stack((torch.sin(yaw), torch.cos(yaw)), dim=-1)
 
 
 def box_pose(
@@ -139,6 +144,29 @@ def box_position_in_robot_frame(
     return box_pos_b
 
 
+def box_in_robot_frame_pos(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """统一命名版本：箱子在机器人坐标系下的位置 / Box position in robot frame."""
+    return box_position_in_robot_frame(env, robot_cfg=robot_cfg, box_cfg=box_cfg)
+
+
+def box_in_robot_frame_yaw(
+    env: ManagerBasedRLEnv,
+    robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """统一命名版本：箱子相对机器人朝向，用 sin/cos 编码 / Box yaw in robot frame, encoded as sin/cos."""
+    robot: RigidObject = env.scene[robot_cfg.name]
+    box: RigidObject = env.scene[box_cfg.name]
+    robot_yaw = quat_to_yaw(robot.data.root_quat_w)
+    box_yaw = quat_to_yaw(box.data.root_quat_w)
+    relative_yaw = wrap_to_pi(box_yaw - robot_yaw)
+    return _yaw_to_sin_cos(relative_yaw)
+
+
 def goal_position_in_robot_frame(
     env: ManagerBasedRLEnv,
     command_name: str,
@@ -232,3 +260,26 @@ def goal_position_in_box_frame(
     # 将目标点位置从世界坐标系转换到箱子局部坐标系 / Transform goal position from world frame to box's local frame
     goal_pos_b, _ = subtract_frame_transforms(box.data.root_pos_w, box.data.root_quat_w, goal_pos_w)
     return goal_pos_b
+
+
+def goal_in_box_frame_pos(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """统一命名版本：目标点在箱子坐标系下的位置 / Goal position in box frame."""
+    return goal_position_in_box_frame(env, command_name=command_name, box_cfg=box_cfg)
+
+
+def goal_in_box_frame_yaw(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
+) -> torch.Tensor:
+    """统一命名版本：目标 yaw 相对箱子 yaw，用 sin/cos 编码 / Goal yaw in box frame, encoded as sin/cos."""
+    box: RigidObject = env.scene[box_cfg.name]
+    goal_command = env.command_manager.get_command(command_name)
+    _, goal_yaw = split_box_goal_command(goal_command)
+    box_yaw = quat_to_yaw(box.data.root_quat_w)
+    relative_yaw = wrap_to_pi(goal_yaw - box_yaw)
+    return _yaw_to_sin_cos(relative_yaw)
