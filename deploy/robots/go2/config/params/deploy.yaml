@@ -6,9 +6,9 @@ default_joint_pos: [0.1, -0.1, 0.1, -0.1, 0.8, 0.8, 1.0, 1.0, -1.5, -1.5, -1.5, 
 commands:
   base_velocity:
     ranges:
-      lin_vel_x: [0.2, 1.0]
-      lin_vel_y: [-0.0, 0.0]
-      ang_vel_z: [-0.0, 0.0]
+      lin_vel_x: [-1.0, 1.0]
+      lin_vel_y: [-1.0, 1.0]
+      ang_vel_z: [-1.0, 1.0]
       heading: [-3.14, 3.14]
 actions:
   JointPositionAction:
@@ -18,11 +18,6 @@ actions:
     offset: [0.1, -0.1, 0.1, -0.1, 0.8, 0.8, 1.0, 1.0, -1.5, -1.5, -1.5, -1.5]
     joint_ids: null
 observations:
-  base_lin_vel:
-    params: {}
-    clip: null
-    scale: [1.0, 1.0, 1.0]
-    history_length: 1
   base_ang_vel:
     params: {}
     clip: null

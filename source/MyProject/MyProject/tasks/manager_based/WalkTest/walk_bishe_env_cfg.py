@@ -127,7 +127,7 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+        # base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
@@ -151,38 +151,34 @@ class ObservationsCfg:
 
     # observation groups
     policy: PolicyCfg = PolicyCfg()
+#########################这里修改了############################
+    @configclass
+    class CriticCfg(ObsGroup):
+        """Observations for critic group."""
 
-    # @configclass
-    # class CriticCfg(ObsGroup):
-    #     """Observations for critic group."""
+        # observation terms (order preserved)
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
+        projected_gravity = ObsTerm(
+            func=mdp.projected_gravity,
+        )
+        velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel)
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel)
+        actions = ObsTerm(func=mdp.last_action)
+        height_scan = ObsTerm(
+            func=mdp.height_scan,
+            params={"sensor_cfg": SceneEntityCfg("height_scanner")},
+            clip=(-1.0, 1.0),
+        )
 
-    #     # observation terms (order preserved)
-    #     base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
-    #     base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
-    #     projected_gravity = ObsTerm(
-    #         func=mdp.projected_gravity,
-    #     )
-    #     velocity_commands = ObsTerm(func=mdp.generated_commands, params={"command_name": "base_velocity"})
-    #     joint_pos = ObsTerm(func=mdp.joint_pos_rel)
-    #     joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-    #     actions = ObsTerm(func=mdp.last_action)
-    #     height_scan = ObsTerm(
-    #         func=mdp.height_scan,
-    #         params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-    #         clip=(-1.0, 1.0),
-    #     )
-    #     # height_scanner = ObsTerm(func=mdp.height_scan,
-    #     #     params={"sensor_cfg": SceneEntityCfg("height_scanner")},
-    #     #     clip=(-1.0, 5.0),
-    #     # )
-
-    #     def __post_init__(self):
-    #         self.history_length = 3
-    #         # self.enable_corruption = True
-    #         self.concatenate_terms = True
-    # # privileged observations
-    # critic: CriticCfg = CriticCfg()
-
+        def __post_init__(self):
+            # self.history_length = 3
+            # self.enable_corruption = True
+            self.concatenate_terms = True
+    # privileged observations
+    critic: CriticCfg = CriticCfg()
+#########################这里修改了############################
 
 @configclass
 class EventCfg:
@@ -194,8 +190,8 @@ class EventCfg:
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
-            "static_friction_range": (0.8, 0.8),
-            "dynamic_friction_range": (0.6, 0.6),
+            "static_friction_range": (0.5, 1.2),
+            "dynamic_friction_range": (0.5, 1.2),
             "restitution_range": (0.0, 0.0),
             "num_buckets": 64,
         },
@@ -226,8 +222,8 @@ class EventCfg:
         mode="reset",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names="base"),
-            "force_range": (0.0, 0.0),
-            "torque_range": (-0.0, 0.0),
+            "force_range": (-0.5, 0.5),
+            "torque_range": (-0.5, 0.5),
         },
     )
 
@@ -252,7 +248,7 @@ class EventCfg:
         mode="reset",
         params={
             "position_range": (1.0, 1.0),
-            "velocity_range": (0.0, 0.0),
+            "velocity_range": (-0.1, 0.1),
         },
     )
 
