@@ -76,6 +76,10 @@ State_NavigationRL::State_NavigationRL(int state_mode, std::string state_string)
     high_level_decimation_ = cfg_["high_level_decimation"].as<int>(10);
     use_current_height_for_goal_ = cfg_["use_current_height_for_goal"].as<bool>(true);
     latch_last_goal_on_timeout_ = cfg_["latch_last_goal_on_timeout"].as<bool>(true);
+    enable_navigation_success_stop_ = cfg_["enable_navigation_success_stop"].as<bool>(false);
+    navigation_success_distance_threshold_ = cfg_["navigation_success_distance_threshold"].as<float>(0.20f);
+    navigation_success_yaw_threshold_ = cfg_["navigation_success_yaw_threshold"].as<float>(0.15f);
+    navigation_success_settle_steps_ = cfg_["navigation_success_settle_steps"].as<int>(3);
     goal_command_timeout_ms_ = cfg_["goal_command_timeout_ms"].as<int>(200);
 
     const auto default_goal_world = read_vector<float>(cfg_, "default_goal_world");
@@ -143,6 +147,8 @@ void State_NavigationRL::enter()
         std::fill(last_low_level_actions_.begin(), last_low_level_actions_.end(), 0.0f);
         processed_joint_targets_ = default_joint_pos_;
         high_level_counter_ = 0;
+        navigation_success_settle_counter_ = 0;
+        navigation_success_latched_ = false;
     }
     current_goal_world_ = default_goal_world_;
 
@@ -182,6 +188,12 @@ void State_NavigationRL::policy_loop()
 
 void State_NavigationRL::update_policy_step()
 {
+    update_navigation_success_status();
+    if (navigation_success_latched_) {
+        hold_position();
+        return;
+    }
+
     if (high_level_counter_ == 0) {
         bool has_required_obs = false;
         const auto high_level_obs = build_high_level_obs(&has_required_obs);
@@ -200,6 +212,70 @@ void State_NavigationRL::update_policy_step()
     process_low_level_actions(raw_low_level_actions);
 
     high_level_counter_ = (high_level_counter_ + 1) % high_level_decimation_;
+}
+
+void State_NavigationRL::update_navigation_success_status()
+{
+    if (!enable_navigation_success_stop_) {
+        navigation_success_settle_counter_ = 0;
+        return;
+    }
+
+    Eigen::Quaternionf root_quat_w = Eigen::Quaternionf::Identity();
+    Eigen::Vector3f robot_pos_w = Eigen::Vector3f::Zero();
+    bool sportstate_valid = false;
+    {
+        if (sportstate && !sportstate->isTimeout()) {
+            std::lock_guard<std::mutex> lock(sportstate->mutex_);
+            for (int i = 0; i < 3; ++i) {
+                robot_pos_w[i] = sportstate->msg_.position()[i];
+            }
+            sportstate_valid = true;
+        }
+    }
+    if (!sportstate_valid) {
+        navigation_success_settle_counter_ = 0;
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(lowstate->mutex_);
+        root_quat_w = root_quat_from_lowstate(*lowstate);
+    }
+
+    std::array<float, kGoalCommandDim> goal_world = current_goal_world_;
+    if (use_current_height_for_goal_) {
+        goal_world[2] = robot_pos_w.z();
+    }
+
+    const float robot_yaw = yaw_from_quat(root_quat_w);
+    const float dx = goal_world[0] - robot_pos_w.x();
+    const float dy = goal_world[1] - robot_pos_w.y();
+    const float goal_distance = std::sqrt(dx * dx + dy * dy);
+    const float goal_yaw_error = std::abs(wrap_to_pi(goal_world[3] - robot_yaw));
+    const bool reached =
+        goal_distance < navigation_success_distance_threshold_ &&
+        goal_yaw_error < navigation_success_yaw_threshold_;
+
+    navigation_success_settle_counter_ = reached ? navigation_success_settle_counter_ + 1 : 0;
+    if (!navigation_success_latched_ && navigation_success_settle_counter_ >= navigation_success_settle_steps_) {
+        navigation_success_latched_ = true;
+        spdlog::info(
+            "Navigation goal reached. Latching stop with distance {:.4f} m and yaw error {:.4f} rad.",
+            goal_distance,
+            goal_yaw_error
+        );
+    }
+}
+
+void State_NavigationRL::hold_position()
+{
+    std::fill(current_navigation_actions_.begin(), current_navigation_actions_.end(), 0.0f);
+    std::fill(last_low_level_actions_.begin(), last_low_level_actions_.end(), 0.0f);
+    high_level_counter_ = 0;
+
+    std::lock_guard<std::mutex> lock(action_mutex_);
+    processed_joint_targets_ = default_joint_pos_;
 }
 
 std::vector<float> State_NavigationRL::build_high_level_obs(bool* has_required_obs)

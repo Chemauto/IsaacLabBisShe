@@ -110,6 +110,26 @@ latch_last_goal_on_timeout: true
 - 就算目标发布脚本停掉，也不会回退到 `default_goal_world`
 - 只有重启控制器或者收到新的目标时才更新
 
+## 导航到范围内自动停下
+
+导航现在也有单独的停止阈值，而且命名明确区分于 push-box：
+
+```yaml
+enable_navigation_success_stop: true
+navigation_success_distance_threshold: 0.20
+navigation_success_yaw_threshold: 0.15
+navigation_success_settle_steps: 3
+```
+
+含义是：
+
+- 机器人离导航目标的平面距离小于 `0.20 m`
+- 机器人 yaw 误差小于 `0.15 rad`
+- 连续满足 `3` 个控制周期
+- 就会锁住站立，不再继续导航
+
+这里故意使用 `navigation_*` 前缀，不和 push-box 的 `success_*` 混用。
+
 最直接的方式就是用这个脚本：
 
 ```bash

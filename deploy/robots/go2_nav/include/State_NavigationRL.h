@@ -30,6 +30,8 @@ public:
 private:
     void policy_loop();
     void update_policy_step();
+    void update_navigation_success_status();
+    void hold_position();
 
     std::filesystem::path resolve_path(const std::string& path) const;
     std::vector<float> build_high_level_obs(bool* has_required_obs);
@@ -53,6 +55,10 @@ private:
     int high_level_decimation_ = 10;
     bool use_current_height_for_goal_ = true;
     bool latch_last_goal_on_timeout_ = true;
+    bool enable_navigation_success_stop_ = false;
+    float navigation_success_distance_threshold_ = 0.20f;
+    float navigation_success_yaw_threshold_ = 0.15f;
+    int navigation_success_settle_steps_ = 3;
     int goal_command_timeout_ms_ = 200;
     std::array<float, kGoalCommandDim> default_goal_world_ = {4.8f, 0.0f, 0.0f, 0.0f};
     std::array<float, kGoalCommandDim> current_goal_world_ = {4.8f, 0.0f, 0.0f, 0.0f};
@@ -69,6 +75,8 @@ private:
     std::vector<float> processed_joint_targets_;
 
     int high_level_counter_ = 0;
+    int navigation_success_settle_counter_ = 0;
+    bool navigation_success_latched_ = false;
     bool warned_invalid_goal_command_ = false;
     bool warned_missing_navigation_state_ = false;
     bool warned_missing_height_scan_ = false;
