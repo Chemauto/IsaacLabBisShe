@@ -364,8 +364,8 @@ def box_goal_success_bonus(
     command_name: str,
     distance_threshold: float = 0.08,
     yaw_threshold: float = 0.2,
-    box_speed_threshold: float = 0.05,
-    robot_speed_threshold: float = 0.08,
+    box_speed_threshold: float = 0.50,
+    robot_speed_threshold: float = 0.50,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
     box_cfg: SceneEntityCfg = SceneEntityCfg("box"),
 ) -> torch.Tensor:

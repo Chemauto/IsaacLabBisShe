@@ -311,8 +311,8 @@ class RewardsCfg:
             "command_name": "box_goal",
             "distance_threshold": 0.08,#0.06
             "yaw_threshold": 0.10,#0.15
-            "box_speed_threshold": 0.20,#0.06
-            "robot_speed_threshold": 0.20,#0.06
+            # "box_speed_threshold": 0.20,#训练是否打开
+            # "robot_speed_threshold": 0.20,#
         },
     )
 
@@ -348,8 +348,8 @@ class TerminationsCfg:
             "command_name": "box_goal",
             "distance_threshold": 0.08,
             "yaw_threshold": 0.10,
-            "box_speed_threshold": 0.20,
-            "robot_speed_threshold": 0.20,
+            # "box_speed_threshold": 0.50,
+            # "robot_speed_threshold": 0.50,
             "settle_steps": 4,
         },
     )
@@ -413,8 +413,8 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
         self.scene.env_spacing = 4.0
         self.observations.policy.enable_corruption = False
         self.curriculum.goal_range = None
-        self.commands.box_goal.ranges.pos_x = (1.7, 1.7)
-        self.commands.box_goal.ranges.pos_y = (0.0, 0.0)
+        self.commands.box_goal.ranges.pos_x = (2.2, 2.2)
+        self.commands.box_goal.ranges.pos_y = (0.5, 0.5)
         self.commands.box_goal.ranges.yaw = (0, 0)
         self.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
         self.events.reset_box.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
