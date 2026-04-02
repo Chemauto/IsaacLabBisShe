@@ -9,7 +9,7 @@ from unitree_sdk2py.idl.default import unitree_go_msg_dds__HeightMap_
 from unitree_sdk2py.idl.unitree_go.msg.dds_ import HeightMap_
 
 
-DEFAULT_GOAL = (1.7, 0.3, 0.12, 0.0)
+DEFAULT_GOAL = (1.7, 0.0, 0.12, 0.0)
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Continuously publish a push-box goal to rt/push_box_goal.")

@@ -208,6 +208,66 @@ class EventCfg:
             "asset_cfg": SceneEntityCfg("box"),
         },
     )
+    # startup
+    physics_material = EventTerm(
+        func=mdp.randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
+            "static_friction_range": (0.5, 1.2),#原本0.8
+            "dynamic_friction_range": (0.5, 1.2),#原本0.6
+            "restitution_range": (0.0, 0.15),
+            "num_buckets": 64,
+        },
+    )
+
+    add_base_mass = EventTerm(
+        func=mdp.randomize_rigid_body_mass,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "mass_distribution_params": (-1.0, 3.0),
+            "operation": "add",
+        },
+    )
+
+    base_com = EventTerm(
+        func=mdp.randomize_rigid_body_com,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "com_range": {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.01, 0.01)},
+        },
+    )
+
+    # reset
+    base_external_force_torque = EventTerm(
+        func=mdp.apply_external_force_torque,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names="base"),
+            "force_range": (-2.0, 2.0),#暂定给的
+            "torque_range": (-0.2, 0.2),#暂定给的
+        },
+    )
+
+
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_scale,
+        mode="reset",
+        params={
+            "position_range": (1.0, 1.0),
+            "velocity_range": (-0.1, 0.1)#原本都是0,
+        },
+    )
+
+    # interval
+    push_robot = EventTerm(
+        func=mdp.push_by_setting_velocity,
+        mode="interval",
+        interval_range_s=(9.0, 12.0),
+        params={"velocity_range": {"x": (-0.3, 0.3), "y": (-0.3, 0.3)}},
+    )
 
 
 @configclass
@@ -243,22 +303,14 @@ class RewardsCfg:
         params={"std": 0.15, "command_name": "box_goal"},
     )
 
-    
-    # 当箱子已经接近目标时，再约束机器人最终朝向与目标 yaw 对齐，避免过早干扰推箱主任务。
-    # robot_goal_yaw = RewTerm(
-    #     func=mdp.robot_goal_yaw_error_abs,
-    #     weight=-0.50,
-    #     params={"command_name": "box_goal", "activate_distance_threshold": 0.40},
-    # )
-    # 加入角度控制，最后0.3米内保证机器人的姿态
               #####################稀疏奖励#######################
     box_goal_success = RewTerm(
         func=mdp.box_goal_success_bonus,
         weight=15.0,
         params={
             "command_name": "box_goal",
-            "distance_threshold": 0.12,#0.06
-            "yaw_threshold": 0.15,#0.15
+            "distance_threshold": 0.08,#0.06
+            "yaw_threshold": 0.10,#0.15
             "box_speed_threshold": 0.20,#0.06
             "robot_speed_threshold": 0.20,#0.06
         },
@@ -276,35 +328,13 @@ class RewardsCfg:
     )  
     face_to_object = RewTerm(
         func=mdp.face_to_object,
-        weight=1.0,
+        weight=1.5,
     )
     # 论文 Table VIII: Negative x-velocity penalty, 实现为 max(v_b,x, 0)
     forward_x_velocity = RewTerm(
         func=mdp.forward_x_velocity_reward,
         weight=1.0,
     )
-    # head_collision_penalty = RewTerm(
-    #     func=mdp.undesired_contacts,
-    #     weight=-0.5,  # 原来: -3.0（加重，抑制用腹部/机身"扑地过坑"）
-    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="Head_.*"), "threshold": 1.0},  # 原来: 1.0
-    # )    # 论文风格的"头部碰撞"塑形：对head接触做惩罚，。髋关节和大腿部分，惩罚
-    # 惩罚头部刚体的 xy 投影落到箱子顶面矩形范围内，避免头越到箱子上方。
-    # head_over_box = RewTerm(
-    #     func=mdp.head_point_in_box_penalty,
-    #     weight=-0.5,
-    #     params={
-    #         "head_local_offset": (0.00, 0.0, 0.0),
-    #         "footprint_margin": -0.10,  # 允许头部投影稍微进入箱子边界内，因为推的过程中可能会有轻微的接触和变形。
-    #         "top_surface_margin": 0.00,
-    #         "head_body_cfg": SceneEntityCfg("robot", body_names="Head_.*"),
-    #     },
-    # )
-    # 约束机身高度不要抬得过高，避免推箱子中后段为了拿进度奖励而抬身前探。
-    # base_height = RewTerm(
-    #     func=mdp.base_height_l2,
-    #     weight=-15.0,
-    #     params={"target_height": 0.20},
-    # )
 
 
 @configclass
@@ -316,8 +346,8 @@ class TerminationsCfg:
         func=mdp.goal_reached,
         params={
             "command_name": "box_goal",
-            "distance_threshold": 0.12,
-            "yaw_threshold": 0.15,
+            "distance_threshold": 0.08,
+            "yaw_threshold": 0.10,
             "box_speed_threshold": 0.20,
             "robot_speed_threshold": 0.20,
             "settle_steps": 4,
@@ -388,7 +418,12 @@ class LocomotionPushBoxEnvCfg_Play(LocomotionPushBoxEnvCfg):
         self.commands.box_goal.ranges.yaw = (0, 0)
         self.events.reset_base.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
         self.events.reset_box.params["pose_range"] = {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
-
-
+        self.events.add_base_mass = None
+        self.events.base_com = None
+        self.events.base_external_force_torque = None
+        self.events.physics_material = None
+        self.events.push_robot = None
+        self.events.reset_robot_joints = None
+        # play的时候关闭随机化
 PushBoxEnvCfg = LocomotionPushBoxEnvCfg
 PushBoxEnvCfg_Play = LocomotionPushBoxEnvCfg_Play
