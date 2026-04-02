@@ -338,35 +338,7 @@ class BiShePitRewardsCfg(RewardsCfg):
         func=walk_mdp.air_time_variance_penalty,
         weight=-0.5,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
-    )
-    # 启用 gated 抬脚奖励，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去。
-    # feet_height = RewTerm(
-    #     func=walk_mdp.feet_height_pit_gated,
-    #     weight=2.0,
-    #     params={
-    #         "command_name": "base_velocity",
-    #         "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
-    #         "sensor_cfg": SceneEntityCfg("height_scanner"),
-    #         "target_height": 0.12,
-    #         "std": 0.05,
-    #         "tanh_mult": 2.0,
-    #         "obstacle_height_threshold": 0.10,
-    #         "min_obstacle_rays": 4,
-    #         "forward_min_x": 0.05,
-    #         "rear_max_x": -0.05,
-    #     },
-    # )
-    # calf_collision_penalty = RewTerm(
-    #     func=mdp.undesired_contacts,
-    #     weight=-0.8,  # 原来: -0.8（保持不变，小腿轻惩罚）
-    #     params={
-    #         # 同时兼容大小写命名，避免正则没命中导致该惩罚失效
-    #         "sensor_cfg": SceneEntityCfg(
-    #             "contact_forces", body_names=".*([Cc][Aa][Ll][Ff]).*"
-    #         ),
-    #         "threshold": 1.0,  # 原来: 1.0（保持不变）
-    #     },
-    # )  # 小腿可触碰但给轻惩罚，避免把正常探坑动作误判为坏动作。
+    )#适当的奖励函数，为了增强步态
 
     # 论文风格的“头部碰撞”塑形：对 base接触做惩罚，。髋关节和大腿部分，惩罚
     base_collision_penalty = RewTerm(
@@ -392,6 +364,15 @@ class BiShePitRewardsCfg(RewardsCfg):
         params={
             "threshold": 0.20,
             "asset_cfg": SceneEntityCfg("robot", body_names=["RL_foot", "RR_foot"]),
+        },
+    )
+    # 防止前脚之间距离过近（避免腿部交叉或碰撞），这两个奖励函数是为了张开脚
+    Front_feet_too_near = RewTerm(
+        func=walk_mdp.feet_too_near,
+        weight=-1.0,
+        params={
+            "threshold": 0.20,
+            "asset_cfg": SceneEntityCfg("robot", body_names=["FL_foot", "FR_foot"]),
         },
     )
 
@@ -588,7 +569,7 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
     def __post_init__(self) -> None:
         # post init of parent
         super().__post_init__()
-        self.scene.terrain.terrain_generator = HIGH_DOUBLE_PLATFORM_TERRAINS_PLAY_CFG
+        self.scene.terrain.terrain_generator = HIGH_PLATFORM_TERRAINS_PLAY_CFG
         # make a smaller scene for play
         self.scene.num_envs = 50
         self.scene.env_spacing = 4

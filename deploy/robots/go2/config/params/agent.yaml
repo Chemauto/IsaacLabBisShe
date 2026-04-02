@@ -4,9 +4,9 @@ num_steps_per_env: 24
 max_iterations: 10000
 empirical_normalization: null
 obs_groups: {}
-clip_actions: null
+clip_actions: 5.0
 save_interval: 100
-experiment_name: go2_walk_rough
+experiment_name: go2_walk_bishe
 run_name: ''
 logger: tensorboard
 neptune_project: isaaclab
@@ -17,7 +17,7 @@ load_checkpoint: model_.*.pt
 class_name: OnPolicyRunner
 policy:
   class_name: ActorCritic
-  init_noise_std: 1.0
+  init_noise_std: 0.3
   noise_std_type: scalar
   state_dependent_std: false
   actor_obs_normalization: false
@@ -35,13 +35,13 @@ algorithm:
   class_name: PPO
   num_learning_epochs: 5
   num_mini_batches: 4
-  learning_rate: 0.001
-  schedule: adaptive
+  learning_rate: 0.0001
+  schedule: fixed
   gamma: 0.99
   lam: 0.95
   entropy_coef: 0.01
   desired_kl: 0.01
-  max_grad_norm: 1.0
+  max_grad_norm: 0.5
   value_loss_coef: 1.0
   use_clipped_value_loss: true
   clip_param: 0.2
