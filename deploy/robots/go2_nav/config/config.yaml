@@ -33,10 +33,10 @@ FSM:
     goal_command_timeout_ms: 200
     latch_last_goal_on_timeout: true
     enable_navigation_success_stop: true
-    navigation_success_distance_threshold: 0.20
-    navigation_success_yaw_threshold: 0.15
+    navigation_success_distance_threshold: 0.10
+    navigation_success_yaw_threshold: 0.10
     navigation_success_settle_steps: 3
-    default_goal_world: [4.8, 0.0, 0.0, 0.0]
+    default_goal_world: [1.0, 0.0, 0.0, 0.0]
     use_current_height_for_goal: true
     height_map_topic: rt/heightmap
     step_dt: 0.02
