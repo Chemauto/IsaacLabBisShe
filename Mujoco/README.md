@@ -50,6 +50,7 @@ python3 test/monitor_push_box_obs.py
 新增 topic：
 
 - `rt/push_box_obs`
+- `rt/push_box_goal`
 
 `rt/push_box_obs` 当前发布 16 维状态：
 
@@ -64,6 +65,7 @@ python3 test/monitor_push_box_obs.py
 
 - `push_actions(3)` 不从 MuJoCo 发，因为它属于 deploy / policy 本地内部状态，更适合控制器侧自己维护。
 - `config.py` 默认把可移动箱子从 `rt/heightmap` 中剔除了，方便后续低层 walk policy 继续复用无箱子 height scan。
+- `PUSH_BOX_GOAL_POSITION / PUSH_BOX_GOAL_YAW` 现在只作为启动时默认目标；运行中可以给 `rt/push_box_goal` 发布 4 维 `[x, y, z, yaw]`，MuJoCo 会保持最后一次有效目标。
 
 ## 切换地形
 

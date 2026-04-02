@@ -1,9 +1,10 @@
 import math
+import threading
 
 import numpy as np
 
 import config
-from unitree_sdk2py.core.channel import ChannelPublisher
+from unitree_sdk2py.core.channel import ChannelPublisher, ChannelSubscriber
 from unitree_sdk2py.idl.default import unitree_go_msg_dds__HeightMap_
 from unitree_sdk2py.idl.unitree_go.msg.dds_ import HeightMap_
 from unitree_sdk2py.utils.thread import RecurrentThread
@@ -20,7 +21,9 @@ class PushBoxSdk2Bridge(UnitreeSdk2Bridge):
         self.enable_push_box_obs = getattr(config, "ENABLE_PUSH_BOX_OBS", False) and not self.idl_type
         self.push_box_obs = None
         self.push_box_obs_puber = None
+        self.push_box_goal_suber = None
         self.PushBoxObsThread = None
+        self.push_box_goal_lock = threading.Lock()
         if self.enable_push_box_obs:
             self._init_push_box_obs()
 
@@ -74,6 +77,9 @@ class PushBoxSdk2Bridge(UnitreeSdk2Bridge):
             dtype=np.float64,
         )
         self.push_box_goal_yaw = float(getattr(config, "PUSH_BOX_GOAL_YAW", 0.0))
+        goal_topic = getattr(config, "PUSH_BOX_GOAL_TOPIC", "rt/push_box_goal")
+        self.push_box_goal_suber = ChannelSubscriber(goal_topic, HeightMap_)
+        self.push_box_goal_suber.Init(self.PushBoxGoalHandler, 10)
 
         update_dt = float(getattr(config, "PUSH_BOX_OBS_UPDATE_DT", max(self.dt, 0.02)))
         self.PushBoxObsThread = RecurrentThread(
@@ -82,6 +88,15 @@ class PushBoxSdk2Bridge(UnitreeSdk2Bridge):
             name="sim_push_box_obs",
         )
         self.PushBoxObsThread.Start()
+
+    def PushBoxGoalHandler(self, msg: HeightMap_):
+        goal_data = getattr(msg, "data", None)
+        if goal_data is None or len(goal_data) != 4:
+            return
+
+        with self.push_box_goal_lock:
+            self.push_box_goal_position = np.asarray(goal_data[:3], dtype=np.float64)
+            self.push_box_goal_yaw = float(goal_data[3])
 
     def _compute_push_box_obs(self):
         base_pos_w = self.mj_data.qpos[0:3].copy()
@@ -96,14 +111,18 @@ class PushBoxSdk2Bridge(UnitreeSdk2Bridge):
         box_rot_w = self._quat_wxyz_to_rot(box_quat_w)
         box_rot_bw = box_rot_w.T
 
+        with self.push_box_goal_lock:
+            goal_position_w = self.push_box_goal_position.copy()
+            goal_yaw = float(self.push_box_goal_yaw)
+
         box_in_robot_frame_pos = base_rot_bw @ (box_pos_w - base_pos_w)
         base_yaw = self._yaw_from_quat(base_quat_w)
         box_yaw = self._yaw_from_quat(box_quat_w)
         box_relative_yaw = self._wrap_to_pi(box_yaw - base_yaw)
         box_in_robot_frame_yaw = np.array([math.sin(box_relative_yaw), math.cos(box_relative_yaw)], dtype=np.float64)
 
-        goal_in_box_frame_pos = box_rot_bw @ (self.push_box_goal_position - box_pos_w)
-        goal_relative_yaw = self._wrap_to_pi(self.push_box_goal_yaw - box_yaw)
+        goal_in_box_frame_pos = box_rot_bw @ (goal_position_w - box_pos_w)
+        goal_relative_yaw = self._wrap_to_pi(goal_yaw - box_yaw)
         goal_in_box_frame_yaw = np.array([math.sin(goal_relative_yaw), math.cos(goal_relative_yaw)], dtype=np.float64)
 
         return np.concatenate(

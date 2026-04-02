@@ -22,6 +22,10 @@
 - `tools/export_push_box_policies.py`
   - 把当前 push checkpoint 和 low-level walk JIT 导成 ONNX
 
+- `tools/publish_push_box_goal.py`
+  - 持续发布运行时推箱目标
+  - 往 `rt/push_box_goal` 发 4 维 `[x, y, z, yaw]`
+
 ## 正确启动顺序
 
 ### 1. 先启动 MuJoCo push-box 仿真
@@ -41,6 +45,10 @@ python3 unitree_mujoco.py
 - `rt/heightmap`
 - `rt/lowstate`
 - `rt/sportmodestate`
+
+并且现在还会订阅：
+
+- `rt/push_box_goal`
 
 ### 2. 再启动 deploy 控制器
 
@@ -175,6 +183,24 @@ cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2_push_box/build
 - `height_map_topic`
 - `high_level_decimation`
 - `push_action_clip`
+
+如果你只是想实时改推箱目标，不需要再改 `Mujoco/simulate_python/config.py` 里的：
+
+- `PUSH_BOX_GOAL_POSITION`
+- `PUSH_BOX_GOAL_YAW`
+
+它们现在只是启动时的默认目标。运行中更推荐直接发话题：
+
+```bash
+cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2_push_box
+python3 tools/publish_push_box_goal.py --goal 1.7 0.0 0.12 0.0
+```
+
+行为和导航一致：
+
+- 没收到话题前，用 `config.py` 里的默认目标
+- 收到过一次有效 `rt/push_box_goal` 后，就保持最后一次有效目标
+- 就算你停掉发布脚本，也不会回退到 `config.py` 里的默认目标
 
 ## 一句话判断当前问题
 
