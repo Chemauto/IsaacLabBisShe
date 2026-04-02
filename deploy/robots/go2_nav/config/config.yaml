@@ -31,6 +31,7 @@ FSM:
     low_level_policy: config/exported/walk_low_level_policy.onnx
     goal_command_topic: rt/navigation_goal
     goal_command_timeout_ms: 200
+    latch_last_goal_on_timeout: true
     default_goal_world: [4.8, 0.0, 0.0, 0.0]
     use_current_height_for_goal: true
     height_map_topic: rt/heightmap

@@ -52,8 +52,10 @@ private:
     float step_dt_ = 0.02f;
     int high_level_decimation_ = 10;
     bool use_current_height_for_goal_ = true;
+    bool latch_last_goal_on_timeout_ = true;
     int goal_command_timeout_ms_ = 200;
     std::array<float, kGoalCommandDim> default_goal_world_ = {4.8f, 0.0f, 0.0f, 0.0f};
+    std::array<float, kGoalCommandDim> current_goal_world_ = {4.8f, 0.0f, 0.0f, 0.0f};
 
     std::vector<int> joint_ids_map_;
     std::vector<float> default_joint_pos_;

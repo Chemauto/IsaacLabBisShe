@@ -75,6 +75,7 @@ State_NavigationRL::State_NavigationRL(int state_mode, std::string state_string)
     step_dt_ = cfg_["step_dt"].as<float>(0.02f);
     high_level_decimation_ = cfg_["high_level_decimation"].as<int>(10);
     use_current_height_for_goal_ = cfg_["use_current_height_for_goal"].as<bool>(true);
+    latch_last_goal_on_timeout_ = cfg_["latch_last_goal_on_timeout"].as<bool>(true);
     goal_command_timeout_ms_ = cfg_["goal_command_timeout_ms"].as<int>(200);
 
     const auto default_goal_world = read_vector<float>(cfg_, "default_goal_world");
@@ -82,6 +83,7 @@ State_NavigationRL::State_NavigationRL(int state_mode, std::string state_string)
         throw std::runtime_error("default_goal_world must be 4-dimensional.");
     }
     std::copy(default_goal_world.begin(), default_goal_world.end(), default_goal_world_.begin());
+    current_goal_world_ = default_goal_world_;
 
     joint_ids_map_ = read_vector<int>(cfg_, "joint_ids_map");
     default_joint_pos_ = read_vector<float>(cfg_, "default_joint_pos");
@@ -142,6 +144,7 @@ void State_NavigationRL::enter()
         processed_joint_targets_ = default_joint_pos_;
         high_level_counter_ = 0;
     }
+    current_goal_world_ = default_goal_world_;
 
     policy_thread_running_ = true;
     policy_thread_ = std::thread(&State_NavigationRL::policy_loop, this);
@@ -232,21 +235,24 @@ std::vector<float> State_NavigationRL::build_high_level_obs(bool* has_required_o
         warned_missing_navigation_state_ = false;
     }
 
-    std::array<float, kGoalCommandDim> goal_world = default_goal_world_;
+    if (!latch_last_goal_on_timeout_) {
+        current_goal_world_ = default_goal_world_;
+    }
     goal_command_logger_.poll(goal_command_);
     if (goal_command_ && !goal_command_->isTimeout()) {
         std::lock_guard<std::mutex> lock(goal_command_->mutex_);
         const auto& goal_data = goal_command_->msg_.data();
         if (goal_data.size() == kGoalCommandDim) {
             for (size_t i = 0; i < kGoalCommandDim; ++i) {
-                goal_world[i] = goal_data[i];
+                current_goal_world_[i] = goal_data[i];
             }
             warned_invalid_goal_command_ = false;
         } else if (!warned_invalid_goal_command_) {
-            spdlog::warn("Navigation goal topic has wrong dim; falling back to default_goal_world.");
+            spdlog::warn("Navigation goal topic has wrong dim; keeping previous goal.");
             warned_invalid_goal_command_ = true;
         }
     }
+    std::array<float, kGoalCommandDim> goal_world = current_goal_world_;
     if (use_current_height_for_goal_ && sportstate_valid) {
         goal_world[2] = robot_pos_w.z();
     }

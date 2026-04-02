@@ -22,6 +22,10 @@
 - `tools/export_navigation_policies.py`
   - 把 `NavigationBishe.pt` 和 `WalkRoughTransfer.pt` 导成 ONNX
 
+- `tools/publish_navigation_goal.py`
+  - 持续发布运行时导航目标
+  - 往 `rt/navigation_goal` 发 4 维 `[x, y, z, yaw]`
+
 ## 怎么运行
 
 ### 1. 先准备 ONNX
@@ -93,6 +97,32 @@ use_current_height_for_goal: true
 这表示运行时会自动把目标点的 `z` 对齐到机器人当前高度，减少和训练时 2D 导航命令的不一致。
 
 如果你后面想动态改目标，也可以给 `goal_command_topic` 发布 4 维 `[x, y, z, yaw]`，它会覆盖 `default_goal_world`。
+
+当前默认配置还打开了：
+
+```yaml
+latch_last_goal_on_timeout: true
+```
+
+这表示：
+
+- 只要收到过一次有效目标，就保持最后一次有效目标
+- 就算目标发布脚本停掉，也不会回退到 `default_goal_world`
+- 只有重启控制器或者收到新的目标时才更新
+
+最直接的方式就是用这个脚本：
+
+```bash
+cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2_nav
+python3 tools/publish_navigation_goal.py --goal 4.8 0.0 0.0 0.0
+```
+
+它会持续发布到 `rt/navigation_goal`。
+
+注意：
+
+- 不要只发一次，因为 `go2_nav` 默认对目标话题做了 `200 ms` 超时检查
+- 即使你停掉这个脚本，只要 `latch_last_goal_on_timeout: true`，控制器也会继续保持最后一次有效目标
 
 ## 如果按 3 机器人不动，先看这几条
 
