@@ -192,7 +192,7 @@ class EventCfg:
             "asset_cfg": SceneEntityCfg("robot", body_names=".*"),
             "static_friction_range": (0.5, 1.2),
             "dynamic_friction_range": (0.5, 1.2),
-            "restitution_range": (0.0, 0.0),
+            "restitution_range": (0.0, 0.15),
             "num_buckets": 64,
         },
     )
@@ -256,8 +256,8 @@ class EventCfg:
     push_robot = EventTerm(
         func=mdp.push_by_setting_velocity,
         mode="interval",
-        interval_range_s=(10.0, 15.0),
-        params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+        interval_range_s=(8.0, 10.0),
+        params={"velocity_range": {"x": (-0.2, 0.2), "y": (-0.1, 0.1)}},
     )
 
 
@@ -287,12 +287,7 @@ class RewardsCfg:
             "threshold": 0.5,
         },
     )
-    # undesired_contacts = RewTerm(
-    #     func=mdp.undesired_contacts,
-    #     weight=-1.0,
-    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*THIGH"), "threshold": 1.0},
-    # )
-    # -- optional penalties
+
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
 
@@ -300,12 +295,13 @@ class RewardsCfg:
 @configclass
 class BiShePitRewardsCfg(RewardsCfg):
     """用于跨越坑洞技能训练的奖励项。"""
-
+# 原来: 0.3（略降，避免下坑时为追求前进而前扑）
     move_in_command_direction = RewTerm(
         func=walk_mdp.move_in_command_direction,
-        weight=0.3,  # 原来: 0.5（略降，避免下坑时为追求前进而前扑）
+        weight=0.3,  # 原来: 0.3（略降，避免下坑时为追求前进而前扑）
         params={"command_name": "base_velocity"},
     )
+# 原来: 0.3（略降，避免下坑时为追求前进而前扑）
     # 增强机身姿态稳定性，抑制下坑时俯仰角速度过大导致前翻。
     track_lin_vel_xy_exp = RewTerm(
         func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
@@ -360,7 +356,7 @@ class BiShePitRewardsCfg(RewardsCfg):
     # 防止后面两脚之间距离过近（避免腿部交叉或碰撞）
     Behind_feet_too_near = RewTerm(
         func=walk_mdp.feet_too_near,
-        weight=-1.0,
+        weight=-0.5,
         params={
             "threshold": 0.20,
             "asset_cfg": SceneEntityCfg("robot", body_names=["RL_foot", "RR_foot"]),
@@ -369,13 +365,17 @@ class BiShePitRewardsCfg(RewardsCfg):
     # 防止前脚之间距离过近（避免腿部交叉或碰撞），这两个奖励函数是为了张开脚
     Front_feet_too_near = RewTerm(
         func=walk_mdp.feet_too_near,
-        weight=-1.0,
+        weight=-0.5,
         params={
             "threshold": 0.20,
             "asset_cfg": SceneEntityCfg("robot", body_names=["FL_foot", "FR_foot"]),
         },
     )
-
+    #这两个是后来新加入的
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-4e-7)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.02)
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.3)
+    #这两个是后来新加入的
 
 
 
@@ -523,13 +523,9 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         # self.commands.base_velocity.rel_standing_envs = 0.0
         self.commands.base_velocity.rel_heading_envs = 0.0
         self.commands.base_velocity.heading_command = False
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.3, 1.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.3, 0.3)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.3, 0.3)
-        # self.commands.base_velocity.ranges.lin_vel_x = (0.5, 1.0)
-        # self.commands.base_velocity.ranges.lin_vel_y = (-0.0, 0.0)
-        # self.commands.base_velocity.ranges.ang_vel_z = (-0.0, 0.0)
-        # self.commands.base_velocity.ranges.heading = (0.0, 0.0)
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.4, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.4, 0.4)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.4, 0.4)
         # 通用参数。
         self.decimation = 4
         self.episode_length_s = 20.0
@@ -582,17 +578,11 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
             self.scene.terrain.terrain_generator.curriculum = False
         # disable randomization for play
         self.observations.policy.enable_corruption = False
-        # remove random pushes for deterministic evaluation
-        self.events.base_external_force_torque = None
-        self.events.push_robot = None
-
         # 显示高程图信息查看
         if self.scene.height_scanner is not None:
             self.scene.height_scanner.debug_vis = True
             self.scene.height_scanner.visualizer_cfg.prim_path = "/World/Visuals/HeightScanner"
             self.scene.height_scanner.visualizer_cfg.markers["hit"].radius = 0.06
-
-
         # 固定在高台前方同一位置，方便稳定观察 climb 行为。
         self.events.reset_base.func = walk_mdp.reset_root_state_before_high_platform
         self.events.reset_base.params["pose_range"] = {"x": (-3.7, -3.7), "y": (0.0, 0.0), "yaw": (0.0, 0.0)}
@@ -604,13 +594,10 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
         self.commands.base_velocity.ranges.heading = (0.0, 0.0)
 
+        self.events.add_base_mass = None  # 评测时不增加额外质量扰动
+        self.events.base_com = None  # 评测时不增加 COM 扰动
+        self.events.reset_robot_joints = None  # 评测时不增加关节
+        self.events.push_robot = None  # 评测时不增加随机推力扰动
+        self.events.base_external_force_torque = None  # 评测时不增加随机推力扰动
 
 
-
-
-@configclass
-class VelocityGo2WalkRoughEnvCfg_Ros(VelocityGo2WalkRoughEnvCfg_Play):
-    """Configuration for the locomotion velocity-tracking environment."""
-    def __post_init__(self) -> None:
-        # post init of parent
-        super().__post_init__()
