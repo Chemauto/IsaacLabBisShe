@@ -521,11 +521,11 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         self.events.reset_base.params["pose_range"] = {"x": (-3.9, -3.5), "y": (-0.15, 0.15), "yaw": (-0.1, 0.1)}
         # 将任务收窄为纯前向 climb，减少侧移/转向绕平台。
         # self.commands.base_velocity.rel_standing_envs = 0.0
-        # self.commands.base_velocity.rel_heading_envs = 0.0
-        # self.commands.base_velocity.heading_command = True
-        self.commands.base_velocity.ranges.lin_vel_x = (0.2, 1.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.0, 0.0)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.0, 0.0)
+        self.commands.base_velocity.rel_heading_envs = 0.0
+        self.commands.base_velocity.heading_command = False
+        self.commands.base_velocity.ranges.lin_vel_x = (-0.3, 1.0)
+        self.commands.base_velocity.ranges.lin_vel_y = (-0.3, 0.3)
+        self.commands.base_velocity.ranges.ang_vel_z = (-0.3, 0.3)
         # self.commands.base_velocity.ranges.lin_vel_x = (0.5, 1.0)
         # self.commands.base_velocity.ranges.lin_vel_y = (-0.0, 0.0)
         # self.commands.base_velocity.ranges.ang_vel_z = (-0.0, 0.0)
@@ -539,8 +539,8 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physics_material = self.scene.terrain.physics_material
         self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
         # 稳定性相关设置。
-        self.events.push_robot = None
-        self.events.base_com = None
+        # self.events.push_robot = None
+        # self.events.base_com = None
         # 传感器更新周期。
         if self.scene.height_scanner is not None:
             self.scene.height_scanner.update_period = self.decimation * self.sim.dt
