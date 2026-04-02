@@ -1,0 +1,47 @@
+FSM:
+  _:
+    Passive:
+      id: 1
+    FixStand:
+      id: 2
+    Navigation:
+      id: 3
+      type: NavigationRL
+  Passive:
+    transitions:
+      FixStand: LT + A.on_pressed
+    mode: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    kd: [3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3]
+  FixStand:
+    transitions:
+      Passive: LT + B.on_pressed
+      Navigation: start.on_pressed
+    kp: [60, 80, 80, 60, 80, 80, 60, 80, 80, 60, 80, 80]
+    kd: [5, 4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4]
+    ts: [0, 1, 2]
+    qs: [
+      [],
+      [0.0, 1.36, -2.65, 0.0, 1.36, -2.65, 0.0, 1.36, -2.65, 0.0, 1.36, -2.65],
+      [0.0, 0.8, -1.5, 0.0, 0.8, -1.5, 0.0, 0.8, -1.5, 0.0, 0.8, -1.5],
+    ]
+  Navigation:
+    transitions:
+      Passive: LT + B.on_pressed
+    high_level_policy: config/exported/navigation_high_policy.onnx
+    low_level_policy: config/exported/walk_low_level_policy.onnx
+    goal_command_topic: rt/navigation_goal
+    goal_command_timeout_ms: 200
+    default_goal_world: [4.8, 0.0, 0.0, 0.0]
+    use_current_height_for_goal: true
+    height_map_topic: rt/heightmap
+    step_dt: 0.02
+    high_level_decimation: 10
+    joint_ids_map: [3, 0, 9, 6, 4, 1, 10, 7, 5, 2, 11, 8]
+    stiffness: [25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0, 25.0]
+    damping: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
+    default_joint_pos: [0.1, -0.1, 0.1, -0.1, 0.8, 0.8, 1.0, 1.0, -1.5, -1.5, -1.5, -1.5]
+    joint_scale: [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+    navigation_action_clip:
+      - [-1.0, 1.0]
+      - [-1.0, 1.0]
+      - [-1.0, 1.0]
