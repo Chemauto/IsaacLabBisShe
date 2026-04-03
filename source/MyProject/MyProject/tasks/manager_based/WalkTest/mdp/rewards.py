@@ -18,7 +18,7 @@ from isaaclab.assets import Articulation, RigidObject
 from isaaclab.envs import mdp
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor, RayCaster
-from isaaclab.utils.math import quat_apply_inverse, yaw_quat
+from isaaclab.utils.math import quat_apply, quat_apply_inverse, yaw_quat
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -101,6 +101,23 @@ def track_lin_vel_xy_yaw_frame_exp(
     return torch.exp(-lin_vel_error / std**2)
 
 
+def _generated_command_xy_w(env: ManagerBasedRLEnv, command_name: str, asset: Articulation) -> torch.Tensor:
+    """Convert the current generated body-frame command back to world frame."""
+    command_b = torch.zeros((env.num_envs, 3), device=asset.data.root_lin_vel_w.device)
+    command_b[:, :2] = env.command_manager.get_command(command_name)[:, :2]
+    return quat_apply(yaw_quat(asset.data.root_quat_w), command_b)[:, :2]
+
+
+def track_lin_vel_xy_world_exp(
+    env, std: float, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward tracking of world-frame linear velocity commands using an exponential kernel."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    command_xy_w = _generated_command_xy_w(env, command_name, asset)
+    lin_vel_error = torch.sum(torch.square(command_xy_w - asset.data.root_lin_vel_w[:, :2]), dim=1)
+    return torch.exp(-lin_vel_error / std**2)
+
+
 def track_ang_vel_z_world_exp(
     env, command_name: str, std: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
 ) -> torch.Tensor:
@@ -136,6 +153,21 @@ def move_in_command_direction(
     # 只保留正向对齐奖励；反向不奖励
     reward = torch.clamp(cosine, min=0.0, max=1.0)
     # 指令很小时不计算方向奖励
+    reward *= cmd_norm > 0.1
+    return reward
+
+
+def move_in_world_command_direction(
+    env: ManagerBasedRLEnv, command_name: str, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+) -> torch.Tensor:
+    """Reward alignment between world-frame planar velocity and the fixed world-frame command."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    command_xy_w = _generated_command_xy_w(env, command_name, asset)
+    vel_xy_w = asset.data.root_lin_vel_w[:, :2]
+    cmd_norm = torch.norm(command_xy_w, dim=1)
+    vel_norm = torch.norm(vel_xy_w, dim=1)
+    cosine = torch.sum(command_xy_w * vel_xy_w, dim=1) / (cmd_norm * vel_norm + 1e-6)
+    reward = torch.clamp(cosine, min=0.0, max=1.0)
     reward *= cmd_norm > 0.1
     return reward
 

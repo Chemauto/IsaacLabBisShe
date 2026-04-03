@@ -6,6 +6,8 @@
 import math
 from dataclasses import MISSING
 
+from sympy import im
+
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -25,6 +27,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 import isaaclab_tasks.manager_based.locomotion.velocity.mdp as mdp
 import MyProject.tasks.manager_based.WalkTest.mdp as walk_mdp
+import MyProject.tasks.manager_based.WalkTest.mdp.curriculums as walk_curriculums
 from MyProject.tasks.manager_based.WalkTest.config.terrain import (
     HIGH_DOUBLE_PLATFORM_TERRAINS_CFG,
     HIGH_DOUBLE_PLATFORM_TERRAINS_PLAY_CFG,
@@ -107,6 +110,28 @@ class CommandsCfg:
         debug_vis=True,
         ranges=mdp.UniformVelocityCommandCfg.Ranges(
             lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
+        ),
+    )
+
+
+@configclass
+class BiSheCommandsCfg:
+    """World-frame command specifications for the climb task."""
+
+    base_velocity = walk_mdp.UniformWorldVelocityCommandCfg(
+        asset_name="robot",
+        # 大于 episode_length_s=20.0，保证一个 episode 内不会中途重采样方向。
+        resampling_time_range=(21.0, 21.0),
+        rel_standing_envs=0.0,
+        rel_heading_envs=0.0,
+        heading_command=False,
+        heading_control_stiffness=0.5,
+        debug_vis=True,
+        ranges=walk_mdp.UniformWorldVelocityCommandCfg.Ranges(
+            lin_vel_x=(-0.4, 1.0),
+            lin_vel_y=(-0.4, 0.4),
+            ang_vel_z=(-0.4, 0.4),
+            heading=None,
         ),
     )
 
@@ -297,18 +322,22 @@ class BiShePitRewardsCfg(RewardsCfg):
     """用于跨越坑洞技能训练的奖励项。"""
 # 原来: 0.3（略降，避免下坑时为追求前进而前扑）
     move_in_command_direction = RewTerm(
-        func=walk_mdp.move_in_command_direction,
+        func=walk_mdp.move_in_world_command_direction,
         weight=0.3,  # 原来: 0.3（略降，避免下坑时为追求前进而前扑）
         params={"command_name": "base_velocity"},
     )
 # 原来: 0.3（略降，避免下坑时为追求前进而前扑）
     # 增强机身姿态稳定性，抑制下坑时俯仰角速度过大导致前翻。
     track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=1.0, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+        func=walk_mdp.track_lin_vel_xy_world_exp,
+        weight=1.5,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     #速度追踪奖励略降，避免下坑时为追求速度而前扑；同时保留一定奖励，鼓励学会在坑洞中保持一定前进速度，而不是过于保守地停在坑边。
     track_ang_vel_z_exp = RewTerm(
-        func=mdp.track_ang_vel_z_exp, weight=0.50, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
+        func=walk_mdp.track_ang_vel_z_world_exp,
+        weight=0.75,
+        params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     # -- penalties
     lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-1.0) # 原来: -2.0 防止上下惩罚的速度
@@ -502,7 +531,7 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
     scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
-    commands: CommandsCfg = CommandsCfg()
+    commands: BiSheCommandsCfg = BiSheCommandsCfg()
     rewards: RewardsCfg = RewardsCfg()
     pit_rewards: BiShePitRewardsCfg = BiShePitRewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
@@ -520,12 +549,6 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         self.events.reset_base.func = walk_mdp.reset_root_state_before_high_platform
         self.events.reset_base.params["pose_range"] = {"x": (-3.9, -3.5), "y": (-0.15, 0.15), "yaw": (-0.1, 0.1)}
         # 将任务收窄为纯前向 climb，减少侧移/转向绕平台。
-        # self.commands.base_velocity.rel_standing_envs = 0.0
-        self.commands.base_velocity.rel_heading_envs = 0.0
-        self.commands.base_velocity.heading_command = False
-        self.commands.base_velocity.ranges.lin_vel_x = (-0.4, 1.0)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.4, 0.4)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.4, 0.4)
         # 通用参数。
         self.decimation = 4
         self.episode_length_s = 20.0
@@ -592,12 +615,9 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
         self.commands.base_velocity.ranges.lin_vel_x = (0.6, 0.6)
         self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
         self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
-        self.commands.base_velocity.ranges.heading = (0.0, 0.0)
 
         self.events.add_base_mass = None  # 评测时不增加额外质量扰动
         self.events.base_com = None  # 评测时不增加 COM 扰动
         self.events.reset_robot_joints = None  # 评测时不增加关节
         self.events.push_robot = None  # 评测时不增加随机推力扰动
         self.events.base_external_force_torque = None  # 评测时不增加随机推力扰动
-
-
