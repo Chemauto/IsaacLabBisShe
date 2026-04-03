@@ -14,7 +14,7 @@
 当前约定：
 - model_use=0: idle，机器人保持静止
 - model_use=1: walk（当前 walk JIT 的 232 维观测接口）
-- model_use=2: climb（235 维观测接口）
+- model_use=2: climb（当前 climb checkpoint 的 232 维观测接口）
 - model_use=3: push_box（19 维高层观测 + 232 维低层 walk 观测）
 - model_use=4: navigation（197 维高层观测 + 232 维低层 walk 观测）
 """
@@ -192,7 +192,7 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
     ),
     2: SkillSpec(
         name="climb",
-        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "BiShePolicy", "Climbdouble.pt"),
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "BiShePolicy", "climbtest.pt"),
         obs_terms=CLIMB_LOW_LEVEL_OBS_TERMS,
         obs_dim=CLIMB_LOW_LEVEL_OBS_DIM,
         checkpoint_format="rsl_rl_checkpoint",

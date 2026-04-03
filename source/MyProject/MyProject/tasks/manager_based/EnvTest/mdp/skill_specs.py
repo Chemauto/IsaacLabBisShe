@@ -29,7 +29,6 @@ WALK_LOW_LEVEL_OBS_TERMS = (
     "height_scan",
 )
 CLIMB_LOW_LEVEL_OBS_TERMS = (
-    "base_lin_vel",
     "base_ang_vel",
     "projected_gravity",
     "velocity_commands",
@@ -49,7 +48,7 @@ PUSH_HIGH_LEVEL_OBS_TERMS = (
 )
 
 WALK_LOW_LEVEL_OBS_DIM = 232
-CLIMB_LOW_LEVEL_OBS_DIM = 235
+CLIMB_LOW_LEVEL_OBS_DIM = 232
 PUSH_HIGH_LEVEL_OBS_DIM = 19
 
 SKILL_OBSERVATION_SPECS = {
@@ -71,4 +70,3 @@ __all__ = [
     "WALK_LOW_LEVEL_OBS_DIM",
     "WALK_LOW_LEVEL_OBS_TERMS",
 ]
-

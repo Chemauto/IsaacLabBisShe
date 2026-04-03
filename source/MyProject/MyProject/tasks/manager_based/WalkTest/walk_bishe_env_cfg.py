@@ -54,7 +54,7 @@ class MySceneCfg(InteractiveSceneCfg):
         prim_path="/World/ground",
         terrain_type="generator",
         terrain_generator=ROUGH_TERRAINS_CFG,
-        max_init_terrain_level=1,
+        max_init_terrain_level=5,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -420,7 +420,6 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         """后初始化：覆盖为高台 climb 训练配置。"""
         # 使用高台地形。地形课程对应的是平台高度，而不是 pit 深度。
         self.scene.terrain.terrain_generator = HIGH_DOUBLE_PLATFORM_TERRAINS_CFG
-        self.rewards = self.pit_rewards
         # 从最低课程等级开始，逐步提高平台高度。
         self.scene.terrain.max_init_terrain_level = 0
         # 每次 reset 都放到高台前面的低地面上，避免出生就在平台顶。

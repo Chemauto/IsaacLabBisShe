@@ -258,11 +258,13 @@ class ObservationsCfg:
     统一后的 policy 向量按顺序包含：
 
     - walk / climb 低层公共项
+    - navigation / push_box 高层复用的 base_lin_vel
     - navigation 高层特有项
     - 推箱子高层特有项
 
     当前总维度为：
-    - 低层部分：235 维
+    - walk / climb 低层公共部分：232 维
+    - base_lin_vel：3 维
     - navigation 额外部分：4 维
     - 推箱子额外部分：13 维
     - 并集总计：252 维
@@ -272,9 +274,10 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        # ===== walk / climb 低层公共观测 =====
-        # 机身线速度（3）
+        # ===== navigation / push_box 高层复用观测 =====
+        # 机身线速度（3）。当前 walk / climb checkpoint 不再使用这一项。
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel)
+        # ===== walk / climb 低层公共观测 =====
         # 机身角速度（3）
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
         # 重力在机体坐标系下的投影（3）

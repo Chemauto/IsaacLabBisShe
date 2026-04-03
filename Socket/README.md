@@ -36,10 +36,10 @@ player 启动后会在终端里持续覆盖刷新一块状态面板，显示：
 
 其中：
 
-- `unified_obs_dim` 是 EnvTest 统一 `policy` 观测维度，当前为 `256`
+- `unified_obs_dim` 是 EnvTest 统一 `policy` 观测维度，当前为 `252`
 - `policy_obs_dim` 是当前 `model_use` 实际切片后的策略输入维度
-- walk / climb 对应 `235`
-- push_box 高层对应 `23`
+- walk / climb 对应 `232`
+- push_box 高层对应 `19`
 - navigation 高层对应 `197`
 
 再启动 UDP 服务：
@@ -81,8 +81,8 @@ python Socket/envtest_socket_client.py --reset 2
 - `--model_use 4` 复用同一个 `goal` 文件；player 会把世界系 `goal(x, y, z)` 转成 navigation 需要的 base-frame `pose_command(dx, dy, dz, dyaw)`
 - `--reset 1` 只会触发一次整环境重置 `env.reset()`，不会改当前 `model_use / start / goal / velocity`
 - `--reset 2` 只重置机器人本体，不重置箱子、障碍物和场景状态，也不会改当前 `model_use / start / goal / velocity`
-- EnvTest 的统一 `policy` 观测现在是四类技能的并集：walk / climb / push_box / navigation，总维度 `256`
-- player 会先读这 `256` 维统一观测，再按 `model_use` 切出当前技能真正需要的输入
+- EnvTest 的统一 `policy` 观测现在是四类技能的并集：walk / climb / push_box / navigation，总维度 `252`
+- player 会先读这 `252` 维统一观测，再按 `model_use` 切出当前技能真正需要的输入
 
 ## 支持的控制字段
 
