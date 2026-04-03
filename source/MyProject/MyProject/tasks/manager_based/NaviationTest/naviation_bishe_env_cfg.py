@@ -156,6 +156,10 @@ class ObservationsCfg:
             noise=Unoise(n_min=-0.1, n_max=0.1),
             clip=(-1.0, 1.0),
         )
+        actions = ObsTerm(
+            func=mdp.processed_last_action,
+            params={"action_name": "pre_trained_policy_action"},
+        )
 
         def __post_init__(self):
             self.enable_corruption = True
@@ -175,6 +179,10 @@ class ObservationsCfg:
             func=mdp.height_scan,
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=(-1.0, 1.0),
+        )
+        actions = ObsTerm(
+            func=mdp.processed_last_action,
+            params={"action_name": "pre_trained_policy_action"},
         )
         def __post_init__(self):
             self.history_length = 3
