@@ -46,7 +46,7 @@ class MySceneCfg(InteractiveSceneCfg):
         prim_path="/World/ground",
         terrain_type="generator",
         terrain_generator=ROUGH_TERRAINS_CFG,
-        max_init_terrain_level=5,
+        max_init_terrain_level=0,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -267,11 +267,11 @@ class RewardsCfg:
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)#防止倾倒
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)#防止关节力矩过大
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)#防止关节加速度过大
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.05)#防止速度变化过大
-    energy = RewTerm(func=walkmdp.energy, weight=-2e-5)#节能，使用最简单容易的方法
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)#防止速度变化过大
+    # energy = RewTerm(func=walkmdp.energy, weight=-2e-5)#节能，使用最简单容易的方法
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.1,
+        weight=0.03,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
@@ -287,7 +287,7 @@ class RewardsCfg:
         },
     )#减少不必要的碰撞
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)#防止倾倒
-    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-3.0)#关节受限
+    # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-3.0)#关节受限
 
     feet_slide = RewTerm(
         func=mdp.feet_slide,
@@ -300,14 +300,14 @@ class RewardsCfg:
 
     air_time_variance = RewTerm(
         func=walkmdp.air_time_variance_penalty,
-        weight=-0.1,
+        weight=-0.3,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
-    joint_deviation_hip = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.03,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_joint"])},
-    )#防止腿朝向内部
+    # joint_deviation_hip = RewTerm(
+    #     func=mdp.joint_deviation_l1,
+    #     weight=-0.03,
+    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_joint"])},
+    # )#防止腿朝向内部
 
 @configclass
 class TerminationsCfg:
