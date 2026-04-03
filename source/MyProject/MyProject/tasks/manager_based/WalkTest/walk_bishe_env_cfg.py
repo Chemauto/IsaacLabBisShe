@@ -54,7 +54,7 @@ class MySceneCfg(InteractiveSceneCfg):
         prim_path="/World/ground",
         terrain_type="generator",
         terrain_generator=ROUGH_TERRAINS_CFG,
-        max_init_terrain_level=5,
+        max_init_terrain_level=1,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
             friction_combine_mode="multiply",
@@ -96,22 +96,22 @@ class MySceneCfg(InteractiveSceneCfg):
 ##
 
 
-@configclass
-class CommandsCfg:
-    """Command specifications for the MDP."""
+# @configclass
+# class CommandsCfg:
+#     """Command specifications for the MDP."""
 
-    base_velocity = mdp.UniformVelocityCommandCfg(
-        asset_name="robot",
-        resampling_time_range=(10.0, 10.0),
-        rel_standing_envs=0.02,
-        rel_heading_envs=1.0,
-        heading_command=True,
-        heading_control_stiffness=0.5,
-        debug_vis=True,
-        ranges=mdp.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
-        ),
-    )
+#     base_velocity = mdp.UniformVelocityCommandCfg(
+#         asset_name="robot",
+#         resampling_time_range=(10.0, 10.0),
+#         rel_standing_envs=0.02,
+#         rel_heading_envs=1.0,
+#         heading_command=True,
+#         heading_control_stiffness=0.5,
+#         debug_vis=True,
+#         ranges=mdp.UniformVelocityCommandCfg.Ranges(
+#             lin_vel_x=(-1.0, 1.0), lin_vel_y=(-1.0, 1.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi)
+#         ),
+#     )
 
 
 @configclass
@@ -290,36 +290,6 @@ class EventCfg:
 class RewardsCfg:
     """Reward terms for the MDP."""
 
-    # -- task
-    track_lin_vel_xy_exp = RewTerm(
-        func=mdp.track_lin_vel_xy_exp, weight=1.5, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    )
-    track_ang_vel_z_exp = RewTerm(
-        func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
-    )
-    # -- penalties
-    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)
-    ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
-    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
-    feet_air_time = RewTerm(
-        func=mdp.feet_air_time,
-        weight=0.01,
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
-            "command_name": "base_velocity",
-            "threshold": 0.5,
-        },
-    )
-
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=0.0)
-    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=0.0)
-
-
-@configclass
-class BiShePitRewardsCfg(RewardsCfg):
-    """用于跨越坑洞技能训练的奖励项。"""
 # 原来: 0.3（略降，避免下坑时为追求前进而前扑）
     move_in_command_direction = RewTerm(
         func=walk_mdp.move_in_world_command_direction,
@@ -330,13 +300,13 @@ class BiShePitRewardsCfg(RewardsCfg):
     # 增强机身姿态稳定性，抑制下坑时俯仰角速度过大导致前翻。
     track_lin_vel_xy_exp = RewTerm(
         func=walk_mdp.track_lin_vel_xy_world_exp,
-        weight=1.5,
+        weight=1.2,
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     #速度追踪奖励略降，避免下坑时为追求速度而前扑；同时保留一定奖励，鼓励学会在坑洞中保持一定前进速度，而不是过于保守地停在坑边。
     track_ang_vel_z_exp = RewTerm(
         func=walk_mdp.track_ang_vel_z_world_exp,
-        weight=0.75,
+        weight=0.6,
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     # -- penalties
@@ -345,6 +315,10 @@ class BiShePitRewardsCfg(RewardsCfg):
         func=mdp.ang_vel_xy_l2,
         weight=-0.10,  # 原来(父类): -0.05
     )
+
+    dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
     # 原来为 0，不约束机身倾斜；这里开启后可明显减少“趴下再翻”的策略。
     flat_orientation_l2 = RewTerm(
         func=mdp.flat_orientation_l2,
@@ -400,12 +374,6 @@ class BiShePitRewardsCfg(RewardsCfg):
             "asset_cfg": SceneEntityCfg("robot", body_names=["FL_foot", "FR_foot"]),
         },
     )
-    #这两个是后来新加入的
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-4e-7)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.02)
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-0.3)
-    #这两个是后来新加入的
-
 
 
 @configclass
@@ -425,101 +393,12 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
+    terrain_levels = CurrTerm(func=walk_curriculums.terrain_levels_vel)
 
 
 ##
 # Environment configuration
 ##
-
-
-@configclass
-class VelocityGo2WalkRoughEnvCfg(ManagerBasedRLEnvCfg):
-    """Configuration for the locomotion velocity-tracking environment."""
-
-    # Scene settings
-    scene: MySceneCfg = MySceneCfg(num_envs=4096, env_spacing=2.5)
-    # Basic settings
-    observations: ObservationsCfg = ObservationsCfg()
-    actions: ActionsCfg = ActionsCfg()
-    commands: CommandsCfg = CommandsCfg()
-    # MDP settings
-    rewards: RewardsCfg = RewardsCfg()
-    terminations: TerminationsCfg = TerminationsCfg()
-    events: EventCfg = EventCfg()
-    curriculum: CurriculumCfg = CurriculumCfg()
-
-    def __post_init__(self):
-        """Post initialization."""
-        # general settings
-        self.decimation = 4
-        self.episode_length_s = 20.0
-        # simulation settings
-        self.sim.dt = 0.005
-        self.sim.render_interval = self.decimation
-        self.sim.physics_material = self.scene.terrain.physics_material
-        self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
-        # Scale down terrain for smaller robot
-        self.scene.terrain.terrain_generator.sub_terrains["boxes"].grid_height_range = (0.025, 0.1)
-        self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_range = (0.01, 0.06)
-        self.scene.terrain.terrain_generator.sub_terrains["random_rough"].noise_step = 0.01
-        # Disable push robot event for stability
-        self.events.push_robot = None
-        # Disable base COM randomization
-        self.events.base_com = None
-        # Disable undesired contacts penalty
-        self.rewards.undesired_contacts = None
-        # Flat terrain settings (commented out for rough terrain)
-        # self.scene.terrain.terrain_type = "plane"
-        # self.scene.terrain.terrain_generator = None
-        # Disable height scan (optional, for flat terrain)
-        # self.scene.height_scanner = None
-        # self.observations.policy.height_scan = None
-        # Disable terrain curriculum (optional, for flat terrain)
-        # self.curriculum.terrain_levels = None
-
-        # update sensor update periods
-        # we tick all the sensors based on the smallest update period (physics update period)
-        if self.scene.height_scanner is not None:
-            self.scene.height_scanner.update_period = self.decimation * self.sim.dt
-        if self.scene.contact_forces is not None:
-            self.scene.contact_forces.update_period = self.sim.dt
-
-        # check if terrain levels curriculum is enabled - if so, enable curriculum for terrain generator
-        # this generates terrains with increasing difficulty and is useful for training
-        if getattr(self.curriculum, "terrain_levels", None) is not None:
-            if self.scene.terrain.terrain_generator is not None:
-                self.scene.terrain.terrain_generator.curriculum = True
-        else:
-            if self.scene.terrain.terrain_generator is not None:
-                self.scene.terrain.terrain_generator.curriculum = False
-        self.terminations.base_contact.params["sensor_cfg"].body_names = "base"
-
-@configclass
-class VelocityGo2WalkRoughEnvCfg_Play(VelocityGo2WalkRoughEnvCfg):
-    """Configuration for the locomotion velocity-tracking environment."""
-    def __post_init__(self) -> None:
-        # post init of parent
-        super().__post_init__()
-
-        # make a smaller scene for play
-        self.scene.num_envs = 1
-        self.scene.env_spacing = 2.5
-        # spawn the robot randomly in the grid (instead of their terrain levels)
-        self.scene.terrain.max_init_terrain_level = None
-        # self.scene.terrain.terrain_type = "plane"
-        # self.scene.terrain.terrain_generator = None
-        # reduce the number of terrains to save memory
-        if self.scene.terrain.terrain_generator is not None:
-            self.scene.terrain.terrain_generator.num_rows = 5
-            self.scene.terrain.terrain_generator.num_cols = 5
-            self.scene.terrain.terrain_generator.curriculum = False
-
-        # disable randomization for play
-        self.observations.policy.enable_corruption = False
-        # remove random pushing event
-        self.events.base_external_force_torque = None
-        self.events.push_robot = None
 
 
 @configclass
@@ -533,7 +412,6 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
     actions: ActionsCfg = ActionsCfg()
     commands: BiSheCommandsCfg = BiSheCommandsCfg()
     rewards: RewardsCfg = RewardsCfg()
-    pit_rewards: BiShePitRewardsCfg = BiShePitRewardsCfg()
     terminations: TerminationsCfg = TerminationsCfg()
     events: EventCfg = EventCfg()
     curriculum: CurriculumCfg = CurriculumCfg()
@@ -548,7 +426,6 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         # 每次 reset 都放到高台前面的低地面上，避免出生就在平台顶。
         self.events.reset_base.func = walk_mdp.reset_root_state_before_high_platform
         self.events.reset_base.params["pose_range"] = {"x": (-3.9, -3.5), "y": (-0.15, 0.15), "yaw": (-0.1, 0.1)}
-        # 将任务收窄为纯前向 climb，减少侧移/转向绕平台。
         # 通用参数。
         self.decimation = 4
         self.episode_length_s = 12.0
@@ -558,8 +435,6 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physics_material = self.scene.terrain.physics_material
         self.sim.physx.gpu_max_rigid_patch_count = 10 * 2**15
         # 稳定性相关设置。
-        # self.events.push_robot = None
-        # self.events.base_com = None
         # 传感器更新周期。
         if self.scene.height_scanner is not None:
             self.scene.height_scanner.update_period = self.decimation * self.sim.dt
@@ -573,11 +448,6 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
             if self.scene.terrain.terrain_generator is not None:
                 self.scene.terrain.terrain_generator.curriculum = False
 
-        #   1. 只有惩罚：策略可能仍“偶尔碰一下”换取前进收益。
-        #   2. 只有终止：信号太稀疏，只知道“死了”，不知道“怎么更好”。
-        #   3. 两者一起：既有连续梯度（惩罚），又有明确红线（终止），通常更快、更稳。
-        # 使用跨越坑洞专用奖励配置
-        # self.rewards = StairClimbingRewardsCfg()
 
 
 
