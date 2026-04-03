@@ -30,20 +30,20 @@ from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 # 3. 导入你的 task / cfg（使用正确的相对路径）
 # =========================
 # 注意：现在 source 目录已经在 sys.path 中
-from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import (
-    VelocityGo2WalkRoughEnvCfg,
+from MyProject.tasks.manager_based.WalkTest.walk_bishe_env_cfg import (
+    LocomotionBiShePitEnvCfg,
 )
 
 # from MyProject.tasks.manager_based.NaviationTest.naviation_test_env_cfg import (
     # LocomotionNaviationTestEnvCfg,
 # )
-from MyProject.tasks.manager_based.WalkTest.agents.rsl_rl_ppo_cfg import Go2WalkRoughPPORunnerCfg
+from MyProject.tasks.manager_based.WalkTest.agents.rsl_rl_ppo_cfg import Go2WalkBiShePPORunnerCfg
 # from MyProject.tasks.manager_based.NaviationTest.agents.rsl_rl_ppo_cfg import NaviationTestPPORunnerCfg
 TASK_NAME = "Template-Velocity-Go2-Walk-BiShe-Pit-v0"
 #这个也得修改任务
 # TASK_NAME = "Template-Naviation-Test-Unitree-Go2-v0"
-CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/BiShePolicy/BiSheClimbPolicy.pt"
-OUTPUT_TS_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/BiSheClimbTransfer.pt"
+CHECKPOINT_PATH = "/home/robot/work/IsaacLabBisShe/ModelBackup/BiShePolicy/climbtest.pt"
+OUTPUT_TS_PATH = "/home/robot/work/IsaacLabBisShe/ModelBackup/TransPolicy/climbtesttrans.pt"
 
 # =========================
 # 4. 构建 env 和 agent cfg
@@ -51,8 +51,8 @@ OUTPUT_TS_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy
 # env_cfg = LocomotionNaviationTestEnvCfg()
 # agent_cfg = NaviationTestPPORunnerCfg()
 #修改环境和智能体配置
-env_cfg = VelocityGo2WalkRoughEnvCfg()
-agent_cfg = Go2WalkRoughPPORunnerCfg()
+env_cfg = LocomotionBiShePitEnvCfg()
+agent_cfg = Go2WalkBiShePPORunnerCfg()
 # 这里需要修改
 
 env = gym.make(TASK_NAME, cfg=env_cfg)
@@ -104,7 +104,7 @@ obs_dim = None
 # 从之前的日志中我们看到观察维度是235
 # Actor MLP: MLP((0): Linear(in_features=235, out_features=128, bias=True)...)
 
-obs_dim = 235
+obs_dim = 232
 print(f"✅ 从日志中获取观察维度: {obs_dim}")
 
 # 验证 actor 的输入维度

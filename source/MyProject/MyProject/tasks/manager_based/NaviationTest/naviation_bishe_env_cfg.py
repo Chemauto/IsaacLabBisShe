@@ -42,10 +42,10 @@ from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
 import MyProject.tasks.manager_based.NaviationTest.mdp as mdp
 from MyProject.tasks.manager_based.NaviationTest.config.terrain import TWO_PIT_TERRAINS_CFG
-from MyProject.tasks.manager_based.WalkTest.walk_rough_env_cfg import Go2WalkRoughEnvCfg
-LOW_LEVEL_ENV_CFG = Go2WalkRoughEnvCfg()
+from MyProject.tasks.manager_based.WalkTest.walk_flat_env_cfg import Go2WalkFlatEnvCfg
+LOW_LEVEL_ENV_CFG = Go2WalkFlatEnvCfg()
 _REPO_ROOT = Path(__file__).resolve().parents[6]
-LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/WalkRoughTransfer.pt")
+LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/WalkFlatHighHeightTransfer.pt")
 LOW_LEVEL_POLICY_PATH = str(_REPO_ROOT / LOW_LEVEL_POLICY_REL_PATH)
 #分层的强化学习的方式，低层的强化学习为之前已经训练好的在平地上行走的策略
 #如果需要训练好的话，这个层次的策略也应该训练好一点
@@ -144,7 +144,7 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+        # base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05),
@@ -177,6 +177,8 @@ class ObservationsCfg:
             clip=(-1.0, 1.0),
         )
         def __post_init__(self):
+            self.history_length = 3
+            self.enable_corruption = False
             self.concatenate_terms = True
 
     # privileged observations
@@ -215,7 +217,7 @@ class RewardsCfg:
     position_tracking_fine_grained = RewTerm(
         func=mdp.position_command_error_tanh,
         weight=1.0,#原来0.8
-        params={"std": 0.2, "command_name": "pose_command"},
+        params={"std": 0.15, "command_name": "pose_command"},
     )
     orientation_tracking = RewTerm(
         func=mdp.heading_command_error_abs,
@@ -232,8 +234,12 @@ class RewardsCfg:
         weight=-1.0,  # 原来: -0.0
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},  
     )
-
-
+    head_collision_penalty = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-1.0,  # 原来: -0.0
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="Head_.*"), "threshold": 1.0},  
+    )
+    
 @configclass
 class TerminationsCfg:
     """Termination terms for the MDP."""
@@ -241,7 +247,7 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     goal_reached = DoneTerm(
         func=mdp.goal_reached,
-        params={"command_name": "pose_command", "distance_threshold": 0.2, "heading_threshold": 0.15, "settle_steps": 3},
+        params={"command_name": "pose_command", "distance_threshold": 0.05, "heading_threshold": 0.1, "settle_steps": 3},
     )
     base_contact = DoneTerm(
         func=mdp.illegal_contact,
