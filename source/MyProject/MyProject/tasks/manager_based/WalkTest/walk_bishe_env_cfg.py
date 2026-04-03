@@ -121,7 +121,7 @@ class BiSheCommandsCfg:
     base_velocity = walk_mdp.UniformWorldVelocityCommandCfg(
         asset_name="robot",
         # 大于 episode_length_s=20.0，保证一个 episode 内不会中途重采样方向。
-        resampling_time_range=(21.0, 21.0),
+        resampling_time_range=(12.0, 12.0),
         rel_standing_envs=0.0,
         rel_heading_envs=0.0,
         heading_command=False,
@@ -359,11 +359,11 @@ class BiShePitRewardsCfg(RewardsCfg):
             "threshold": 0.5,
         },
     )
-    air_time_variance = RewTerm(
-        func=walk_mdp.air_time_variance_penalty,
-        weight=-0.5,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
-    )#适当的奖励函数，为了增强步态
+    # air_time_variance = RewTerm(
+    #     func=walk_mdp.air_time_variance_penalty,
+    #     weight=-0.5,
+    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
+    # )#适当的奖励函数，为了增强步态
 
     # 论文风格的“头部碰撞”塑形：对 base接触做惩罚，。髋关节和大腿部分，惩罚
     base_collision_penalty = RewTerm(
@@ -551,7 +551,7 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         # 将任务收窄为纯前向 climb，减少侧移/转向绕平台。
         # 通用参数。
         self.decimation = 4
-        self.episode_length_s = 20.0
+        self.episode_length_s = 12.0
         # 仿真参数。
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation

@@ -271,7 +271,7 @@ class RewardsCfg:
     energy = RewTerm(func=walkmdp.energy, weight=-2e-5)#节能，使用最简单容易的方法
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.15,
+        weight=0.1,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
@@ -286,13 +286,9 @@ class RewardsCfg:
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["Head_.*", ".*_hip", ".*_thigh", ".*_calf"]),
         },
     )#减少不必要的碰撞
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)#防止倾倒
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)#防止倾倒
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-3.0)#关节受限
-    joint_deviation_hip = RewTerm(
-        func=mdp.joint_deviation_l1,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_joint"])},
-    )#防止腿朝向内部
+
     feet_slide = RewTerm(
         func=mdp.feet_slide,
         weight=-0.1,
@@ -300,19 +296,18 @@ class RewardsCfg:
             "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
         },
-    )#防止滑倒
+    )#防止滑倒,这个得加，因为这样的话可以防止滑倒
+
     air_time_variance = RewTerm(
         func=walkmdp.air_time_variance_penalty,
-        weight=-1.0,
+        weight=-0.1,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
-
-    # base_height = RewTerm(
-    #     func=mdp.base_height_l2,
-    #     weight=-10.0,
-    #     params={"target_height": 0.20},
-    # )#限制高度
-
+    joint_deviation_hip = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.03,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_joint"])},
+    )#防止腿朝向内部
 
 @configclass
 class TerminationsCfg:
