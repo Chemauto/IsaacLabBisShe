@@ -128,11 +128,15 @@ class BiSheCommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=walk_mdp.UniformWorldVelocityCommandCfg.Ranges(
-            lin_vel_x=(-0.4, 1.0),
-            lin_vel_y=(-0.4, 0.4),
-            ang_vel_z=(-0.4, 0.4),
+            lin_vel_x=(-1.0, 1.0),
+            lin_vel_y=(-1.0, 1.0),
+            ang_vel_z=(-1.0, 1.0),
             heading=None,
         ),
+        forward_only_terrain_names=("double_high_platform", "high_platform"),
+        forward_only_lin_vel_x=(0.2, 1.0),
+        forward_only_lin_vel_y=(0.0, 0.0),
+        forward_only_ang_vel_z=(0.0, 0.0),
     )
 
 
