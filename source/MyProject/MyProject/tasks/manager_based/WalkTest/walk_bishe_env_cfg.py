@@ -128,9 +128,9 @@ class BiSheCommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=walk_mdp.UniformWorldVelocityCommandCfg.Ranges(
-            lin_vel_x=(-1.0, 1.0),
-            lin_vel_y=(-1.0, 1.0),
-            ang_vel_z=(-1.0, 1.0),
+            lin_vel_x=(0.2, 1.0),
+            lin_vel_y=(0.0, 0.0),
+            ang_vel_z=(0.0, 0.0),
             heading=None,
         ),
     )

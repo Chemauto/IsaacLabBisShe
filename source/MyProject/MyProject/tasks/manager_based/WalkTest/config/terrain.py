@@ -196,7 +196,7 @@ HIGH_PLATFORM_TERRAINS_PLAY_CFG = TerrainGeneratorCfg(
         "high_platform": terrain_gen.MeshBoxTerrainCfg(
             proportion=1.0,
             # 固定在较高但仍可训练/评估的高度。
-            box_height_range=(0.24, 0.24),
+            box_height_range=(0.10, 0.10),
             platform_width=3.0,
             double_box=False,
             size=(8.0, 8.0),
