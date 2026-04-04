@@ -333,11 +333,11 @@ class RewardsCfg:
             "threshold": 0.5,
         },
     )
-    # air_time_variance = RewTerm(
-    #     func=walk_mdp.air_time_variance_penalty,
-    #     weight=-0.5,
-    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
-    # )#适当的奖励函数，为了增强步态
+    air_time_variance = RewTerm(
+        func=walk_mdp.air_time_variance_penalty,
+        weight=-0.05,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
+    )#适当的奖励函数，为了增强步态
 
     # 论文风格的“头部碰撞”塑形：对 base接触做惩罚，。髋关节和大腿部分，惩罚
     base_collision_penalty = RewTerm(

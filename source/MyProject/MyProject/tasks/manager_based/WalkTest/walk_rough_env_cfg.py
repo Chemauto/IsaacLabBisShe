@@ -271,7 +271,7 @@ class RewardsCfg:
     energy = RewTerm(func=walkmdp.energy, weight=-2e-5)#节能，使用最简单容易的方法
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.03,
+        weight=0.05,
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
@@ -283,8 +283,8 @@ class RewardsCfg:
         weight=-1.0,
         params={
             "threshold": 1.0,
-            # "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["Head_.*", ".*_hip", ".*_thigh", ".*_calf"]),
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[ ".*_thigh"]),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["Head_.*", ".*_hip", ".*_thigh", ".*_calf"]),
+            # "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[ ".*_thigh"]),
 
         },
     )#减少不必要的碰撞
@@ -302,14 +302,14 @@ class RewardsCfg:
 
     air_time_variance = RewTerm(
         func=walkmdp.air_time_variance_penalty,
-        weight=-0.1,
+        weight=-0.3,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
-    # joint_deviation_hip = RewTerm(
-    #     func=mdp.joint_deviation_l1,
-    #     weight=-0.03,
-    #     params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_joint"])},
-    # )#防止腿朝向内部
+    joint_deviation_hip = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.01,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_joint"])},
+    )#防止腿朝向内部
 
 @configclass
 class TerminationsCfg:
