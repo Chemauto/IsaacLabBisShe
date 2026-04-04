@@ -42,17 +42,20 @@ from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
 import MyProject.tasks.manager_based.NaviationTest.mdp as mdp
 import MyProject.tasks.manager_based.WalkTest.mdp as walk_mdp
-from MyProject.tasks.manager_based.NaviationTest.config.terrain import (
-    Climb_TERRAINS_CFG,
-    # Climb_TERRAINS_PLAY_CFG,
+import MyProject.tasks.manager_based.NaviationTest.mdp as naviation_mdp
+from MyProject.tasks.manager_based.WalkTest.config.terrain import (
+    HIGH_DOUBLE_PLATFORM_TERRAINS_CFG,
+    NAV_HIGH_DOUBLE_PLATFORM_TERRAINS_CFG,
+    HIGH_DOUBLE_PLATFORM_TERRAINS_PLAY_CFG,
+    HIGH_PLATFORM_TERRAINS_PLAY_CFG,
 )
 from MyProject.tasks.manager_based.WalkTest.walk_bishe_env_cfg import LocomotionBiShePitEnvCfg
 
 LOW_LEVEL_ENV_CFG = LocomotionBiShePitEnvCfg()
 _REPO_ROOT = Path(__file__).resolve().parents[6]
-LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/BiSheClimbTransfer.pt")
+LOW_LEVEL_POLICY_REL_PATH = Path("ModelBackup/TransPolicy/ClimbNewTransfer.pt")
 LOW_LEVEL_POLICY_PATH = str(_REPO_ROOT / LOW_LEVEL_POLICY_REL_PATH)
-# 分层强化学习：低层使用已经训练好的高台 climb 策略。
+# 分层强化学习：低层使用 walk_bishe_env_cfg.py 对应的高台 climb 策略。
 
 
 @configclass
@@ -63,7 +66,7 @@ class MySceneCfg(InteractiveSceneCfg):
     terrain = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
-        terrain_generator=Climb_TERRAINS_CFG,
+        terrain_generator=HIGH_DOUBLE_PLATFORM_TERRAINS_CFG,
         max_init_terrain_level=0,
         collision_group=-1,
         physics_material=sim_utils.RigidBodyMaterialCfg(
@@ -115,6 +118,7 @@ class CommandsCfg:
         simple_heading=False,
         resampling_time_range=(8.0, 8.0),
         debug_vis=True,
+        # 地形 env origin 在高台顶面附近，因此这里采样的是“台上目标点”。
         ranges=mdp.UniformPose2dCommandCfg.Ranges(pos_x=(-0.45, 0.45), pos_y=(-0.45, 0.45), heading=(-0.4, 0.4)),
     )
 
@@ -136,7 +140,7 @@ class ActionsCfg:
         low_level_decimation=4,
         low_level_actions=LOW_LEVEL_ENV_CFG.actions.joint_pos,
         low_level_observations=LOW_LEVEL_ENV_CFG.observations.policy,
-        action_clip=((0.4, 1.0), (-0.15, 0.15), (-0.15, 0.15)),  # (pos_x, pos_y, heading)
+        action_clip=((-0.4, 1.0), (-0.4, 0.4), (-0.4, 0.4)),  # (pos_x, pos_y, heading)
     )
 
 @configclass
@@ -148,7 +152,7 @@ class ObservationsCfg:
         """Observations for policy group."""
 
         # observation terms (order preserved)
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+        # base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05),
@@ -159,6 +163,10 @@ class ObservationsCfg:
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             noise=Unoise(n_min=-0.1, n_max=0.1),
             clip=(-1.0, 1.0),
+        )
+        actions = ObsTerm(
+            func=mdp.processed_last_action,
+            params={"action_name": "pre_trained_policy_action"},
         )
 
         def __post_init__(self):
@@ -180,7 +188,13 @@ class ObservationsCfg:
             params={"sensor_cfg": SceneEntityCfg("height_scanner")},
             clip=(-1.0, 1.0),
         )
+        actions = ObsTerm(
+            func=mdp.processed_last_action,
+            params={"action_name": "pre_trained_policy_action"},
+        )
         def __post_init__(self):
+            self.history_length = 3
+            self.enable_corruption = False
             self.concatenate_terms = True
 
     # privileged observations
@@ -212,29 +226,34 @@ class RewardsCfg:
     termination_penalty = RewTerm(func=mdp.is_terminated, weight=-1.0)
     position_tracking = RewTerm(
         func=mdp.position_command_error_tanh,
-        weight=0.5,
+        weight=1.0,#原来0.8
         params={"std": 2.0, "command_name": "pose_command"},
     )
     position_tracking_fine_grained = RewTerm(
         func=mdp.position_command_error_tanh,
-        weight=0.5,
-        params={"std": 0.2, "command_name": "pose_command"},
+        weight=1.0,#原来0.8
+        params={"std": 0.15, "command_name": "pose_command"},
     )
     orientation_tracking = RewTerm(
         func=mdp.heading_command_error_abs,
-        weight=-0.2,
+        weight=-0.4,#原来0.3
         params={"command_name": "pose_command"},
     )
     lateral_deviation_penalty = RewTerm(
         func=mdp.lateral_deviation_penalty,
-        weight=-1.0,
+        weight=-2.0,
         params={"threshold": 0.8},
     )
-    # base_collision_penalty = RewTerm(
-    #     func=mdp.undesired_contacts,
-    #     weight=-1.0,  # 原来: -3.0（加重，抑制用腹部/机身“扑地过坑”）
-    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},  # 原来: 1.0
-    # )
+    base_collision_penalty = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-1.0,  # 原来: -0.0
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="base"), "threshold": 1.0},  
+    )
+    head_collision_penalty = RewTerm(
+        func=mdp.undesired_contacts,
+        weight=-1.0,  # 原来: -0.0
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="Head_.*"), "threshold": 1.0},  
+    )
 
 
 @configclass
@@ -252,8 +271,8 @@ class TerminationsCfg:
 class CurriculumCfg:
     """Curriculum terms for the MDP."""
 
-    terrain_levels = CurrTerm(func=mdp.terrain_levels_vel)
-
+    # terrain_levels = CurrTerm(func=walk_mdp.terrain_levels_vel)
+    terrain_levels_pose_command = CurrTerm(func=naviation_mdp.terrain_levels_pose_command)
 
 ##
 # Environment configuration
@@ -281,11 +300,14 @@ class NaviationClimbEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.actions.pre_trained_policy_action.low_level_decimation
         self.decimation = self.actions.pre_trained_policy_action.low_level_decimation * 10
         self.episode_length_s = self.commands.pose_command.resampling_time_range[1]
-        self.scene.terrain.terrain_generator = Climb_TERRAINS_CFG
+        # 使用和 walk_bishe_env_cfg.py 一致的高台地形；env origin 在台上。
+        self.scene.terrain.terrain_generator = NAV_HIGH_DOUBLE_PLATFORM_TERRAINS_CFG
         self.scene.terrain.max_init_terrain_level = 0
+        # reset 时机器人出生在台下，面朝高台。
         self.events.reset_base.func = walk_mdp.reset_root_state_before_high_platform
         self.events.reset_base.params["pose_range"] = {"x": (-3.9, -3.5), "y": (-0.15, 0.15), "yaw": (-0.1, 0.1)}
 
+        # 目标点采样在高台顶面中心附近，让高层策略学“从台下导航到台上”。
         self.commands.pose_command.ranges.pos_x = (-0.45, 0.45)
         self.commands.pose_command.ranges.pos_y = (-0.45, 0.45)
         self.commands.pose_command.ranges.heading = (-0.4, 0.4)
@@ -315,8 +337,7 @@ class NaviationClimbEnvCfg_Play(NaviationClimbEnvCfg):
         # make a single, centered terrain tile for play/debug
         self.scene.num_envs = 1
         self.scene.env_spacing = 0.0
-        self.scene.terrain.terrain_generator = Climb_TERRAINS_CFG
-        play_terrain_generator = self.scene.terrain.terrain_generator.copy()
+        play_terrain_generator = HIGH_PLATFORM_TERRAINS_PLAY_CFG.copy()
         play_terrain_generator.num_rows = 1
         play_terrain_generator.num_cols = 1
         play_terrain_generator.border_width = 2.0

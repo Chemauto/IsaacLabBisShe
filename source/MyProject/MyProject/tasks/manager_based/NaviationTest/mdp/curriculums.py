@@ -53,3 +53,33 @@ def terrain_levels_vel(
     terrain.update_env_origins(env_ids, move_up, move_down)
     # return the mean terrain level
     return torch.mean(terrain.terrain_levels.float())
+
+
+def terrain_levels_pose_command(
+    env: ManagerBasedRLEnv,
+    env_ids: Sequence[int],
+    command_name: str = "pose_command",
+    position_threshold: float = 0.30,
+    heading_threshold: float = 0.35,
+    move_down_position_threshold: float = 2.0,
+) -> torch.Tensor:
+    """Curriculum for climb-navigation tasks driven by pose-command tracking quality.
+
+    This is intended for "spawn below the platform, goal on top of the platform" tasks where
+    the command is a 2D pose target in the robot frame.
+
+    The terrain level is increased when the robot ends the episode close to the target pose on
+    the upper platform, and decreased only when it still remains far from the target.
+    Episodes with intermediate progress keep their current level.
+    """
+    terrain: TerrainImporter = env.scene.terrain
+    command = env.command_manager.get_command(command_name)
+
+    position_error = torch.norm(command[env_ids, :3], dim=1)
+    heading_error = torch.abs(command[env_ids, 3])
+
+    move_up = (position_error <= position_threshold) & (heading_error <= heading_threshold)
+    move_down = (position_error >= move_down_position_threshold) & ~move_up
+
+    terrain.update_env_origins(env_ids, move_up, move_down)
+    return torch.mean(terrain.terrain_levels.float())

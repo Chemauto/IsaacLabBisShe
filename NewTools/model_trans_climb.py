@@ -42,8 +42,8 @@ from MyProject.tasks.manager_based.WalkTest.agents.rsl_rl_ppo_cfg import Go2Walk
 TASK_NAME = "Template-Velocity-Go2-Walk-BiShe-Pit-v0"
 #这个也得修改任务
 # TASK_NAME = "Template-Naviation-Test-Unitree-Go2-v0"
-CHECKPOINT_PATH = "/home/robot/work/IsaacLabBisShe/ModelBackup/BiShePolicy/climbtest.pt"
-OUTPUT_TS_PATH = "/home/robot/work/IsaacLabBisShe/ModelBackup/TransPolicy/climbtesttrans.pt"
+CHECKPOINT_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/BiShePolicy/ClimbNew.pt"
+OUTPUT_TS_PATH = "/home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/TransPolicy/ClimbNewTransfer.pt"
 
 # =========================
 # 4. 构建 env 和 agent cfg

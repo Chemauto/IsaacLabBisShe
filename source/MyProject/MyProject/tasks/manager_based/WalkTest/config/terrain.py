@@ -196,7 +196,7 @@ HIGH_PLATFORM_TERRAINS_PLAY_CFG = TerrainGeneratorCfg(
         "high_platform": terrain_gen.MeshBoxTerrainCfg(
             proportion=1.0,
             # 固定在较高但仍可训练/评估的高度。
-            box_height_range=(0.10, 0.10),
+            box_height_range=(0.24, 0.24),
             platform_width=3.0,
             double_box=False,
             size=(8.0, 8.0),
@@ -408,5 +408,42 @@ COBBLESTONE_ROAD_CFG = terrain_gen.TerrainGeneratorCfg(
         #     border_width=1.0,
         #     holes=False,
         # ),
+    },
+)
+
+
+NAV_HIGH_DOUBLE_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    sub_terrains={
+        "double_high_platform": StackedDoublePlatformTerrainCfg(
+            proportion=0.25,
+            size=(8.0, 8.0),
+            lower_height_range=(0.06, 0.34),
+            upper_height_range=(0.15, 0.54),
+            min_height_gap=0.05,
+            lower_platform_size=(3.2, 3.2),
+            upper_platform_size=(1.6, 2.6),
+            lower_platform_offset=(0.0, 0.0),
+            upper_platform_offset=(0.0, 0.0),
+        ),
+        "high_platform": terrain_gen.MeshBoxTerrainCfg(
+            proportion=0.75,
+            # difficulty=0 时约 0.10m，difficulty=1 时约 0.26m。
+            # 适合作为 easy -> medium -> hard 的高度课程。
+            box_height_range=(0.06, 0.34),
+            # 顶面尽量做宽，减少机器人从两侧绕开的空间。
+            platform_width=3.0,
+            # 论文语义更接近“单高台”，因此不使用双层箱体。
+            double_box=False,
+            size=(8.0, 8.0),
+        ),
+
     },
 )
