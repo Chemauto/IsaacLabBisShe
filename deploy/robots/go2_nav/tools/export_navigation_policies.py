@@ -8,8 +8,8 @@ import torch.nn as nn
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 OUTPUT_DIR = REPO_ROOT / "deploy" / "robots" / "go2_nav" / "config" / "exported"
-NAVIGATION_CHECKPOINT_PATH = REPO_ROOT / "ModelBackup" / "NaviationPolicy" / "NavigationWalk.pt"
-WALK_JIT_PATH = REPO_ROOT / "ModelBackup" / "TransPolicy" / "WalkFlatHighHeightTransfer.pt"
+NAVIGATION_CHECKPOINT_PATH = REPO_ROOT / "ModelBackup" / "NaviationPolicy" / "NavigationClimb.pt"
+WALK_JIT_PATH = REPO_ROOT / "ModelBackup" / "TransPolicy" / "ClimbNewTransfer.pt"
 
 NAVIGATION_ACTIVATION = "elu"
 LOW_LEVEL_OBS_DIM = 232

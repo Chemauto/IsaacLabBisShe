@@ -8,7 +8,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 ROBOT = "go2"
 INPUT_SCENE_PATH = SCRIPT_DIR / "scene.xml"
 ROBOT_DIR = SCRIPT_DIR.parent / "unitree_robots" / ROBOT
-OUTPUT_SCENE_PATH = ROBOT_DIR / "scene_push_box2.xml"
+OUTPUT_SCENE_PATH = ROBOT_DIR / "scene_push_box.xml"
 
 
 def euler_to_quat(roll, pitch, yaw):
@@ -86,6 +86,6 @@ class TerrainGenerator:
 if __name__ == "__main__":
     generator = TerrainGenerator()
     generator.AddMovableBox()
-    generator.AddBox(position=[2.2, 0.0, 0.12], euler=[0, 0, 0.0], size=[2, 1.5, 0.24])#位置原本3,0,0.25
+    generator.AddBox(position=[2.2, 0.0, 0.22], euler=[0, 0, 0.0], size=[2, 1.5, 0.44])#位置原本3,0,0.25
     # generator.AddBox(position=[3, 0.0, 0.12], euler=[0, 0, 0.0], size=[2, 1.5, 0.24])#位置原本3,0,0.25
     generator.Save()

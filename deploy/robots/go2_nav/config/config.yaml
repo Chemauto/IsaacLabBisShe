@@ -36,7 +36,7 @@ FSM:
     navigation_success_distance_threshold: 0.10
     navigation_success_yaw_threshold: 0.10
     navigation_success_settle_steps: 3
-    default_goal_world: [1.0, 0.0, 0.0, 0.0]
+    default_goal_world: [2.8, 0.0, 0.0, 0.0]
     use_current_height_for_goal: true
     height_map_topic: rt/heightmap
     step_dt: 0.02
@@ -47,6 +47,6 @@ FSM:
     default_joint_pos: [0.1, -0.1, 0.1, -0.1, 0.8, 0.8, 1.0, 1.0, -1.5, -1.5, -1.5, -1.5]
     joint_scale: [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
     navigation_action_clip:
-      - [-1.0, 1.0]
-      - [-1.0, 1.0]
-      - [-1.0, 1.0]
+      - [-0.5, 0.5]
+      - [-0.5, 0.5]
+      - [-0.5, 0.5]
