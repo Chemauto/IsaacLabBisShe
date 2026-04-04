@@ -196,7 +196,7 @@ HIGH_PLATFORM_TERRAINS_PLAY_CFG = TerrainGeneratorCfg(
         "high_platform": terrain_gen.MeshBoxTerrainCfg(
             proportion=1.0,
             # 固定在较高但仍可训练/评估的高度。
-            box_height_range=(0.30, 0.30),
+            box_height_range=(0.10, 0.10),
             platform_width=3.0,
             double_box=False,
             size=(8.0, 8.0),
@@ -300,7 +300,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
     use_cache=False,
     sub_terrains={
         "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
-            proportion=0.2,
+            proportion=0.20,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=3.0,
@@ -308,15 +308,23 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
             holes=False,
         ),
         "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
-            proportion=0.2,
+            proportion=0.15,
             step_height_range=(0.05, 0.23),
             step_width=0.3,
             platform_width=3.0,
             border_width=1.0,
             holes=False,
         ),
+        "high_platform": terrain_gen.MeshBoxTerrainCfg(
+            proportion=0.10,
+            # 固定在较高但仍可训练/评估的高度。
+            box_height_range=(0.05, 0.20),
+            platform_width=3.0,
+            double_box=False,
+            size=(8.0, 8.0),
+        ),
         "boxes": terrain_gen.MeshRandomGridTerrainCfg(
-            proportion=0.2, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
+            proportion=0.15, grid_width=0.45, grid_height_range=(0.05, 0.2), platform_width=2.0
         ),
         "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
             proportion=0.2, noise_range=(0.02, 0.10), noise_step=0.02, border_width=0.25

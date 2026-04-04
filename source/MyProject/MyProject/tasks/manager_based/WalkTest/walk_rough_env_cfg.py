@@ -29,7 +29,7 @@ import MyProject.tasks.manager_based.WalkTest.mdp as walkmdp
 ##
 # Pre-defined configs
 ##
-from isaaclab.terrains.config.rough import ROUGH_TERRAINS_CFG  # isort: skip
+from MyProject.tasks.manager_based.WalkTest.config.terrain import ROUGH_TERRAINS_CFG
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
 
 ##
@@ -239,7 +239,7 @@ class EventCfg:
         mode="reset",
         params={
             "position_range": (1.0, 1.0),
-            "velocity_range": (-0.2, 0.2)#原本都是0,
+            "velocity_range": (-0.1, 0.1)#原本都是0,
         },
     )
 
@@ -267,8 +267,8 @@ class RewardsCfg:
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)#防止倾倒
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)#防止关节力矩过大
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)#防止关节加速度过大
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)#防止速度变化过大
-    # energy = RewTerm(func=walkmdp.energy, weight=-2e-5)#节能，使用最简单容易的方法
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.03)#防止速度变化过大
+    energy = RewTerm(func=walkmdp.energy, weight=-2e-5)#节能，使用最简单容易的方法
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
         weight=0.03,
@@ -283,11 +283,13 @@ class RewardsCfg:
         weight=-1.0,
         params={
             "threshold": 1.0,
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["Head_.*", ".*_hip", ".*_thigh", ".*_calf"]),
+            # "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["Head_.*", ".*_hip", ".*_thigh", ".*_calf"]),
+            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=[ ".*_thigh"]),
+
         },
     )#减少不必要的碰撞
     flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.0)#防止倾倒
-    # dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-3.0)#关节受限
+    dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-2.0)#关节受限
 
     feet_slide = RewTerm(
         func=mdp.feet_slide,
@@ -300,7 +302,7 @@ class RewardsCfg:
 
     air_time_variance = RewTerm(
         func=walkmdp.air_time_variance_penalty,
-        weight=-0.3,
+        weight=-0.1,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )
     # joint_deviation_hip = RewTerm(
@@ -376,13 +378,8 @@ class Go2WalkRoughEnvCfg(ManagerBasedRLEnvCfg):
         else:
             if self.scene.terrain.terrain_generator is not None:
                 self.scene.terrain.terrain_generator.curriculum = False
-        self.terminations.base_contact.params["sensor_cfg"].body_names = "base"
 
-        # 传感器的扫描频率
-        if self.scene.height_scanner is not None:
-            self.scene.height_scanner.update_period = self.decimation * self.sim.dt
-        if self.scene.contact_forces is not None:
-            self.scene.contact_forces.update_period = self.sim.dt
+
 
 
 @configclass
