@@ -19,6 +19,7 @@ policy:
   class_name: ActorCritic
   init_noise_std: 0.3
   noise_std_type: scalar
+  state_dependent_std: false
   actor_obs_normalization: false
   critic_obs_normalization: false
   actor_hidden_dims:

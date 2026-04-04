@@ -87,4 +87,5 @@ if __name__ == "__main__":
     generator = TerrainGenerator()
     generator.AddMovableBox()
     generator.AddBox(position=[3, 0.0, 0.25], euler=[0, 0, 0.0], size=[2, 1.5, 0.5])#位置原本3,0,0.25
+    # generator.AddBox(position=[3, 0.0, 0.12], euler=[0, 0, 0.0], size=[2, 1.5, 0.24])#位置原本3,0,0.25
     generator.Save()
