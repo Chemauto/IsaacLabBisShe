@@ -14,7 +14,9 @@
 ```bash
 cd /home/robot/work/IsaacLabBisShe
 python NewTools/envtest_model_use_player.py --scene_id 4
+python NewTools/envtest_model_use_player.py --scene_id 4 --enable_front_camera
 ```
+
 
 player 启动后会在终端里持续覆盖刷新一块状态面板，显示：
 
@@ -72,6 +74,7 @@ python Socket/envtest_socket_client.py --model_use 3 --goal_auto --start 1
 python Socket/envtest_socket_client.py --model_use 4 --goal 4.5 0.0 0.1 --start 1
 python Socket/envtest_socket_client.py --reset 1
 python Socket/envtest_socket_client.py --reset 2
+python Socket/envtest_socket_client.py --model_use 5 --goal 3.0 0.75 0.5 --start 1`
 ```
 
 说明：

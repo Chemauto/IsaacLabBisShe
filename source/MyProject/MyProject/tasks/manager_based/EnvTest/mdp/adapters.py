@@ -6,7 +6,10 @@ import math
 
 import torch
 
-from MyProject.tasks.manager_based.EnvTest.observation_schema import NAVIGATION_HIGH_LEVEL_OBS_DIM
+from MyProject.tasks.manager_based.EnvTest.observation_schema import (
+    NAVIGATION_HIGH_LEVEL_OBS_DIM,
+    UNIFIED_POLICY_TERM_DIMS,
+)
 
 from .observations import height_scan_without_box
 from .skill_specs import (
@@ -164,7 +167,12 @@ def align_navigation_high_level_obs_to_play(policy_obs: torch.Tensor) -> torch.T
     """Play-time clipping for navigation high-level observations."""
 
     aligned_obs = policy_obs.clone()
-    local_slices = {"height_scan": slice(10, NAVIGATION_HIGH_LEVEL_OBS_DIM)}
+    local_slices = {}
+    start = 0
+    for term_name in NAVIGATION_HIGH_LEVEL_OBS_TERMS:
+        term_dim = UNIFIED_POLICY_TERM_DIMS[term_name]
+        local_slices[term_name] = slice(start, start + term_dim)
+        start += term_dim
     aligned_obs[:, local_slices["height_scan"]] = torch.clamp(aligned_obs[:, local_slices["height_scan"]], -1.0, 1.0)
     return aligned_obs
 

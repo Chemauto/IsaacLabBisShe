@@ -12,7 +12,7 @@ WALL_CENTER_Y = 0.5 * CORRIDOR_CLEAR_WIDTH + 0.5 * WALL_THICKNESS
 
 # Static obstacle and movable box sizes.
 LOW_OBSTACLE_SIZE = (2.0, 1.5, 0.3)
-HIGH_OBSTACLE_SIZE = (2.0, 1.5, 0.5)
+HIGH_OBSTACLE_SIZE = (3.0, 1.5, 0.5)
 BOX_SIZE = (0.6, 0.8, 0.2)
 
 # Default placement anchors.

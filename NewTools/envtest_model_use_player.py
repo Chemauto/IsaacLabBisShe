@@ -17,6 +17,7 @@
 - model_use=2: climb（当前 climb checkpoint 的 232 维观测接口）
 - model_use=3: push_box（19 维高层观测 + 232 维低层 walk 观测）
 - model_use=4: navigation（197 维高层观测 + 232 维低层 walk 观测）
+- model_use=5: nav_climb（197 维高层观测 + 232 维低层 walk 观测，可翻高台但不做导航）
 """
 
 from __future__ import annotations
@@ -41,7 +42,12 @@ parser.add_argument(
 )
 parser.add_argument("--task", type=str, default="Template-EnvTest-Go2-Play-v0", help="EnvTest 任务名。")
 parser.add_argument("--scene_id", type=int, default=0, help="EnvTest 场景编号，使用 0~4。")
-parser.add_argument("--model_use", type=int, default=0, help="技能编号：0=idle，1=walk，2=climb，3=push_box，4=navigation。")
+parser.add_argument(
+    "--model_use",
+    type=int,
+    default=0,
+    help="技能编号：0=idle，1=walk，2=climb，3=push_box，4=navigation，5=nav_climb。",
+)
 parser.add_argument(
     "--model_use_file",
     type=str,
@@ -94,6 +100,18 @@ parser.add_argument(
     default=False,
     help="是否启用 EnvTest 前视相机。默认关闭以减少显存占用。",
 )
+parser.add_argument(
+    "--front_camera_image_file",
+    type=str,
+    default="/tmp/envtest_front_camera.png",
+    help="前视相机当前 RGB 帧输出路径；仅在 --enable_front_camera 时生效。",
+)
+parser.add_argument(
+    "--front_camera_save_interval",
+    type=float,
+    default=0.2,
+    help="前视相机图片写盘间隔，单位秒。",
+)
 parser.add_argument("--real-time", action="store_true", default=False, help="尽量按实时速度运行。")
 parser.add_argument("--max_steps", type=int, default=0, help="最大仿真步数；0 表示一直运行。")
 AppLauncher.add_app_launcher_args(parser)
@@ -108,6 +126,7 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import gymnasium as gym
+import imageio.v2 as imageio
 import torch
 
 import isaaclab_tasks  # noqa: F401
@@ -116,7 +135,11 @@ from isaaclab_tasks.utils import parse_env_cfg
 import MyProject.tasks  # noqa: F401
 import MyProject.tasks.manager_based.EnvTest.mdp as envtest_mdp
 from MyProject.tasks.manager_based.EnvTest.config.assets import SCENE_ASSET_SIZE_FALLBACKS
-from MyProject.tasks.manager_based.EnvTest.mdp.actions import process_navigation_actions, process_push_actions
+from MyProject.tasks.manager_based.EnvTest.mdp.actions import (
+    process_nav_climb_actions,
+    process_navigation_actions,
+    process_push_actions,
+)
 from MyProject.tasks.manager_based.EnvTest.mdp.adapters import (
     align_low_level_obs_to_play,
     align_low_level_obs_to_training,
@@ -162,6 +185,7 @@ from MyProject.tasks.manager_based.EnvTest.utils.status_panel import render_stat
 CLIMB_PLAY_DEFAULT_VELOCITY = (0.75, 0.0, 0.0)
 STATUS_PANEL_REFRESH_INTERVAL = 0.2
 NAVIGATION_HIGH_LEVEL_DECIMATION = 10
+NAVIGATION_MODEL_USES = (4, 5)
 STATUS_PLATFORM_ASSETS = (
     ("platform_1", ("left_high_obstacle", "left_low_obstacle")),
     ("platform_2", ("right_high_obstacle", "right_low_obstacle")),
@@ -192,7 +216,7 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
     ),
     2: SkillSpec(
         name="climb",
-        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "BiShePolicy", "climbtest.pt"),
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "BiShePolicy", "Climbdouble.pt"),
         obs_terms=CLIMB_LOW_LEVEL_OBS_TERMS,
         obs_dim=CLIMB_LOW_LEVEL_OBS_DIM,
         checkpoint_format="rsl_rl_checkpoint",
@@ -210,18 +234,53 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
     ),
     4: SkillSpec(
         name="navigation",
-        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "NaviationPolicy", "NavigationBishe.pt"),
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "NaviationPolicy", "NavigationWalk.pt"),
         obs_terms=NAVIGATION_HIGH_LEVEL_OBS_TERMS,
         obs_dim=NAVIGATION_HIGH_LEVEL_OBS_DIM,
         checkpoint_format="rsl_rl_checkpoint",
-        actor_hidden_dims=(128, 128),
+        actor_hidden_dims=(512, 256, 128),
+        activation="elu",
+    ),
+    5: SkillSpec(
+        name="nav_climb",
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "NaviationPolicy", "NavigationClimb.pt"),
+        obs_terms=NAVIGATION_HIGH_LEVEL_OBS_TERMS,
+        obs_dim=NAVIGATION_HIGH_LEVEL_OBS_DIM,
+        checkpoint_format="rsl_rl_checkpoint",
+        actor_hidden_dims=(512, 256, 128),
         activation="elu",
     ),
 }
 
-NAVIGATION_LOW_LEVEL_POLICY_PATH = os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkRoughTransfer.pt")
+NAVIGATION_WALK_LOW_LEVEL_POLICY_PATH = os.path.join(
+    REPO_ROOT, "ModelBackup", "TransPolicy", "WalkFlatHighHeightTransfer.pt"
+)
+NAVIGATION_CLIMB_LOW_LEVEL_POLICY_PATH = os.path.join(
+    REPO_ROOT, "ModelBackup", "TransPolicy", "ClimbNewTransfer.pt"
+)
 PUSH_LOW_LEVEL_POLICY_PATH = os.path.join(REPO_ROOT, "ModelBackup", "TransPolicy", "WalkFlatLowHeightTransfer.pt")
 PUSH_HIGH_LEVEL_DECIMATION = 10
+
+
+def save_front_camera_rgb_frame(camera, image_file: str) -> None:
+    """保存当前 front_camera 的第 0 个环境 RGB 图像。"""
+
+    if camera is None or not image_file:
+        return
+    if "rgb" not in camera.data.output:
+        return
+
+    rgb_image = camera.data.output["rgb"][0].detach().cpu().numpy()
+    if rgb_image.shape[-1] > 3:
+        rgb_image = rgb_image[..., :3]
+
+    image_dir = os.path.dirname(image_file)
+    if image_dir:
+        os.makedirs(image_dir, exist_ok=True)
+
+    temp_image_file = f"{image_file}.tmp"
+    imageio.imwrite(temp_image_file, rgb_image, format="png")
+    os.replace(temp_image_file, image_file)
 
 
 def main():
@@ -252,10 +311,14 @@ def main():
     num_envs = env.unwrapped.num_envs
     action_dim = env.unwrapped.scene["robot"].data.joint_pos.shape[1]
     expected_action_shape = (num_envs, action_dim)
+    front_camera = env.unwrapped.scene["front_camera"] if args_cli.enable_front_camera else None
 
     policies = load_policies(SKILL_REGISTRY, device)
-    navigation_low_level_policy = load_jit_policy(
-        NAVIGATION_LOW_LEVEL_POLICY_PATH, "Navigation low-level", device
+    navigation_walk_low_level_policy = load_jit_policy(
+        NAVIGATION_WALK_LOW_LEVEL_POLICY_PATH, "NavigationWalk low-level", device
+    )
+    navigation_climb_low_level_policy = load_jit_policy(
+        NAVIGATION_CLIMB_LOW_LEVEL_POLICY_PATH, "NavClimb low-level", device
     )
     push_low_level_policy = load_jit_policy(PUSH_LOW_LEVEL_POLICY_PATH, "Push low-level", device)
 
@@ -280,7 +343,6 @@ def main():
     zero_pose_command = torch.zeros((num_envs, 4), dtype=torch.float32, device=device)
     zero_push_goal_command = torch.zeros((num_envs, 4), dtype=torch.float32, device=device)
     zero_push_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
-    zero_navigation_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
     zero_actions = torch.zeros(expected_action_shape, dtype=torch.float32, device=device)
     push_last_processed_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
     push_current_processed_actions = torch.zeros((num_envs, 3), dtype=torch.float32, device=device)
@@ -296,6 +358,7 @@ def main():
     previous_start_flag = None
     previous_logged_push_goal = None
     last_status_panel_time = 0.0
+    last_front_camera_save_time = 0.0
     dt = env.unwrapped.step_dt
     step_count = 0
 
@@ -316,8 +379,10 @@ def main():
         else:
             default_root_height_e = robot.data.default_root_state[:, 2:3] - env.unwrapped.scene.env_origins[:, 2:3]
             navigation_goal_command = align_navigation_goal_height(explicit_pose_command, default_root_height_e)
-        current_goal_for_display = navigation_goal_command if current_model_use == 4 else explicit_pose_command
-        current_pose_for_display = None if current_model_use == 4 else explicit_pose_command
+        current_goal_for_display = (
+            navigation_goal_command if current_model_use in NAVIGATION_MODEL_USES else explicit_pose_command
+        )
+        current_pose_for_display = None if current_model_use in NAVIGATION_MODEL_USES else explicit_pose_command
         current_velocity_for_display = current_velocity_commands
         start_flag = resolve_start_flag(args_cli.auto_start, args_cli.start_file)
         current_policy_obs_dim = SKILL_REGISTRY[current_model_use].obs_dim if start_flag and current_model_use in SKILL_REGISTRY else None
@@ -418,7 +483,7 @@ def main():
                 robot.data.root_quat_w,
                 navigation_goal_command,
             )
-            if current_model_use == 4:
+            if current_model_use in NAVIGATION_MODEL_USES:
                 current_pose_for_display = navigation_pose_command
 
         with torch.inference_mode():
@@ -466,7 +531,7 @@ def main():
                 )
                 check_obs_dim(SKILL_REGISTRY, current_model_use, policy_obs)
                 actions = policies[current_model_use](policy_obs)
-            elif current_model_use == 4:
+            elif current_model_use in NAVIGATION_MODEL_USES:
                 if navigation_goal_command is None:
                     navigation_current_processed_actions.zero_()
                     navigation_high_level_counter = 0
@@ -475,27 +540,32 @@ def main():
                         velocity_commands=current_velocity_commands,
                         pose_command=navigation_pose_command,
                         push_goal_command=zero_push_goal_command,
-                        push_actions=zero_push_actions,
+                        push_actions=navigation_current_processed_actions,
                     )
                     unified_obs = env.unwrapped.observation_manager.compute_group("policy")
-                    navigation_high_obs = slice_observation(unified_obs, term_slices, SKILL_REGISTRY[4].obs_terms)
+                    navigation_high_obs = slice_observation(
+                        unified_obs, term_slices, SKILL_REGISTRY[current_model_use].obs_terms
+                    )
                     navigation_high_obs = align_navigation_high_level_obs_to_play(navigation_high_obs)
-                    check_obs_dim(SKILL_REGISTRY, 4, navigation_high_obs)
-                    navigation_raw_actions = policies[4](navigation_high_obs)
+                    check_obs_dim(SKILL_REGISTRY, current_model_use, navigation_high_obs)
+                    navigation_raw_actions = policies[current_model_use](navigation_high_obs)
                     if navigation_raw_actions.shape != navigation_current_processed_actions.shape:
                         raise RuntimeError(
-                            f"Navigation high-level action dim mismatch. "
+                            f"{SKILL_REGISTRY[current_model_use].name} high-level action dim mismatch. "
                             f"Expected {tuple(navigation_current_processed_actions.shape)}, "
                             f"got {tuple(navigation_raw_actions.shape)}."
                         )
-                    navigation_current_processed_actions.copy_(process_navigation_actions(navigation_raw_actions))
+                    if current_model_use == 5:
+                        navigation_current_processed_actions.copy_(process_nav_climb_actions(navigation_raw_actions))
+                    else:
+                        navigation_current_processed_actions.copy_(process_navigation_actions(navigation_raw_actions))
 
                 current_velocity_for_display = navigation_current_processed_actions
                 env.unwrapped.set_runtime_observation_buffers(
                     velocity_commands=navigation_current_processed_actions,
                     pose_command=navigation_pose_command,
                     push_goal_command=zero_push_goal_command,
-                    push_actions=zero_navigation_actions,
+                    push_actions=navigation_current_processed_actions,
                 )
                 unified_obs = env.unwrapped.observation_manager.compute_group("policy")
                 policy_obs = slice_observation(unified_obs, term_slices, WALK_LOW_LEVEL_OBS_TERMS)
@@ -509,10 +579,13 @@ def main():
                 )
                 if policy_obs.shape[1] != WALK_LOW_LEVEL_OBS_DIM:
                     raise RuntimeError(
-                        f"Navigation low-level observation dim mismatch. "
+                        f"{SKILL_REGISTRY[current_model_use].name} low-level observation dim mismatch. "
                         f"Expected {WALK_LOW_LEVEL_OBS_DIM}, got {policy_obs.shape[1]}."
                     )
-                actions = navigation_low_level_policy(policy_obs)
+                if current_model_use == 5:
+                    actions = navigation_climb_low_level_policy(policy_obs)
+                else:
+                    actions = navigation_walk_low_level_policy(policy_obs)
                 navigation_low_level_last_actions.copy_(actions)
                 navigation_high_level_counter = (navigation_high_level_counter + 1) % NAVIGATION_HIGH_LEVEL_DECIMATION
             else:
@@ -594,6 +667,14 @@ def main():
             env.step(actions)
 
         step_count += 1
+        if (
+            front_camera is not None
+            and args_cli.front_camera_image_file
+            and time.time() - last_front_camera_save_time >= args_cli.front_camera_save_interval
+        ):
+            save_front_camera_rgb_frame(front_camera, args_cli.front_camera_image_file)
+            last_front_camera_save_time = time.time()
+
         if step_count == 1:
             print(f"[INFO] EnvTest unified observation dim: {unified_obs_dim}")
             if start_flag and current_model_use in SKILL_REGISTRY:

@@ -78,7 +78,7 @@ python scripts/envtest_camera_view.py --scene_id 4 --headless --max_steps 10
 
 - `walk` 使用 `232` 维低层观测
 - `climb` 使用 `232` 维低层观测
-- `navigation` 使用 `197` 维高层观测：`base_lin_vel + projected_gravity + pose_command + height_scan`
+- `navigation` 使用 `197` 维高层观测：`projected_gravity + pose_command + height_scan + push_actions`
 - `push_box` 使用 `19` 维高层观测：`base_lin_vel + projected_gravity + box_in_robot_frame_* + goal_in_box_frame_* + push_actions`
 - `push_box` 高层输出会写回 `velocity_commands`，再调用 `232` 维 low-level walk 策略执行
 - `navigation` 高层输出会写回 `velocity_commands`，再调用 `232` 维 low-level walk 策略执行

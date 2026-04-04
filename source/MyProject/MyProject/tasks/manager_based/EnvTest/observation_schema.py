@@ -27,10 +27,10 @@ UNIFIED_POLICY_TERM_DIMS: dict[str, int] = {
 UNIFIED_POLICY_DIM = sum(UNIFIED_POLICY_TERM_DIMS.values())
 
 NAVIGATION_HIGH_LEVEL_OBS_TERMS = (
-    "base_lin_vel",
     "projected_gravity",
     "pose_command",
     "height_scan",
+    "push_actions",
 )
 NAVIGATION_HIGH_LEVEL_OBS_DIM = sum(UNIFIED_POLICY_TERM_DIMS[term_name] for term_name in NAVIGATION_HIGH_LEVEL_OBS_TERMS)
 

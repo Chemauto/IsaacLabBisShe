@@ -50,11 +50,19 @@ class NavigationActionProcessor(ClampActionProcessor):
     """Match `NavigationTest` high-level action clipping."""
 
 
+class NavClimbActionProcessor(ScaledClampActionProcessor):
+    """Match `NaviationClimbEnvCfg` high-level action clipping."""
+
+
 PUSH_BOX_ACTION_PROCESSOR = PushBoxActionProcessor(
     scale=(1.0, 1.0, 1.0),
     clip=((-0.5, 1.0), (-1.0, 1.0), (-0.5, 0.5)),
 )
 NAVIGATION_ACTION_PROCESSOR = NavigationActionProcessor(min_value=-1.0, max_value=1.0)
+NAV_CLIMB_ACTION_PROCESSOR = NavClimbActionProcessor(
+    scale=(1.0, 1.0, 1.0),
+    clip=((-0.4, 1.0), (-0.4, 0.4), (-0.4, 0.4)),
+)
 
 
 def process_push_actions(raw_actions: torch.Tensor) -> torch.Tensor:
@@ -69,15 +77,23 @@ def process_navigation_actions(raw_actions: torch.Tensor) -> torch.Tensor:
     return NAVIGATION_ACTION_PROCESSOR.process(raw_actions)
 
 
+def process_nav_climb_actions(raw_actions: torch.Tensor) -> torch.Tensor:
+    """Convenience wrapper for nav-climb action post-processing."""
+
+    return NAV_CLIMB_ACTION_PROCESSOR.process(raw_actions)
+
+
 __all__ = [
     "BaseActionProcessor",
     "ClampActionProcessor",
     "NAVIGATION_ACTION_PROCESSOR",
+    "NAV_CLIMB_ACTION_PROCESSOR",
+    "NavClimbActionProcessor",
     "NavigationActionProcessor",
     "PUSH_BOX_ACTION_PROCESSOR",
     "PushBoxActionProcessor",
     "ScaledClampActionProcessor",
+    "process_nav_climb_actions",
     "process_navigation_actions",
     "process_push_actions",
 ]
-

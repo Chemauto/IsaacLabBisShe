@@ -7,6 +7,7 @@
 - `python Socket/envtest_socket_client.py --goal 1.8 0 0.1`
 - `python Socket/envtest_socket_client.py --model_use 3 --goal 1.8 0 0.1 --start 1`
 - `python Socket/envtest_socket_client.py --model_use 3 --start 1` 会自动切回场景推箱目标
+- `python Socket/envtest_socket_client.py --model_use 5 --goal 3.0 0.75 0.5 --start 1`
 - `python Socket/envtest_socket_client.py --text "model_use=2; start=1"`
 """
 
@@ -22,7 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send EnvTest control commands through UDP socket.")
     parser.add_argument("--host", type=str, default="127.0.0.1", help="目标主机地址。")
     parser.add_argument("--port", type=int, default=5566, help="目标 UDP 端口。")
-    parser.add_argument("--model_use", type=int, choices=(0, 1, 2, 3, 4), help="技能编号：0/1/2/3/4。")
+    parser.add_argument("--model_use", type=int, choices=(0, 1, 2, 3, 4, 5), help="技能编号：0/1/2/3/4/5。")
     parser.add_argument("--velocity", type=float, nargs=3, metavar=("VX", "VY", "WZ"), help="速度指令。")
     parser.add_argument("--goal", type=float, nargs=3, metavar=("X", "Y", "Z"), help="位置指令。")
     parser.add_argument("--goal_auto", action="store_true", default=False, help="把 goal 切回自动场景目标。")
