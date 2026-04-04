@@ -7,7 +7,7 @@
 1. 直接订阅已有的 `rt/lowstate`、`rt/sportmodestate`、`rt/heightmap`
 2. 本地根据世界坐标目标点计算训练时需要的 `pose_command`
 3. 跑高层导航策略
-4. 再把高层输出的速度命令喂给 low-level rough-walk 策略
+4. 再把高层输出的速度命令喂给 low-level walk 策略
 
 ## 目录里最重要的文件
 
@@ -20,7 +20,7 @@
   - 代码结构就是“原来的 go2 控制器 + 高层导航 ONNX + 低层 walk ONNX”
 
 - `tools/export_navigation_policies.py`
-  - 把 `NavigationBishe.pt` 和 `WalkRoughTransfer.pt` 导成 ONNX
+  - 把 `NavigationWalk.pt` 和 `WalkFlatHighHeightTransfer.pt` 导成 ONNX
 
 - `tools/publish_navigation_goal.py`
   - 持续发布运行时导航目标
@@ -116,15 +116,15 @@ latch_last_goal_on_timeout: true
 
 ```yaml
 enable_navigation_success_stop: true
-navigation_success_distance_threshold: 0.20
-navigation_success_yaw_threshold: 0.15
+navigation_success_distance_threshold: 0.10
+navigation_success_yaw_threshold: 0.10
 navigation_success_settle_steps: 3
 ```
 
 含义是：
 
-- 机器人离导航目标的平面距离小于 `0.20 m`
-- 机器人 yaw 误差小于 `0.15 rad`
+- 机器人离导航目标的平面距离小于 `0.10 m`
+- 机器人 yaw 误差小于 `0.10 rad`
 - 连续满足 `3` 个控制周期
 - 就会锁住站立，不再继续导航
 

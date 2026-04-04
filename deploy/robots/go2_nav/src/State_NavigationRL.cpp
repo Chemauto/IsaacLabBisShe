@@ -77,8 +77,8 @@ State_NavigationRL::State_NavigationRL(int state_mode, std::string state_string)
     use_current_height_for_goal_ = cfg_["use_current_height_for_goal"].as<bool>(true);
     latch_last_goal_on_timeout_ = cfg_["latch_last_goal_on_timeout"].as<bool>(true);
     enable_navigation_success_stop_ = cfg_["enable_navigation_success_stop"].as<bool>(false);
-    navigation_success_distance_threshold_ = cfg_["navigation_success_distance_threshold"].as<float>(0.20f);
-    navigation_success_yaw_threshold_ = cfg_["navigation_success_yaw_threshold"].as<float>(0.15f);
+    navigation_success_distance_threshold_ = cfg_["navigation_success_distance_threshold"].as<float>(0.10f);
+    navigation_success_yaw_threshold_ = cfg_["navigation_success_yaw_threshold"].as<float>(0.10f);
     navigation_success_settle_steps_ = cfg_["navigation_success_settle_steps"].as<int>(3);
     goal_command_timeout_ms_ = cfg_["goal_command_timeout_ms"].as<int>(200);
 
@@ -291,13 +291,11 @@ std::vector<float> State_NavigationRL::build_high_level_obs(bool* has_required_o
         projected_gravity = projected_gravity_from_lowstate(*lowstate);
     }
 
-    Eigen::Vector3f base_lin_vel_b = Eigen::Vector3f::Zero();
     Eigen::Vector3f robot_pos_w = Eigen::Vector3f::Zero();
     bool sportstate_valid = false;
     if (sportstate && !sportstate->isTimeout()) {
         std::lock_guard<std::mutex> lock(sportstate->mutex_);
         for (int i = 0; i < 3; ++i) {
-            base_lin_vel_b[i] = sportstate->msg_.velocity()[i];
             robot_pos_w[i] = sportstate->msg_.position()[i];
         }
         sportstate_valid = true;
@@ -344,7 +342,6 @@ std::vector<float> State_NavigationRL::build_high_level_obs(bool* has_required_o
         pose_command[3] = wrap_to_pi(goal_world[3] - robot_yaw);
     }
 
-    obs.insert(obs.end(), base_lin_vel_b.data(), base_lin_vel_b.data() + base_lin_vel_b.size());
     obs.insert(obs.end(), projected_gravity.data(), projected_gravity.data() + projected_gravity.size());
     obs.insert(obs.end(), pose_command.begin(), pose_command.end());
 
@@ -369,6 +366,8 @@ std::vector<float> State_NavigationRL::build_high_level_obs(bool* has_required_o
     } else {
         warned_missing_height_scan_ = false;
     }
+
+    obs.insert(obs.end(), current_navigation_actions_.begin(), current_navigation_actions_.end());
 
     if (has_required_obs != nullptr) {
         *has_required_obs = sportstate_valid && height_scan_valid;

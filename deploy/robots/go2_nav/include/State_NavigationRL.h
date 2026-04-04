@@ -56,8 +56,8 @@ private:
     bool use_current_height_for_goal_ = true;
     bool latch_last_goal_on_timeout_ = true;
     bool enable_navigation_success_stop_ = false;
-    float navigation_success_distance_threshold_ = 0.20f;
-    float navigation_success_yaw_threshold_ = 0.15f;
+    float navigation_success_distance_threshold_ = 0.10f;
+    float navigation_success_yaw_threshold_ = 0.10f;
     int navigation_success_settle_steps_ = 3;
     int goal_command_timeout_ms_ = 200;
     std::array<float, kGoalCommandDim> default_goal_world_ = {4.8f, 0.0f, 0.0f, 0.0f};

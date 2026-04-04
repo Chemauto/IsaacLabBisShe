@@ -8,11 +8,9 @@ import torch.nn as nn
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 OUTPUT_DIR = REPO_ROOT / "deploy" / "robots" / "go2_nav" / "config" / "exported"
-NAVIGATION_CHECKPOINT_PATH = REPO_ROOT / "ModelBackup" / "NaviationPolicy" / "NavigationBishe.pt"
-WALK_JIT_PATH = REPO_ROOT / "ModelBackup" / "TransPolicy" / "WalkRoughTransfer.pt"
+NAVIGATION_CHECKPOINT_PATH = REPO_ROOT / "ModelBackup" / "NaviationPolicy" / "NavigationWalk.pt"
+WALK_JIT_PATH = REPO_ROOT / "ModelBackup" / "TransPolicy" / "WalkFlatHighHeightTransfer.pt"
 
-NAVIGATION_OBS_DIM = 197
-NAVIGATION_HIDDEN_DIMS = (128, 128)
 NAVIGATION_ACTIVATION = "elu"
 LOW_LEVEL_OBS_DIM = 232
 
@@ -41,12 +39,13 @@ def load_navigation_actor(device: torch.device) -> nn.Module:
     if not actor_state_dict:
         raise KeyError(f"Checkpoint does not contain actor weights: {NAVIGATION_CHECKPOINT_PATH}")
 
-    bias_layer_indices = sorted(int(key.split(".")[0]) for key in actor_state_dict if key.endswith(".bias"))
-    if not bias_layer_indices:
-        raise KeyError(f"Checkpoint actor is missing bias tensors: {NAVIGATION_CHECKPOINT_PATH}")
+    linear_layer_indices = sorted({int(key.split(".")[0]) for key in actor_state_dict if key.endswith(".weight")})
+    if not linear_layer_indices:
+        raise KeyError(f"Checkpoint actor is missing weight tensors: {NAVIGATION_CHECKPOINT_PATH}")
 
-    output_dim = actor_state_dict[f"{bias_layer_indices[-1]}.bias"].shape[0]
-    layer_dims = [NAVIGATION_OBS_DIM, *NAVIGATION_HIDDEN_DIMS, output_dim]
+    layer_dims = [actor_state_dict[f"{linear_layer_indices[0]}.weight"].shape[1]]
+    layer_dims.extend(actor_state_dict[f"{layer_index}.weight"].shape[0] for layer_index in linear_layer_indices)
+
     layers: list[nn.Module] = []
     for layer_index, (in_dim, out_dim) in enumerate(zip(layer_dims[:-1], layer_dims[1:])):
         layers.append(nn.Linear(in_dim, out_dim))
@@ -82,7 +81,7 @@ def main() -> None:
 
     export_model(
         navigation_actor,
-        torch.zeros(1, NAVIGATION_OBS_DIM, dtype=torch.float32),
+        torch.zeros(1, navigation_actor[0].in_features, dtype=torch.float32),
         OUTPUT_DIR / "navigation_high_policy.onnx",
     )
     export_model(

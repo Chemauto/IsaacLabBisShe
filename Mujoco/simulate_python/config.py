@@ -1,5 +1,5 @@
 ROBOT = "go2" # Robot name, "go2", "b2", "b2w", "h1", "go2w", "g1"
-ROBOT_SCENE = "../unitree_robots/" + ROBOT + "/scene_push_box.xml" # Robot scene
+ROBOT_SCENE = "../unitree_robots/" + ROBOT + "/scene_push_box2.xml" # Robot scene
 DOMAIN_ID = 0 # Domain id (set to 0 for RL deployment)
 INTERFACE = "lo" # Interface
 
