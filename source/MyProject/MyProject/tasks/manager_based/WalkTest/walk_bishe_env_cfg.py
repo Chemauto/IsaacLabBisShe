@@ -133,10 +133,6 @@ class BiSheCommandsCfg:
             ang_vel_z=(-1.0, 1.0),
             heading=None,
         ),
-        forward_only_terrain_names=("double_high_platform", "high_platform"),
-        forward_only_lin_vel_x=(0.2, 1.0),
-        forward_only_lin_vel_y=(0.0, 0.0),
-        forward_only_ang_vel_z=(0.0, 0.0),
     )
 
 
@@ -322,7 +318,7 @@ class RewardsCfg:
 
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.03)
     # 原来为 0，不约束机身倾斜；这里开启后可明显减少“趴下再翻”的策略。
     flat_orientation_l2 = RewTerm(
         func=mdp.flat_orientation_l2,
@@ -330,7 +326,7 @@ class RewardsCfg:
     )
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.05,  # 原来: 0.01（大幅提升，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去）
+        weight=0.03,  # 原来: 0.01（大幅提升，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去）
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
@@ -339,7 +335,7 @@ class RewardsCfg:
     )
     air_time_variance = RewTerm(
         func=walk_mdp.air_time_variance_penalty,
-        weight=-0.05,
+        weight=-0.02,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
     )#适当的奖励函数，为了增强步态
 
