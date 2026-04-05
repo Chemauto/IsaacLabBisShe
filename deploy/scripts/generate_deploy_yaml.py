@@ -266,6 +266,9 @@ def _relaxed_update_cfg(cfg_obj, data: Any) -> None:
                 continue
             current = getattr(cfg_obj, key)
 
+        if current is None and isinstance(value, Mapping):
+            continue
+
         if isinstance(value, Mapping) and current is not None and (isinstance(current, dict) or hasattr(current, "__dict__")):
             _relaxed_update_cfg(current, value)
             continue

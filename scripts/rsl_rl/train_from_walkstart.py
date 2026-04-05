@@ -11,7 +11,7 @@ from pathlib import Path
 
 DEFAULT_TASK = "Template-Velocity-Go2-Walk-BiShe-Pit-v0"
 DEFAULT_EXPERIMENT = "go2_walk_bishe"
-DEFAULT_RUN_NAME = "0404"
+DEFAULT_RUN_NAME = "0405"
 DEFAULT_LOAD_RUN = "^test$"
 DEFAULT_CHECKPOINT_NAME = "WalkRough.pt"
 DEFAULT_LOAD_WEIGHTS_ONLY = False

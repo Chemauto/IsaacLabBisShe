@@ -278,12 +278,12 @@ class EventCfg:
     )
 
     # interval
-    push_robot = EventTerm(
-        func=mdp.push_by_setting_velocity,
-        mode="interval",
-        interval_range_s=(8.0, 10.0),
-        params={"velocity_range": {"x": (-0.2, 0.2), "y": (-0.1, 0.1)}},
-    )
+    # push_robot = EventTerm(
+    #     func=mdp.push_by_setting_velocity,
+    #     mode="interval",
+    #     interval_range_s=(8.0, 10.0),
+    #     params={"velocity_range": {"x": (-0.2, 0.2), "y": (-0.1, 0.1)}},
+    # )
 
 
 @configclass
@@ -300,13 +300,13 @@ class RewardsCfg:
     # 增强机身姿态稳定性，抑制下坑时俯仰角速度过大导致前翻。
     track_lin_vel_xy_exp = RewTerm(
         func=walk_mdp.track_lin_vel_xy_world_exp,
-        weight=1.2,
+        weight=1.0,
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     #速度追踪奖励略降，避免下坑时为追求速度而前扑；同时保留一定奖励，鼓励学会在坑洞中保持一定前进速度，而不是过于保守地停在坑边。
     track_ang_vel_z_exp = RewTerm(
         func=walk_mdp.track_ang_vel_z_world_exp,
-        weight=0.6,
+        weight=0.5,
         params={"command_name": "base_velocity", "std": math.sqrt(0.25)},
     )
     # -- penalties
@@ -318,7 +318,7 @@ class RewardsCfg:
 
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
-    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.03)
+    action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.05)#原本0.01
     # 原来为 0，不约束机身倾斜；这里开启后可明显减少“趴下再翻”的策略。
     flat_orientation_l2 = RewTerm(
         func=mdp.flat_orientation_l2,
@@ -326,18 +326,18 @@ class RewardsCfg:
     )
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.03,  # 原来: 0.01（大幅提升，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去）
+        weight=0.01,  # 原来: 0.01（大幅提升，鼓励用抬脚跨越坑沿，而不是用机身/头部顶过去）
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
             "threshold": 0.5,
         },
     )
-    air_time_variance = RewTerm(
-        func=walk_mdp.air_time_variance_penalty,
-        weight=-0.02,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
-    )#适当的奖励函数，为了增强步态
+    # air_time_variance = RewTerm(
+    #     func=walk_mdp.air_time_variance_penalty,
+    #     weight=-0.02,
+    #     params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
+    # )#适当的奖励函数，为了增强步态
 
     # 论文风格的“头部碰撞”塑形：对 base接触做惩罚，。髋关节和大腿部分，惩罚
     base_collision_penalty = RewTerm(
@@ -359,7 +359,7 @@ class RewardsCfg:
     # 防止后面两脚之间距离过近（避免腿部交叉或碰撞）
     Behind_feet_too_near = RewTerm(
         func=walk_mdp.feet_too_near,
-        weight=-0.5,
+        weight=-1.0,
         params={
             "threshold": 0.20,
             "asset_cfg": SceneEntityCfg("robot", body_names=["RL_foot", "RR_foot"]),
@@ -368,7 +368,7 @@ class RewardsCfg:
     # 防止前脚之间距离过近（避免腿部交叉或碰撞），这两个奖励函数是为了张开脚
     Front_feet_too_near = RewTerm(
         func=walk_mdp.feet_too_near,
-        weight=-0.5,
+        weight=-0.1,
         params={
             "threshold": 0.20,
             "asset_cfg": SceneEntityCfg("robot", body_names=["FL_foot", "FR_foot"]),
@@ -427,7 +427,7 @@ class LocomotionBiShePitEnvCfg(ManagerBasedRLEnvCfg):
         self.events.reset_base.params["pose_range"] = {"x": (-3.9, -3.5), "y": (-0.15, 0.15), "yaw": (-0.1, 0.1)}
         # 通用参数。
         self.decimation = 4
-        self.episode_length_s = 12.0
+        self.episode_length_s = 15.0
         # 仿真参数。
         self.sim.dt = 0.005
         self.sim.render_interval = self.decimation
