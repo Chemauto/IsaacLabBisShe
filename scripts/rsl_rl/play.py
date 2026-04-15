@@ -8,6 +8,9 @@
 """Launch Isaac Sim Simulator first."""
 
 import argparse
+import csv
+import json
+from datetime import datetime
 import sys
 
 from isaaclab.app import AppLauncher
@@ -34,6 +37,18 @@ parser.add_argument(
     help="Use the pre-trained checkpoint from Nucleus.",
 )
 parser.add_argument("--real-time", action="store_true", default=False, help="Run in real-time, if possible.")
+parser.add_argument(
+    "--eval_episodes",
+    type=int,
+    default=0,
+    help="If > 0, run evaluation until this many completed episodes are collected and save metrics to disk.",
+)
+parser.add_argument(
+    "--eval_output_dir",
+    type=str,
+    default=None,
+    help="Optional directory to store evaluation outputs. Defaults to <checkpoint_dir>/eval/<timestamp>.",
+)
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -77,6 +92,89 @@ from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import MyProject.tasks  # noqa: F401
+
+
+def _to_float_if_scalar(value) -> float | None:
+    """Convert a scalar-like value into a float."""
+    if isinstance(value, (int, float, bool)):
+        return float(value)
+    if isinstance(value, torch.Tensor) and value.numel() == 1:
+        return float(value.item())
+    return None
+
+
+def _extract_eval_scalars(log_data: dict) -> dict[str, float]:
+    """Keep only scalar values from Isaac Lab episode logs."""
+    scalars = {}
+    for key, value in log_data.items():
+        scalar_value = _to_float_if_scalar(value)
+        if scalar_value is not None:
+            scalars[key] = scalar_value
+    return scalars
+
+
+def _summarize_eval_records(records: list[dict], requested_episodes: int) -> dict[str, object]:
+    """Compute weighted means over reset events."""
+    total_completed = 0
+    weighted_sums: dict[str, float] = {}
+
+    for record in records:
+        remaining = requested_episodes - total_completed if requested_episodes > 0 else record["num_resets"]
+        if remaining <= 0:
+            break
+        weight = min(int(record["num_resets"]), remaining)
+        total_completed += weight
+        for key, value in record.items():
+            if key in {"step", "num_resets"}:
+                continue
+            weighted_sums[key] = weighted_sums.get(key, 0.0) + float(value) * weight
+
+    metric_means = {}
+    if total_completed > 0:
+        metric_means = {key: value / total_completed for key, value in weighted_sums.items()}
+
+    return {
+        "requested_episodes": requested_episodes,
+        "completed_episodes": total_completed,
+        "num_reset_events": len(records),
+        "metric_means": metric_means,
+    }
+
+
+def _write_eval_outputs(
+    output_dir: str,
+    records: list[dict],
+    summary: dict[str, object],
+    task_name: str,
+    checkpoint_path: str,
+    num_envs: int,
+) -> None:
+    """Write evaluation files to disk."""
+    os.makedirs(output_dir, exist_ok=True)
+
+    summary_payload = {
+        "task": task_name,
+        "checkpoint": checkpoint_path,
+        "num_envs": num_envs,
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        **summary,
+    }
+
+    summary_path = os.path.join(output_dir, "summary.json")
+    with open(summary_path, "w", encoding="utf-8") as file:
+        json.dump(summary_payload, file, indent=2, ensure_ascii=False)
+
+    records_path = os.path.join(output_dir, "episodes.csv")
+    fieldnames = ["step", "num_resets"]
+    extra_fields = sorted({key for record in records for key in record.keys()} - set(fieldnames))
+    fieldnames.extend(extra_fields)
+    with open(records_path, "w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(records)
+
+    print(f"[INFO] Evaluation summary written to: {summary_path}")
+    print(f"[INFO] Evaluation episode logs written to: {records_path}")
 
 
 @hydra_task_config(args_cli.task, args_cli.agent)
@@ -172,10 +270,20 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     export_policy_as_onnx(policy_nn, normalizer=normalizer, path=export_model_dir, filename="policy.onnx")
 
     dt = env.unwrapped.step_dt
+    eval_mode = args_cli.eval_episodes > 0
+    eval_records: list[dict] = []
+    eval_output_dir = None
+    if eval_mode:
+        eval_output_dir = args_cli.eval_output_dir or os.path.join(
+            log_dir, "eval", datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        )
+        print(f"[INFO] Evaluation mode enabled for {args_cli.eval_episodes} completed episodes.")
+        print(f"[INFO] Evaluation outputs will be saved to: {eval_output_dir}")
 
     # reset environment
     obs = env.get_observations()
     timestep = 0
+    completed_eval_episodes = 0
     # simulate environment
     while simulation_app.is_running():
         start_time = time.time()
@@ -184,19 +292,60 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             # agent stepping
             actions = policy(obs)
             # env stepping
-            obs, _, dones, _ = env.step(actions)
+            obs, _, dones, infos = env.step(actions)
             # reset recurrent states for episodes that have terminated
             policy_nn.reset(dones)
+        if eval_mode:
+            done_count = int((dones > 0).sum().item())
+            log_data = infos.get("log")
+            if done_count > 0:
+                record = {"step": timestep, "num_resets": done_count}
+                if isinstance(log_data, dict):
+                    record.update(_extract_eval_scalars(log_data))
+                else:
+                    print("[WARNING] Completed episodes were detected, but Isaac Lab did not return extras['log'].")
+                eval_records.append(record)
+                completed_eval_episodes += done_count
+                print(
+                    f"[INFO] Evaluation progress: {completed_eval_episodes}/{args_cli.eval_episodes} completed episodes."
+                )
+
+        timestep += 1
         if args_cli.video:
-            timestep += 1
             # Exit the play loop after recording one video
-            if timestep == args_cli.video_length:
+            if timestep == args_cli.video_length and not eval_mode:
                 break
+
+        if eval_mode and completed_eval_episodes >= args_cli.eval_episodes:
+            break
 
         # time delay for real-time evaluation
         sleep_time = dt - (time.time() - start_time)
         if args_cli.real_time and sleep_time > 0:
             time.sleep(sleep_time)
+
+    if eval_mode:
+        summary = _summarize_eval_records(eval_records, args_cli.eval_episodes)
+        _write_eval_outputs(
+            output_dir=eval_output_dir,
+            records=eval_records,
+            summary=summary,
+            task_name=args_cli.task,
+            checkpoint_path=resume_path,
+            num_envs=env.unwrapped.num_envs,
+        )
+
+        metric_means = summary["metric_means"]
+        tracked_keys = [
+            "Metrics/base_velocity/error_vel_xy",
+            "Metrics/base_velocity/error_vel_yaw",
+            "Episode_Termination/time_out",
+            "Episode_Termination/base_contact",
+        ]
+        print("[INFO] Evaluation metrics summary:")
+        for key in tracked_keys:
+            if key in metric_means:
+                print(f"  - {key}: {metric_means[key]:.6f}")
 
     # close the simulator
     env.close()
