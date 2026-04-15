@@ -49,6 +49,12 @@ parser.add_argument(
     default=None,
     help="Optional directory to store evaluation outputs. Defaults to <checkpoint_dir>/eval/<timestamp>.",
 )
+parser.add_argument(
+    "--eval_tensorboard",
+    action="store_true",
+    default=False,
+    help="Write evaluation metrics to TensorBoard under <eval_output_dir>/tensorboard.",
+)
 # append RSL-RL cli arguments
 cli_args.add_rsl_rl_args(parser)
 # append AppLauncher cli args
@@ -177,6 +183,15 @@ def _write_eval_outputs(
     print(f"[INFO] Evaluation episode logs written to: {records_path}")
 
 
+def _write_eval_tensorboard_scalars(writer, record: dict[str, float], completed_episodes: int) -> None:
+    """Write one reset event into TensorBoard."""
+    writer.add_scalar("eval/num_resets", record["num_resets"], completed_episodes)
+    for key, value in record.items():
+        if key in {"step", "num_resets"}:
+            continue
+        writer.add_scalar(f"eval/{key}", value, completed_episodes)
+
+
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
     """Play with RSL-RL agent."""
@@ -273,12 +288,19 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     eval_mode = args_cli.eval_episodes > 0
     eval_records: list[dict] = []
     eval_output_dir = None
+    eval_tb_writer = None
     if eval_mode:
         eval_output_dir = args_cli.eval_output_dir or os.path.join(
             log_dir, "eval", datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         )
         print(f"[INFO] Evaluation mode enabled for {args_cli.eval_episodes} completed episodes.")
         print(f"[INFO] Evaluation outputs will be saved to: {eval_output_dir}")
+        if args_cli.eval_tensorboard:
+            from torch.utils.tensorboard import SummaryWriter
+
+            tb_dir = os.path.join(eval_output_dir, "tensorboard")
+            eval_tb_writer = SummaryWriter(log_dir=tb_dir)
+            print(f"[INFO] Evaluation TensorBoard logs will be written to: {tb_dir}")
 
     # reset environment
     obs = env.get_observations()
@@ -306,6 +328,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     print("[WARNING] Completed episodes were detected, but Isaac Lab did not return extras['log'].")
                 eval_records.append(record)
                 completed_eval_episodes += done_count
+                if eval_tb_writer is not None:
+                    _write_eval_tensorboard_scalars(eval_tb_writer, record, completed_eval_episodes)
                 print(
                     f"[INFO] Evaluation progress: {completed_eval_episodes}/{args_cli.eval_episodes} completed episodes."
                 )
@@ -336,6 +360,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         )
 
         metric_means = summary["metric_means"]
+        if eval_tb_writer is not None:
+            for key, value in metric_means.items():
+                eval_tb_writer.add_scalar(f"eval_summary/{key}", value, summary["completed_episodes"])
+            eval_tb_writer.add_scalar(
+                "eval_summary/completed_episodes", summary["completed_episodes"], summary["completed_episodes"]
+            )
+            eval_tb_writer.flush()
+            eval_tb_writer.close()
+
         tracked_keys = [
             "Metrics/base_velocity/error_vel_xy",
             "Metrics/base_velocity/error_vel_yaw",
