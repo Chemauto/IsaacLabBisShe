@@ -70,3 +70,6 @@ tests/
 # Docker history
 .isaac-lab-docker-history
 .isaaclab_tmp/
+
+data/
+docs/

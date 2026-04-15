@@ -13,6 +13,14 @@
 - `3`：左低台阶，右高台阶
 - `4`：左右都是高台阶，中间有可推动箱子
 
+另外也支持 HM3D 查看模式：
+
+- `hm3d_scene_name`：传入后直接加载 `data/hm3d_usd/<name>/<name>.usd`
+- `hm3d_robot_pos`：HM3D 模式下机器人初始位置
+- `hm3d_robot_yaw`：HM3D 模式下机器人初始偏航
+
+只要设置了 `hm3d_scene_name`，`EnvTest` 就会旁路当前走廊障碍物，只保留机器人、传感器和 HM3D 场景。
+
 ## 目录职责
 
 核心文件分工如下：
@@ -44,9 +52,19 @@ cd /home/xcj/work/IsaacLab/IsaacLabBisShe
 python scripts/zero_agent.py --task Template-EnvTest-Go2-Play-v0 --scene_id 4
 ```
 
+直接查看一个 HM3D 场景：
+
+```bash
+python scripts/zero_agent.py \
+  --task Template-EnvTest-Go2-Play-v0 \
+  --hm3d_scene_name TEEsavR23oF \
+  --hm3d_robot_pos 0.0 0.0 0.35 \
+  --hm3d_robot_yaw 0.0
+```
+
 ## 相机图像
 
-前视相机 `front_camera` 默认会一起初始化，可通过 `env.unwrapped.scene["front_camera"]` 读取 `rgb` 和 `distance_to_image_plane`。
+前视相机 `front_camera` 在启用时会一起初始化，默认提供轻量 RGB 预览，可通过 `env.unwrapped.scene["front_camera"]` 读取 `rgb`。
 
 ```bash
 python scripts/envtest_camera_view.py --scene_id 4
@@ -96,6 +114,15 @@ player 脚本：
 
 ```bash
 python NewTools/envtest_model_use_player.py --scene_id 4
+```
+
+HM3D 模式示例：
+
+```bash
+python NewTools/envtest_model_use_player.py \
+  --hm3d_scene_name TEEsavR23oF \
+  --hm3d_robot_pos 0.0 0.0 0.35 \
+  --hm3d_robot_yaw 0.0
 ```
 
 约定如下：

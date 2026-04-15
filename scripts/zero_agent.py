@@ -20,6 +20,16 @@ parser.add_argument("--num_envs", type=int, default=None, help="Number of enviro
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 # EnvTest 专用参数：传 0~4，对应 case1~case5。
 parser.add_argument("--scene_id", type=int, default=None, help="Scene id for EnvTest play mode. Valid values: 0-4.")
+parser.add_argument("--hm3d_scene_name", type=str, default=None, help="Optional HM3D scene name for EnvTest.")
+parser.add_argument(
+    "--hm3d_robot_pos",
+    type=float,
+    nargs=3,
+    default=None,
+    metavar=("X", "Y", "Z"),
+    help="Optional HM3D robot spawn position for EnvTest.",
+)
+parser.add_argument("--hm3d_robot_yaw", type=float, default=None, help="Optional HM3D robot spawn yaw for EnvTest.")
 # append AppLauncher cli args
 AppLauncher.add_app_launcher_args(parser)
 # parse the arguments
@@ -54,6 +64,12 @@ def main():
         if hasattr(env_cfg, "scene_id"):
             # 这里直接使用 EnvTest 内部的 0~4 场景编号。
             env_cfg.scene_id = args_cli.scene_id
+    if args_cli.hm3d_scene_name is not None and hasattr(env_cfg, "hm3d_scene_name"):
+        env_cfg.hm3d_scene_name = args_cli.hm3d_scene_name
+    if args_cli.hm3d_robot_pos is not None and hasattr(env_cfg, "hm3d_robot_pos"):
+        env_cfg.hm3d_robot_pos = tuple(args_cli.hm3d_robot_pos)
+    if args_cli.hm3d_robot_yaw is not None and hasattr(env_cfg, "hm3d_robot_yaw"):
+        env_cfg.hm3d_robot_yaw = args_cli.hm3d_robot_yaw
     # create environment
     env = gym.make(args_cli.task, cfg=env_cfg)
 

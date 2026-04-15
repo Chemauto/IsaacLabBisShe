@@ -42,6 +42,16 @@ parser.add_argument(
 )
 parser.add_argument("--task", type=str, default="Template-EnvTest-Go2-Play-v0", help="EnvTest 任务名。")
 parser.add_argument("--scene_id", type=int, default=0, help="EnvTest 场景编号，使用 0~4。")
+parser.add_argument("--hm3d_scene_name", type=str, default=None, help="可选 HM3D 场景名；传入后直接加载对应 USD。")
+parser.add_argument(
+    "--hm3d_robot_pos",
+    type=float,
+    nargs=3,
+    default=None,
+    metavar=("X", "Y", "Z"),
+    help="HM3D 模式下机器人初始位置。",
+)
+parser.add_argument("--hm3d_robot_yaw", type=float, default=None, help="HM3D 模式下机器人初始 yaw。")
 parser.add_argument(
     "--model_use",
     type=int,
@@ -301,6 +311,12 @@ def main():
     )
     if hasattr(env_cfg, "scene_id"):
         env_cfg.scene_id = args_cli.scene_id
+    if args_cli.hm3d_scene_name is not None and hasattr(env_cfg, "hm3d_scene_name"):
+        env_cfg.hm3d_scene_name = args_cli.hm3d_scene_name
+    if args_cli.hm3d_robot_pos is not None and hasattr(env_cfg, "hm3d_robot_pos"):
+        env_cfg.hm3d_robot_pos = tuple(args_cli.hm3d_robot_pos)
+    if args_cli.hm3d_robot_yaw is not None and hasattr(env_cfg, "hm3d_robot_yaw"):
+        env_cfg.hm3d_robot_yaw = args_cli.hm3d_robot_yaw
     if not args_cli.enable_front_camera and hasattr(env_cfg.scene, "front_camera"):
         env_cfg.scene.front_camera = None
 

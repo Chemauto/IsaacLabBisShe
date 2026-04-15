@@ -12,6 +12,9 @@
 
 from __future__ import annotations
 
+import math
+from pathlib import Path
+
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedEnvCfg
@@ -40,6 +43,9 @@ from MyProject.tasks.manager_based.EnvTest.config.assets import (
 from MyProject.tasks.manager_based.EnvTest.config.layout import OPTIONAL_SCENE_ASSET_NAMES, get_scene_layout
 
 from isaaclab_assets.robots.unitree import UNITREE_GO2_CFG  # isort: skip
+
+REPO_ROOT = Path(__file__).resolve().parents[6]
+HM3D_USD_ROOT = REPO_ROOT / "data" / "hm3d_usd"
 
 
 def _box_cfg(
@@ -92,7 +98,70 @@ def _apply_scene_layout(scene_cfg: "MySceneCfg", scene_id: int):
             setattr(scene_cfg, asset_name, None)
 
 
-def build_scene_cfg(num_envs: int, env_spacing: float, scene_id: int) -> "MySceneCfg":
+def _yaw_to_quat(yaw: float) -> tuple[float, float, float, float]:
+    """Convert a world-frame yaw angle into a quaternion."""
+
+    half_yaw = 0.5 * yaw
+    return (math.cos(half_yaw), 0.0, 0.0, math.sin(half_yaw))
+
+
+def _resolve_hm3d_usd_path(hm3d_scene_name: str) -> Path:
+    """Resolve one HM3D scene name into its converted USD path."""
+
+    return HM3D_USD_ROOT / hm3d_scene_name / f"{hm3d_scene_name}.usd"
+
+
+def _apply_hm3d_scene(
+    scene_cfg: "MySceneCfg",
+    hm3d_scene_name: str,
+    hm3d_robot_pos: tuple[float, float, float],
+    hm3d_robot_yaw: float,
+):
+    """Replace the corridor assets with a converted HM3D scene."""
+
+    usd_path = _resolve_hm3d_usd_path(hm3d_scene_name)
+    if not usd_path.is_file():
+        raise FileNotFoundError(f"HM3D scene USD does not exist: {usd_path}")
+
+    scene_cfg.hm3d_scene = AssetBaseCfg(
+        prim_path="/World/HM3DScene",
+        spawn=sim_utils.UsdFileCfg(usd_path=str(usd_path)),
+    )
+
+    # HM3D mode should not mix the old corridor obstacles with the imported indoor scene.
+    scene_cfg.left_wall = None
+    scene_cfg.right_wall = None
+    scene_cfg.left_low_obstacle = None
+    scene_cfg.right_low_obstacle = None
+    scene_cfg.left_high_obstacle = None
+    scene_cfg.right_high_obstacle = None
+    scene_cfg.support_box = None
+
+    if scene_cfg.height_scanner is not None:
+        # Isaac Lab RayCaster currently supports only one mesh prim path.
+        scene_cfg.height_scanner.mesh_prim_paths = ["/World/HM3DScene"]
+
+    robot_init_state = scene_cfg.robot.init_state
+    scene_cfg.robot = scene_cfg.robot.replace(
+        init_state=ArticulationCfg.InitialStateCfg(
+            pos=hm3d_robot_pos,
+            rot=_yaw_to_quat(hm3d_robot_yaw),
+            lin_vel=robot_init_state.lin_vel,
+            ang_vel=robot_init_state.ang_vel,
+            joint_pos=robot_init_state.joint_pos,
+            joint_vel=robot_init_state.joint_vel,
+        )
+    )
+
+
+def build_scene_cfg(
+    num_envs: int,
+    env_spacing: float,
+    scene_id: int,
+    hm3d_scene_name: str | None = None,
+    hm3d_robot_pos: tuple[float, float, float] = (0.0, 0.0, 0.35),
+    hm3d_robot_yaw: float = 0.0,
+) -> "MySceneCfg":
     """根据场景编号重新创建一份完整的 scene 配置。"""
 
     scene_cfg = MySceneCfg(num_envs=num_envs, env_spacing=env_spacing)
@@ -100,7 +169,10 @@ def build_scene_cfg(num_envs: int, env_spacing: float, scene_id: int) -> "MyScen
     # 对这种调试/演示环境，优先保证资产生命周期稳定，关闭 replicate_physics。
     scene_cfg.replicate_physics = False
     scene_cfg.clone_in_fabric = False
-    _apply_scene_layout(scene_cfg, scene_id)
+    if hm3d_scene_name:
+        _apply_hm3d_scene(scene_cfg, hm3d_scene_name, hm3d_robot_pos, hm3d_robot_yaw)
+    else:
+        _apply_scene_layout(scene_cfg, scene_id)
     return scene_cfg
 
 
@@ -130,6 +202,7 @@ class MySceneCfg(InteractiveSceneCfg):
         ),
         debug_vis=False,
     )
+    hm3d_scene: AssetBaseCfg | None = None
 
     # 两侧墙壁：围出中间约 3m 宽的走廊。
     left_wall = _box_cfg(
@@ -204,12 +277,11 @@ class MySceneCfg(InteractiveSceneCfg):
     # 后续可以直接通过 env.unwrapped.scene["front_camera"] 读取图像。
     front_camera = CameraCfg(
         prim_path="{ENV_REGEX_NS}/Robot/base/front_camera",
-        # 设为 0.0 表示每个仿真步都更新，取图最直接。
-        update_period=0.0,
-        height=480,
-        width=640,
-        # 同时提供 RGB 和深度图，后面做导航判断时会更方便。
-        data_types=["rgb", "distance_to_image_plane"],
+        # 轻量预览模式：player 只消费 RGB，因此默认降低分辨率并避免每步刷新。
+        update_period=0.2,
+        height=240,
+        width=320,
+        data_types=["rgb"],
         spawn=sim_utils.PinholeCameraCfg(
             focal_length=18.0,
             focus_distance=400.0,
@@ -364,13 +436,23 @@ class LocomotionEnvTestEnvCfg(ManagerBasedEnvCfg):
     scene: MySceneCfg = MySceneCfg(num_envs=1, env_spacing=8.0)
     # 0~4 对应 5 个固定场景。
     scene_id: int = 3
+    hm3d_scene_name: str | None = None
+    hm3d_robot_pos: tuple[float, float, float] = (0.0, 0.0, 0.35)
+    hm3d_robot_yaw: float = 0.0
     actions: ActionsCfg = ActionsCfg()
     observations: ObservationsCfg = ObservationsCfg()
     events: EventCfg = EventCfg()
 
     def __post_init__(self):
         # 根据 scene_id 直接重建一份 scene，只保留当前 case 需要的障碍物。
-        self.scene = build_scene_cfg(self.scene.num_envs, self.scene.env_spacing, self.scene_id)
+        self.scene = build_scene_cfg(
+            self.scene.num_envs,
+            self.scene.env_spacing,
+            self.scene_id,
+            hm3d_scene_name=self.hm3d_scene_name,
+            hm3d_robot_pos=self.hm3d_robot_pos,
+            hm3d_robot_yaw=self.hm3d_robot_yaw,
+        )
         # 这组参数只需要保证场景稳定运行，不追求训练环境那种大吞吐。
         self.sim.dt = 0.005
         self.sim.render_interval = 4
