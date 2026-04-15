@@ -143,7 +143,8 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))  # 3
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
+        # base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))  # 3
         projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))  # 3
         box_in_robot_frame_pos = ObsTerm(
             func=mdp.box_in_robot_frame_pos,
@@ -171,6 +172,33 @@ class ObservationsCfg:
 
     policy: PolicyCfg = PolicyCfg()
 
+    @configclass
+    class CriticCfg(ObsGroup):
+        """Observations for policy group."""
+
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel)
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel)  # 3
+        projected_gravity = ObsTerm(func=mdp.projected_gravity)  # 3
+        box_in_robot_frame_pos = ObsTerm(
+            func=mdp.box_in_robot_frame_pos,
+        )  # 3
+        box_in_robot_frame_yaw = ObsTerm(
+            func=mdp.box_in_robot_frame_yaw,
+        )  # 2
+        goal_in_box_frame_pos = ObsTerm(
+            func=mdp.goal_in_box_frame_pos,
+            params={"command_name": "box_goal"},
+        )  # 3
+        goal_in_box_frame_yaw = ObsTerm(
+            func=mdp.goal_in_box_frame_yaw,
+            params={"command_name": "box_goal"},
+        )  # 2
+        actions = ObsTerm(func=mdp.processed_last_action, params={"action_name": "pre_trained_policy_action"})  # 3
+        def __post_init__(self):
+            self.enable_corruption = False
+            self.concatenate_terms = True
+    # observation groups
+    critic: CriticCfg = CriticCfg()
 
 @configclass
 class EventCfg:
@@ -309,8 +337,8 @@ class RewardsCfg:
         weight=15.0,
         params={
             "command_name": "box_goal",
-            "distance_threshold": 0.08,#0.06
-            "yaw_threshold": 0.10,#0.15
+            "distance_threshold": 0.08,
+            "yaw_threshold": 0.10,
             # "box_speed_threshold": 0.20,#训练是否打开
             # "robot_speed_threshold": 0.20,#
         },
@@ -350,7 +378,7 @@ class TerminationsCfg:
             "yaw_threshold": 0.10,
             # "box_speed_threshold": 0.50,
             # "robot_speed_threshold": 0.50,
-            "settle_steps": 4,
+            "settle_steps": 1,#注意原来训练的时候是4，测试的话改成1了
         },
     )
     base_contact = DoneTerm(
