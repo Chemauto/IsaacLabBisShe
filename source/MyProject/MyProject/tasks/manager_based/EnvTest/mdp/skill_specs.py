@@ -38,7 +38,7 @@ CLIMB_LOW_LEVEL_OBS_TERMS = (
     "height_scan",
 )
 PUSH_HIGH_LEVEL_OBS_TERMS = (
-    "base_lin_vel",
+    "base_ang_vel",
     "projected_gravity",
     "box_in_robot_frame_pos",
     "box_in_robot_frame_yaw",

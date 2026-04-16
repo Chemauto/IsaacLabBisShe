@@ -258,7 +258,7 @@ class ObservationsCfg:
     统一后的 policy 向量按顺序包含：
 
     - walk / climb 低层公共项
-    - push_box 高层复用的 base_lin_vel
+    - push_box 高层复用的 base_ang_vel
     - navigation 高层特有项
     - 推箱子高层特有项
 
