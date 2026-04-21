@@ -46,7 +46,7 @@ EnvTest player 不需要改，仍然读取这些文件：
 
 ```bash
 cd /home/xcj/work/IsaacLab/IsaacLabBisShe
-python NewTools/envtest_model_use_player.py --scene_id 3
+python NewTools/envtest_model_use_player.py --scene_id 3 --enable_front_camera
 ```
 
 2. 启动 ROS2 控制 server：
