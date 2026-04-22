@@ -12,40 +12,53 @@ commands:
       heading: [-3.14, 3.14]
 actions:
   JointPositionAction:
-    clip: null
+    clip:
+    - [-100.0, 100.0]
+    - [-100.0, 100.0]
+    - [-100.0, 100.0]
+    - [-100.0, 100.0]
+    - [-100.0, 100.0]
+    - [-100.0, 100.0]
+    - [-100.0, 100.0]
+    - [-100.0, 100.0]
+    - [-100.0, 100.0]
+    - [-100.0, 100.0]
+    - [-100.0, 100.0]
+    - [-100.0, 100.0]
     joint_names: [.*]
-    scale: [0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25]
+    scale: [0.125, 0.125, 0.125, 0.125, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25, 0.25,
+      0.25]
     offset: [0.1, -0.1, 0.1, -0.1, 0.8, 0.8, 1.0, 1.0, -1.5, -1.5, -1.5, -1.5]
     joint_ids: null
 observations:
   base_ang_vel:
     params: {}
-    clip: null
-    scale: [1.0, 1.0, 1.0]
+    clip: [-100, 100]
+    scale: [0.25, 0.25, 0.25]
     history_length: 1
   projected_gravity:
     params: {}
-    clip: null
+    clip: [-100, 100]
     scale: [1.0, 1.0, 1.0]
     history_length: 1
   keyboard_velocity_commands:
     params: {command_name: base_velocity}
-    clip: null
+    clip: [-100, 100]
     scale: [1.0, 1.0, 1.0]
     history_length: 1
   joint_pos_rel:
     params: {}
-    clip: null
+    clip: [-100, 100]
     scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     history_length: 1
   joint_vel_rel:
     params: {}
-    clip: null
-    scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    clip: [-100, 100]
+    scale: [0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05, 0.05]
     history_length: 1
   last_action:
     params: {}
-    clip: null
+    clip: [-100, 100]
     scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     history_length: 1
   height_scan:

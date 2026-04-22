@@ -9,11 +9,11 @@ import sys
 import os
 from pathlib import Path
 
-DEFAULT_TASK = "Template-Velocity-Go2-Walk-BiShe-Pit-v0"
-DEFAULT_EXPERIMENT = "go2_walk_bishe"
-DEFAULT_RUN_NAME = "0405"
+DEFAULT_TASK = "Template-Velocity-Go2-Walk-Rough-v0"
+DEFAULT_EXPERIMENT = "go2_walk_rough"
+DEFAULT_RUN_NAME = "0422"
 DEFAULT_LOAD_RUN = "^test$"
-DEFAULT_CHECKPOINT_NAME = "WalkRough.pt"
+DEFAULT_CHECKPOINT_NAME = "WalkFlatHighHeight.pt"
 DEFAULT_LOAD_WEIGHTS_ONLY = False
 DEFAULT_DEVICE = "cuda:0"
 #文件夹形式” rsl_rl/logs/rsl_rl/DEFAULT_EXPERIMENT/DEFAULT_LOAD_RUN/DEFAULT_CHECKPOINT_NAME
