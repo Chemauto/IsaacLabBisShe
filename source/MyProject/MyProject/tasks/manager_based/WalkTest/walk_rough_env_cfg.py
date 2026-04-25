@@ -113,7 +113,7 @@ class ActionsCfg:
     joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=[".*"],
-        scale={".*_hip_joint": 0.125, "^(?!.*_hip_joint).*": 0.25},
+        scale={".*_hip_joint": 0.2, "^(?!.*_hip_joint).*": 0.25},
         use_default_offset=True,
         clip={".*": (-100.0, 100.0)},
     )
@@ -204,7 +204,7 @@ class ObservationsCfg:
             clip=(-1.0, 1.0),
         )
         def __post_init__(self):
-            # self.history_length = 3
+            self.history_length = 3
             self.enable_corruption = False
             self.concatenate_terms = True
     # observation groups
@@ -321,15 +321,15 @@ class RewardsCfg:
         func=mdp.track_ang_vel_z_exp, weight=0.75, params={"command_name": "base_velocity", "std": math.sqrt(0.25)}
     )#惩罚角速度
     # -- penalties
-    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-2.0)#防止上下
+    lin_vel_z_l2 = RewTerm(func=mdp.lin_vel_z_l2, weight=-1.0)#防止上下-2
     ang_vel_xy_l2 = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)#防止倾倒
     dof_torques_l2 = RewTerm(func=mdp.joint_torques_l2, weight=-0.0002)#防止关节力矩过大
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)#防止关节加速度过大
     action_rate_l2 = RewTerm(func=mdp.action_rate_l2, weight=-0.03)#防止速度变化过大
-    energy = RewTerm(func=walkmdp.energy, weight=-2e-5)#节能，使用最简单容易的方法
+    energy = RewTerm(func=walkmdp.energy, weight=-3e-5)#节能，使用最简单容易的方法-2e-5
     feet_air_time = RewTerm(
         func=mdp.feet_air_time,
-        weight=0.2,
+        weight=0.25,#0.2
         params={
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
             "command_name": "base_velocity",
@@ -346,12 +346,12 @@ class RewardsCfg:
 
         },
     )#减少不必要的碰撞
-    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)#防止倾倒
+    flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-1.5)#防止倾倒原来是-0.2
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-2.0)#关节受限
 
     feet_slide = RewTerm(
         func=mdp.feet_slide,
-        weight=-0.1,
+        weight=-0.2,#-0.1
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
             "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
@@ -360,9 +360,9 @@ class RewardsCfg:
 
     air_time_variance = RewTerm(
         func=walkmdp.air_time_variance_penalty,
-        weight=-1.0,
+        weight=-0.2,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot")},
-    )
+    )#原来是0
     # joint_pos = RewTerm(
     #     func=walkmdp.joint_position_penalty,
     #     weight=-0.7,
@@ -374,18 +374,39 @@ class RewardsCfg:
     # )
     # base_height = RewTerm(
     #     func=mdp.base_height_l2,
-    #     weight=-10.0,
-    #     params={"target_height": 0.35},#原来0.20
+    #     weight=-3.0,
+    #     params={"target_height": 0.30},#原来0.20
     # )#限制高度
-    # stand_still = RewTerm(
-    #     func=walkmdp.stand_still,
-    #     weight=-0.3,
-    #     params={
-    #         "command_name": "base_velocity",
-    #         "command_threshold": 0.1,
-    #         "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
-    #     },
-    # )
+    stand_still = RewTerm(
+        func=walkmdp.stand_still,
+        weight=-0.3,
+        params={
+            "command_name": "base_velocity",
+            "command_threshold": 0.1,
+            "asset_cfg": SceneEntityCfg("robot", joint_names=".*"),
+        },
+    )
+
+
+    # 防止后面两脚之间距离过近（避免腿部交叉或碰撞）
+    Behind_feet_too_near = RewTerm(
+        func=walkmdp.feet_too_near,
+        weight=-0.5,
+        params={
+            "threshold": 0.20,
+            "asset_cfg": SceneEntityCfg("robot", body_names=["RL_foot", "RR_foot"]),
+        },
+    )
+    # 防止前脚之间距离过近（避免腿部交叉或碰撞），这两个奖励函数是为了张开脚
+    Front_feet_too_near = RewTerm(
+        func=walkmdp.feet_too_near,
+        weight=-0.5,
+        params={
+            "threshold": 0.20,
+            "asset_cfg": SceneEntityCfg("robot", body_names=["FL_foot", "FR_foot"]),
+        },
+    )
+
     # feet_height_body = RewTerm(
     #     func=walkmdp.feet_height_body,
     #     weight=-2.0,
@@ -402,10 +423,24 @@ class RewardsCfg:
     #     params={
     #         "asset_cfg": SceneEntityCfg("robot", body_names=".*_foot"),
     #         "tanh_mult": 2.0,
-    #         "target_height": 0.05,
+    #         "target_height": 0.07,
     #         "command_name": "base_velocity",
     #     },
     # )
+    # -- feet (Trot gait for Go2 quadruped: FL+RR pair, FR+RL pair)
+    # gait = RewTerm(
+    #     func=walkmdp.feet_gait,
+    #     weight=0.5,
+    #     params={
+    #         "period": 0.5,
+    #         "offset": [0.0, 0.5, 0.5, 0.0],
+    #         "threshold": 0.5,
+    #         "command_name": "base_velocity",
+    #         "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_foot"),
+    #     },
+    # )
+
+
     # joint_deviation_hip = RewTerm(
     #     func=mdp.joint_deviation_l1,
     #     weight=-0.03,

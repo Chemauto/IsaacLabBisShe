@@ -258,6 +258,16 @@ def tensor_row_to_tuple(tensor: torch.Tensor | None) -> tuple[float, ...] | None
     return tuple(float(value) for value in row.detach().cpu().tolist())
 
 
+def tensor_row_to_scalar(tensor: torch.Tensor | None) -> float | None:
+    """Convert a single-env tensor row into one Python float."""
+
+    if tensor is None:
+        return None
+
+    row = tensor[0] if tensor.ndim > 0 else tensor
+    return float(row.detach().cpu().item())
+
+
 def scene_asset_size(env, asset_name: str, fallback_sizes: dict[str, tuple[float, float, float]]) -> tuple[float, float, float]:
     """Read scene asset size from cfg and fall back to the static defaults."""
 
@@ -334,6 +344,11 @@ def build_status_snapshot(
 
     robot = env.scene["robot"]
     robot_pose_e = robot.data.root_pos_w[:, :3] - env.scene.env_origins
+    robot_quat_w = robot.data.root_quat_w
+    robot_yaw = torch.atan2(
+        2.0 * (robot_quat_w[:, 0] * robot_quat_w[:, 3] + robot_quat_w[:, 1] * robot_quat_w[:, 2]),
+        1.0 - 2.0 * (robot_quat_w[:, 2] * robot_quat_w[:, 2] + robot_quat_w[:, 3] * robot_quat_w[:, 3]),
+    )
     platform_statuses = {
         label: select_platform_status(env, asset_names, fallback_sizes) for label, asset_names in platform_assets
     }
@@ -347,6 +362,7 @@ def build_status_snapshot(
         pose_command=tensor_row_to_tuple(pose_command),
         vel_command=tensor_row_to_tuple(velocity_command),
         robot_pose=tensor_row_to_tuple(robot_pose_e),
+        robot_yaw=tensor_row_to_scalar(robot_yaw),
         goal=tensor_row_to_tuple(goal_command),
         platform_1=platform_statuses["platform_1"],
         platform_2=platform_statuses["platform_2"],
@@ -367,4 +383,3 @@ def reset_robot_only(env, robot) -> None:
     robot.write_joint_state_to_sim(default_joint_pos, default_joint_vel)
     robot.set_joint_position_target(default_joint_pos)
     robot.set_joint_velocity_target(default_joint_vel)
-

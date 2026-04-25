@@ -29,6 +29,7 @@ class StatusSnapshot:
     pose_command: tuple[float, ...] | None
     vel_command: tuple[float, ...] | None
     robot_pose: tuple[float, ...] | None
+    robot_yaw: float | None
     goal: tuple[float, ...] | None
     platform_1: AssetStatus | None
     platform_2: AssetStatus | None
@@ -71,6 +72,7 @@ def build_status_lines(snapshot: StatusSnapshot) -> list[str]:
         f"pose_command: {_format_vector(snapshot.pose_command)}",
         f"vel_command: {_format_vector(snapshot.vel_command)}",
         f"robot_pose: {_format_vector(snapshot.robot_pose)}",
+        f"robot_yaw: {_format_scalar(None if snapshot.robot_yaw is None else round(snapshot.robot_yaw, 3))}",
         f"goal: {_format_vector(snapshot.goal)}",
         f"platform_1: {_format_asset(snapshot.platform_1)}",
         f"platform_2: {_format_asset(snapshot.platform_2)}",
@@ -116,6 +118,7 @@ def write_status_json(snapshot: StatusSnapshot, file_path: str) -> None:
         "pose_command": list(snapshot.pose_command) if snapshot.pose_command is not None else None,
         "vel_command": list(snapshot.vel_command) if snapshot.vel_command is not None else None,
         "robot_pose": list(snapshot.robot_pose) if snapshot.robot_pose is not None else None,
+        "robot_yaw": snapshot.robot_yaw,
         "goal": list(snapshot.goal) if snapshot.goal is not None else None,
         "platform_1": None if snapshot.platform_1 is None else {
             "name": snapshot.platform_1.name,
@@ -141,4 +144,3 @@ def write_status_json(snapshot: StatusSnapshot, file_path: str) -> None:
         json.dump(payload, file, ensure_ascii=False)
         file.write("\n")
     os.replace(temp_path, status_path)
-
