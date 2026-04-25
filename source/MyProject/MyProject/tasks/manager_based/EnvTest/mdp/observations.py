@@ -404,7 +404,7 @@ def goal_in_box_frame_yaw(env: "ManagerBasedEnv") -> torch.Tensor:
 def compute_push_goal_from_scene(env: "ManagerBasedEnv") -> torch.Tensor:
     """按当前障碍位置生成一个“把箱子推到障碍前”的目标位姿。
 
-    该逻辑和 `envtest_model_use_player.py` 使用的推箱子目标保持一致。
+    该逻辑和 `FinalSim.py` 使用的推箱子目标保持一致。
     如果当前场景没有箱子或没有可选障碍，则抛出异常，让上层显式处理。
     返回格式为 `[x, y, z, yaw]`，当前默认目标 yaw 为 0。
     """

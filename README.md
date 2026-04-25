@@ -26,8 +26,10 @@
   - 多技能统一测试场景
 - `NewTools`
   - 多技能运行脚本和桥接逻辑
-- `Socket`
-  - UDP server/client 控制接口
+- `WebSocket`
+  - FinalProject/LLM 使用的 WebSocket 到 ROS2 topic 服务端
+- `Ros2`
+  - EnvTest 仿真入口和 ROS2 topic 仿真桥
 - `ModelBackup`
   - 运行时加载的策略模型
 - `deploy`
@@ -53,30 +55,28 @@ pip3 install noise opencv-python numpy
 
 最常用入口：
 
-- `NewTools/envtest_model_use_player.py`
-- `Socket/envtest_socket_server.py`
-- `Socket/envtest_socket_client.py`
+- `Ros2/FinalSim.py`
+- `Ros2/PublishRos2Topic.py`
+- `WebSocket/robot_service.py`
 
-启动 player：
+启动 EnvTest 仿真器：
 
 ```bash
-python NewTools/envtest_model_use_player.py --scene_id 4
+python Ros2/FinalSim.py --scene_id 4
 ```
 
-另一个终端启动 UDP server：
+另一个终端启动 ROS2 仿真桥：
 
 ```bash
-python Socket/envtest_socket_server.py
+source /opt/ros/jazzy/setup.bash
+python Ros2/PublishRos2Topic.py
 ```
 
-再发送命令：
+再启动 LLM WebSocket 服务端：
 
 ```bash
-python Socket/envtest_socket_client.py --model_use 1 --velocity 0.6 0.0 0.0
-python Socket/envtest_socket_client.py --start 1
-python Socket/envtest_socket_client.py --model_use 3 --goal_auto --start 1
-python Socket/envtest_socket_client.py --model_use 4 --goal 4.5 0.0 0.1 --start 1
-python Socket/envtest_socket_client.py --reset 1
+source /opt/ros/jazzy/setup.bash
+python WebSocket/robot_service.py
 ```
 
 `model_use` 对应关系：
@@ -176,6 +176,7 @@ python3 mine_terrain_generator.py
 ## 推荐先看
 
 - `source/MyProject/MyProject/tasks/manager_based/EnvTest/README.md`
-- `Socket/README.md`
+- `Ros2/README.md`
+- `WebSocket/README.md`
 - `deploy/README.md`
 - `Mujoco/README.md`

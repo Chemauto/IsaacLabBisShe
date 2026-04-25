@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""在 EnvTest 场景中按 model_use 切换技能策略。
+"""在 EnvTest 场景中按 model_use 切换技能策略，并持续写出 ROS2 bridge 使用的状态 JSON。
 
 设计目标：
 - 场景始终使用 EnvTest；

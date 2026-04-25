@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
         "--camera_image_file",
         type=str,
         default="/tmp/envtest_front_camera.png",
-        help="NewTools/envtest_model_use_player.py 实时导出的前视相机图片路径。",
+        help="Ros2/FinalSim.py 实时导出的前视相机图片路径。",
     )
     parser.add_argument(
         "--save_path",
@@ -52,7 +52,7 @@ def wait_for_camera_image(camera_image_file: str, wait_timeout: float, poll_inte
 
     raise TimeoutError(
         f"没有等到新的相机图片: {camera_image_file}。"
-        "请先用 --enable_front_camera 启动 NewTools/envtest_model_use_player.py。"
+        "请先用 --enable_front_camera 启动 Ros2/FinalSim.py。"
     )
 
 

@@ -1,35 +1,25 @@
 # Ros2 目录说明
 
-这个目录提供 EnvTest 的 ROS2 控制入口，包含两件事：
-
-- 订阅 FinalProject 的 `/go2/*` 控制 topic，并写入 EnvTest player 使用的 `/tmp` 控制文件
-- 读取 `/tmp/envtest_live_status.json`，发布 FinalProject Go2 后端需要的 `/go2/odom`、`/go2/skill_status`、`/go2/scene_objects`
+这个目录保留 EnvTest 仿真入口、ROS2 桥接程序和本说明文档。`FinalSim.py` 负责启动仿真器并持续写出状态 JSON，`PublishRos2Topic.py` 负责把这些数据转换成和实机一致的 ROS2 topic，同时把 ROS2 控制 topic 写回 EnvTest 使用的控制文件。
 
 ## 文件
 
-- `envtest_ros2_server.py`：订阅 `/go2/*` 控制 topic、写控制文件，并发布 EnvTest 状态 topic
-- `envtest_ros2_client.py`：调试用的一次性 ROS2 发送工具
-- `test_envtest_ros2_server.py`：核心协议转换测试
+- `FinalSim.py`：启动 EnvTest 仿真器，读取 `/tmp` 控制文件，并持续写出 `/tmp/envtest_live_status.json`
+- `PublishRos2Topic.py`：读取 EnvTest JSON 状态、发布 ROS2 topic、订阅 ROS2 控制 topic
+- `README.md`：当前说明
 
-## 和 Socket 版的关系
-
-Socket 版链路：
+## ROS2 仿真链路
 
 ```text
-FinalProject -> deploy/go2_skill_bridge.py -> UDP 5566 -> Socket/envtest_socket_server.py -> /tmp 控制文件 -> EnvTest player
-```
-
-ROS2 版链路：
-
-```text
-FinalProject -> /go2/skill_command, /go2/cmd_vel, /go2/goal_pose
-             -> Ros2/envtest_ros2_server.py
+WebSocket/robot_service.py 或 ROS2 调试命令
+             -> /go2/skill_command, /go2/cmd_vel, /go2/goal_pose
+             -> Ros2/PublishRos2Topic.py
              -> /tmp 控制文件
-             -> EnvTest player
+             -> Ros2/FinalSim.py
              -> /tmp/envtest_live_status.json
-             -> Ros2/envtest_ros2_server.py
-             -> /go2/odom, /go2/skill_status, /go2/scene_objects
-             -> FinalProject
+             -> Ros2/PublishRos2Topic.py
+             -> /go2/odom, /go2/box_pose, /go2/skill_status, /go2/scene_objects
+             -> WebSocket/robot_service.py 或 ROS2 调试工具
 ```
 
 EnvTest player 不需要改，仍然读取这些文件：
@@ -42,58 +32,58 @@ EnvTest player 不需要改，仍然读取这些文件：
 
 ## 启动流程
 
-1. 启动 EnvTest player：
+1. 启动 EnvTest 仿真器：
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe
-python NewTools/envtest_model_use_player.py --scene_id 3 --enable_front_camera
+cd /home/robot/work/IsaacLabBisShe
+python Ros2/FinalSim.py --scene_id 3 --enable_front_camera
 ```
 
-2. 启动 ROS2 控制 server：
+2. 启动 ROS2 桥接程序：
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe
+cd /home/robot/work/IsaacLabBisShe
 source /opt/ros/jazzy/setup.bash
-python Ros2/envtest_ros2_server.py
+python Ros2/PublishRos2Topic.py
 ```
 
-3. 启动 FinalProject：
+3. 启动 LLM WebSocket 服务端：
 
 ```bash
-cd /home/xcj/work/FinalProject
+cd /home/robot/work/IsaacLabBisShe
+source /opt/ros/jazzy/setup.bash
+python WebSocket/robot_service.py
+```
+
+4. 启动 FinalProject：
+
+```bash
+cd /home/robot/work/FinalProject
 source /opt/ros/jazzy/setup.bash
 export FINALPROJECT_ROBOT_TYPE=go2
 export FINALPROJECT_NAV_BACKEND=ros
 python run.py
 ```
 
-这条链路不需要再启动：
-
-```bash
-python Socket/envtest_socket_server.py
-python /home/xcj/work/FinalProject/deploy/go2_skill_bridge.py
-```
-
 ## 调试命令
 
-不经过 FinalProject，直接发 ROS2 控制命令：
+不经过 FinalProject，可以直接用 ROS2 命令发布控制 topic：
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe
 source /opt/ros/jazzy/setup.bash
 
-python Ros2/envtest_ros2_client.py --model_use 1 --velocity 0.6 0.0 0.0 --start 1
-python Ros2/envtest_ros2_client.py --start 0
-python Ros2/envtest_ros2_client.py --model_use 3 --goal_auto --start 1
-python Ros2/envtest_ros2_client.py --model_use 4 --goal 4.5 0.0 0.1 --start 1
-python Ros2/envtest_ros2_client.py --reset 1
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"model_use\": 1, \"velocity\": [0.6, 0.0, 0.0], \"start\": true}'}"
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"start\": false}'}"
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"model_use\": 3, \"goal\": \"auto\", \"start\": true}'}"
+ros2 topic pub --once /go2/goal_pose geometry_msgs/msg/PoseStamped "{pose: {position: {x: 4.5, y: 0.0, z: 0.1}, orientation: {w: 1.0}}}"
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"reset\": 1}'}"
 ```
 
-也可以直接发原始文本，server 会复用 Socket server 的解析逻辑：
+也可以直接向 `/go2/skill_command` 发原始文本，桥接程序会复用内部文本解析逻辑：
 
 ```bash
-python Ros2/envtest_ros2_client.py --text "model_use=1; velocity=0.6,0,0; start=1"
-python Ros2/envtest_ros2_client.py --text "model_use=3; goal=auto; start=1"
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: 'model_use=1; velocity=0.6,0,0; start=1'}"
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: 'model_use=3; goal=auto; start=1'}"
 ```
 
 ## 订阅 topic
@@ -110,14 +100,16 @@ python Ros2/envtest_ros2_client.py --text "model_use=3; goal=auto; start=1"
 
 - `/go2/odom`：`nav_msgs/Odometry`
   - 来自 `/tmp/envtest_live_status.json` 的 `robot_pose`
+- `/go2/box_pose`：`geometry_msgs/PoseStamped`
+  - 来自 `/tmp/envtest_live_status.json` 的 `box.position`
 - `/go2/skill_status`：`std_msgs/String`
   - JSON 包含 `timestamp/model_use/skill/scene_id/start/goal/vel_command/envtest_alignment`
 - `/go2/scene_objects`：`std_msgs/String`
   - JSON 数组，来自 `platform_1/platform_2/box`
 
-## 测试
+## 快速检查
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/Ros2
-python -B -m unittest test_envtest_ros2_server
+cd /home/robot/work/IsaacLabBisShe
+python -B -c "from pathlib import Path; [compile(Path(name).read_text(encoding='utf-8'), name, 'exec') for name in ('Ros2/FinalSim.py', 'Ros2/PublishRos2Topic.py')]"
 ```

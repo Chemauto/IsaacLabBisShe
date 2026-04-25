@@ -30,8 +30,8 @@
 - `utils/control_flags.py`：一次性控制文件消费逻辑
 - `utils/navigation_bridge.py`：世界系导航目标转 base-frame pose command
 - `utils/status_panel.py`：终端状态面板和状态 JSON 输出
-- `utils/player_runtime.py`：`envtest_model_use_player.py` 使用的运行时 helper
-- `NewTools/envtest_model_use_player.py`：综合实验入口，主要保留配置和主循环
+- `utils/player_runtime.py`：`FinalSim.py` 使用的运行时 helper
+- `Ros2/FinalSim.py`：综合实验入口，主要保留配置和主循环
 
 说明：
 
@@ -95,7 +95,7 @@ python scripts/envtest_camera_view.py --scene_id 4 --headless --max_steps 10
 player 脚本：
 
 ```bash
-python NewTools/envtest_model_use_player.py --scene_id 4
+python Ros2/FinalSim.py --scene_id 4
 ```
 
 约定如下：
@@ -106,7 +106,7 @@ python NewTools/envtest_model_use_player.py --scene_id 4
 - `model_use=3`：push_box
 - `model_use=4`：navigation
 
-启动后默认先待机，再通过控制文件或 UDP 改写：
+启动后默认先待机，再通过 ROS2 topic 或控制文件改写：
 
 - `model_use`：`/tmp/model_use.txt`
 - 速度指令：`/tmp/envtest_velocity_command.txt`
@@ -115,26 +115,26 @@ python NewTools/envtest_model_use_player.py --scene_id 4
 - 重置指令：`/tmp/envtest_reset.txt`
 - 状态 JSON：`/tmp/envtest_live_status.json`
 
-推荐直接用 UDP 控制：
+推荐通过 ROS2 桥接控制：
 
 ```bash
-python Socket/envtest_socket_server.py
-python Socket/envtest_socket_client.py --model_use 1 --velocity -0.6 0.0 0.0
-python Socket/envtest_socket_client.py --start 1
+source /opt/ros/jazzy/setup.bash
+python Ros2/PublishRos2Topic.py
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"model_use\": 1, \"velocity\": [-0.6, 0.0, 0.0], \"start\": true}'}"
 ```
 
 运行中切换技能：
 
 ```bash
-python Socket/envtest_socket_client.py --model_use 2
-python Socket/envtest_socket_client.py --model_use 3
-python Socket/envtest_socket_client.py --model_use 4
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"model_use\": 2, \"start\": true}'}"
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"model_use\": 3, \"goal\": \"auto\", \"start\": true}'}"
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"model_use\": 4, \"start\": true}'}"
 ```
 
 如果是 `push_box`，可直接发送目标点：
 
 ```bash
-python Socket/envtest_socket_client.py --goal 1.8 0.0 0.1
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"model_use\": 3, \"goal\": [1.8, 0.0, 0.1], \"start\": true}'}"
 ```
 
 如果不手动发 `goal`，`model_use=3` 会自动根据当前场景中的障碍位置生成推箱目标点。
@@ -142,14 +142,15 @@ python Socket/envtest_socket_client.py --goal 1.8 0.0 0.1
 如果是 `navigation`，可以直接发送世界系目标点：
 
 ```bash
-python Socket/envtest_socket_client.py --model_use 4 --goal 4.5 0.0 0.1 --start 1
+ros2 topic pub --once /go2/goal_pose geometry_msgs/msg/PoseStamped "{pose: {position: {x: 4.5, y: 0.0, z: 0.1}, orientation: {w: 1.0}}}"
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"model_use\": 4, \"start\": true}'}"
 ```
 
 此时 player 会把世界系 `goal(x, y, z, yaw)` 转成导航策略使用的 base-frame `pose_command(dx, dy, dz, dyaw)`。
 
 ## reset
 
-UDP 控制支持两种一次性 reset：
+ROS2 控制支持两种一次性 reset：
 
 - `reset=1`：重置整个环境，相当于 `env.reset()`
 - `reset=2`：只重置机器人，不重置箱子、障碍物和场景状态
@@ -157,7 +158,7 @@ UDP 控制支持两种一次性 reset：
 示例：
 
 ```bash
-python Socket/envtest_socket_client.py --reset 1
-python Socket/envtest_socket_client.py --reset 2
-python Socket/envtest_socket_client.py --text "reset=2"
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"reset\": 1}'}"
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"reset\": 2}'}"
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: 'reset=2'}"
 ```

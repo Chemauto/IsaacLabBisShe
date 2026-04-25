@@ -269,7 +269,7 @@ class ObservationsCfg:
     - 推箱子额外部分：13 维
     - 并集总计：252 维
 
-    后续 `envtest_model_use_player.py` 会按 `model_use` 从这 252 维里切出各技能真正需要的部分。
+    后续 `FinalSim.py` 会按 `model_use` 从这 252 维里切出各技能真正需要的部分。
     """
 
     @configclass
