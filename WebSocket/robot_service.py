@@ -14,7 +14,7 @@ if __package__ in (None, ""):
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
 
-from WebSocket.feedback import evaluate_feedback
+from WebSocket.feedback import FeedbackTracker
 from WebSocket.ros2_state import ROS2_AVAILABLE, Ros2TopicState, rclpy
 
 
@@ -68,6 +68,7 @@ async def _stream_until_feedback(
     last_revision = -1
     start_time = time.time()
     interval = float(poll_interval or os.getenv("ROBOT_WS_POLL_INTERVAL_SEC", DEFAULT_POLL_INTERVAL_SEC))
+    feedback_tracker = FeedbackTracker(command, start_state)
 
     while True:
         current_state = ros2_node.snapshot()
@@ -76,12 +77,7 @@ async def _stream_until_feedback(
             await ws.send(json.dumps(current_state, ensure_ascii=False))
             last_revision = revision
 
-        feedback = evaluate_feedback(
-            command,
-            start_state=start_state,
-            current_state=current_state,
-            elapsed_sec=time.time() - start_time,
-        )
+        feedback = feedback_tracker.evaluate(current_state, time.time() - start_time)
         if feedback is not None:
             ros2_node.publish_stop()
             await ws.send(json.dumps(feedback, ensure_ascii=False))

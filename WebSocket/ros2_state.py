@@ -8,6 +8,8 @@ from typing import Any
 
 from WebSocket.protocol import coerce_bool, normalize_skill, position_payload, walk_velocity, world_to_body
 
+DEFAULT_CLIMB_VELOCITY = (0.4, 0.0, 0.0)
+
 
 try:
     import rclpy
@@ -77,7 +79,8 @@ class Ros2TopicState(Node):
             })
             return
         if skill == "climb":
-            self._publish_skill_command({"model_use": 2, "start": True})
+            self._publish_cmd_vel(DEFAULT_CLIMB_VELOCITY)
+            self._publish_skill_command({"model_use": 2, "velocity": list(DEFAULT_CLIMB_VELOCITY), "start": True})
             return
         raise ValueError(f"unsupported skill: {command.get('skill')}")
 
