@@ -461,8 +461,6 @@ def main():
             print("[INFO] 收到 reset=2 指令，机器人已重置，环境保持不变。")
 
         if entering_push_execution:
-            with torch.inference_mode():
-                env.reset()
             push_last_processed_actions.zero_()
             push_current_processed_actions.zero_()
             push_low_level_last_actions.zero_()
@@ -472,7 +470,7 @@ def main():
             navigation_low_level_last_actions.zero_()
             navigation_high_level_counter = 0
             previous_logged_push_goal = None
-            print("[INFO] 进入 push_box 执行态，环境已重置并预留 1 个稳定步。")
+            print("[INFO] 进入 push_box 执行态，已重置策略缓存并预留 1 个稳定步。")
 
         if navigation_goal_command is None:
             navigation_pose_command = zero_pose_command

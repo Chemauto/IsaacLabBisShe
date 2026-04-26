@@ -19,6 +19,45 @@ DEFAULT_DISTANCE_TOL = {
     "climb": 0.05,
     "walk_skill": 0.08,
 }
+CLIMB_STABLE_HITS = 2
+CLIMB_STABLE_DELTA_M = 0.03
+
+
+class FeedbackTracker:
+    def __init__(self, command: dict, start_state: dict):
+        self.command = command
+        self.start_state = start_state
+        self._last_robot = None
+        self._stable_hits = 0
+
+    def evaluate(self, current_state: dict, elapsed_sec: float, timeout_sec: float | None = None):
+        skill = normalize_skill(self.command.get("skill"))
+        if skill != "climb":
+            return evaluate_feedback(self.command, self.start_state, current_state, elapsed_sec, timeout_sec)
+        return self._evaluate_climb(current_state, elapsed_sec, timeout_sec)
+
+    def _evaluate_climb(self, current_state: dict, elapsed_sec: float, timeout_sec: float | None):
+        timeout = float(timeout_sec or DEFAULT_TIMEOUT_SEC["climb"])
+        robot = _position(current_state.get("robot"))
+        stable = self._last_robot is not None and _distance_xy(robot, self._last_robot) <= CLIMB_STABLE_DELTA_M
+        reached = _climb_height(current_state, self.start_state) >= _target_height(self.command) - DEFAULT_DISTANCE_TOL["climb"]
+        self._last_robot = robot
+
+        if reached and stable:
+            self._stable_hits += 1
+            if self._stable_hits >= CLIMB_STABLE_HITS:
+                summary = _summary(self.command, current_state, "robot")
+                summary["stable_hits"] = self._stable_hits
+                return _feedback(self.command, "SUCCESS", "climb reached target height and stabilized", summary)
+        else:
+            self._stable_hits = 0
+
+        if current_state.get("start") is False and elapsed_sec > 0.5:
+            return _feedback(self.command, "FAILURE", "climb stopped before reaching target", _summary(self.command, current_state))
+        if elapsed_sec >= timeout:
+            return _feedback(self.command, "FAILURE", "climb timeout", _summary(self.command, current_state))
+        return None
+#对climb做连续稳定判定，避免瞬间高度达到就返回成功
 
 
 def evaluate_feedback(command: dict, start_state: dict, current_state: dict, elapsed_sec: float, timeout_sec: float | None = None):
@@ -27,7 +66,7 @@ def evaluate_feedback(command: dict, start_state: dict, current_state: dict, ela
 
     if skill in {"nav", "nav_climb"} and _distance_xy(current_state.get("robot"), command.get("args")) <= DEFAULT_DISTANCE_TOL[skill]:
         return _feedback(command, "SUCCESS", f"{skill} reached target", _summary(command, current_state, "robot"))
-    if skill == "push" and _distance(current_state.get("box_world"), command.get("args")) <= DEFAULT_DISTANCE_TOL["push"]:
+    if skill == "push" and _distance_xy(current_state.get("box_world"), command.get("args")) <= DEFAULT_DISTANCE_TOL["push"]:
         return _feedback(command, "SUCCESS", "push reached target", _summary(command, current_state, "box_world"))
     if skill == "climb" and _climb_height(current_state, start_state) >= _target_height(command) - DEFAULT_DISTANCE_TOL["climb"]:
         return _feedback(command, "SUCCESS", "climb reached target height", _summary(command, current_state, "robot"))
