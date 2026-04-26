@@ -122,15 +122,15 @@ class BiSheCommandsCfg:
         asset_name="robot",
         # 大于 episode_length_s=20.0，保证一个 episode 内不会中途重采样方向。
         resampling_time_range=(12.0, 12.0),
-        rel_standing_envs=0.0,
+        rel_standing_envs=0.05,
         rel_heading_envs=0.0,
         heading_command=False,
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=walk_mdp.UniformWorldVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.2, 1.0),
-            lin_vel_y=(0.0, 0.0),
-            ang_vel_z=(0.0, 0.0),
+            lin_vel_x=(-0.4, 1.0),
+            lin_vel_y=(-0.4, 0.4),
+            ang_vel_z=(-0.4, 0.4),
             heading=None,
         ),
     )
