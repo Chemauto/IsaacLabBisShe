@@ -451,3 +451,63 @@ NAV_HIGH_DOUBLE_PLATFORM_TERRAINS_CFG = TerrainGeneratorCfg(
 
     },
 )
+
+
+
+
+CLIMB_TERRAINS_CFG = TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=20,
+    horizontal_scale=0.1,
+    vertical_scale=0.005,
+    slope_threshold=0.75,
+    use_cache=False,
+    sub_terrains={
+        "high_platform": terrain_gen.MeshBoxTerrainCfg(
+            proportion=0.10,
+            box_height_range=(0.05, 0.35),
+            platform_width=3.0,
+            double_box=False,
+            size=(8.0, 8.0),
+        ),
+        "double_high_platform": terrain_gen.MeshBoxTerrainCfg(
+            proportion=0.10,
+            box_height_range=(0.05, 0.35),
+            platform_width=3.0,
+            double_box=True,
+            size=(8.0, 8.0),
+        ),
+        "pit": terrain_gen.MeshPitTerrainCfg(
+            proportion=0.25,
+            pit_depth_range=(0.05, 0.35),
+            platform_width=3.0,
+            double_pit=False,
+            size=(8.0, 8.0),
+        ),
+        "double_pit": terrain_gen.MeshPitTerrainCfg(
+            proportion=0.25,
+            pit_depth_range=(0.05, 0.35),
+            platform_width=3.0,
+            double_pit=True,
+            size=(8.0, 8.0),
+        ),
+        "pyramid_stairs": terrain_gen.MeshPyramidStairsTerrainCfg(
+            proportion=0.15,
+            step_height_range=(0.05, 0.35),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+        "pyramid_stairs_inv": terrain_gen.MeshInvertedPyramidStairsTerrainCfg(
+            proportion=0.15,
+            step_height_range=(0.05, 0.35),
+            step_width=0.3,
+            platform_width=3.0,
+            border_width=1.0,
+            holes=False,
+        ),
+    },
+)

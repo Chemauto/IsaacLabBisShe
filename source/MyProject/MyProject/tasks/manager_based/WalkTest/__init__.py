@@ -61,6 +61,29 @@ gym.register(
     },
 )
 
+####################################climbnew的设置#####################################
+
+gym.register(
+    id="Template-Climb-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.walk_climb_env_cfg:ClimbPitEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2WalkBiShePPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_walk_bishe_ppo_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="Template-Climb-Play-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.walk_climb_env_cfg:ClimbPitEnvCfg_Play",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:Go2WalkBiShePPORunnerCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_walk_bishe_ppo_cfg.yaml",
+    },
+)
 
 ####################################平坦地形的设置#####################################
 gym.register(

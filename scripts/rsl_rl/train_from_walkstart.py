@@ -9,9 +9,9 @@ import sys
 import os
 from pathlib import Path
 
-DEFAULT_TASK = "Template-Velocity-Go2-Walk-BiShe-Pit-v0"
+DEFAULT_TASK = "Template-Climb-v0"
 DEFAULT_EXPERIMENT = "go2_walk_bishe"
-DEFAULT_RUN_NAME = "0426"
+DEFAULT_RUN_NAME = "0427"
 DEFAULT_LOAD_RUN = "^test$"
 DEFAULT_CHECKPOINT_NAME = "model_19998.pt"
 DEFAULT_LOAD_WEIGHTS_ONLY = False
