@@ -19,8 +19,9 @@ DEFAULT_DISTANCE_TOL = {
     "climb": 0.05,
     "walk_skill": 0.08,
 }
-CLIMB_STABLE_HITS = 2
-CLIMB_STABLE_DELTA_M = 0.03
+CLIMB_STABLE_HITS = 10
+CLIMB_STABLE_DELTA_M = 0.02
+CLIMB_SETTLE_SEC = 1.0
 
 
 class FeedbackTracker:
@@ -29,6 +30,7 @@ class FeedbackTracker:
         self.start_state = start_state
         self._last_robot = None
         self._stable_hits = 0
+        self._reached_at = None
 
     def evaluate(self, current_state: dict, elapsed_sec: float, timeout_sec: float | None = None):
         skill = normalize_skill(self.command.get("skill"))
@@ -39,15 +41,19 @@ class FeedbackTracker:
     def _evaluate_climb(self, current_state: dict, elapsed_sec: float, timeout_sec: float | None):
         timeout = float(timeout_sec or DEFAULT_TIMEOUT_SEC["climb"])
         robot = _position(current_state.get("robot"))
-        stable = self._last_robot is not None and _distance_xy(robot, self._last_robot) <= CLIMB_STABLE_DELTA_M
         reached = _climb_height(current_state, self.start_state) >= _target_height(self.command) - DEFAULT_DISTANCE_TOL["climb"]
+        if reached and self._reached_at is None:
+            self._reached_at = elapsed_sec
+        stable = self._last_robot is not None and _distance(robot, self._last_robot) <= CLIMB_STABLE_DELTA_M
+        settled = self._reached_at is not None and elapsed_sec - self._reached_at >= CLIMB_SETTLE_SEC
         self._last_robot = robot
 
-        if reached and stable:
+        if reached and settled and stable:
             self._stable_hits += 1
             if self._stable_hits >= CLIMB_STABLE_HITS:
                 summary = _summary(self.command, current_state, "robot")
                 summary["stable_hits"] = self._stable_hits
+                summary["settle_sec"] = round(elapsed_sec - self._reached_at, 3)
                 return _feedback(self.command, "SUCCESS", "climb reached target height and stabilized", summary)
         else:
             self._stable_hits = 0
