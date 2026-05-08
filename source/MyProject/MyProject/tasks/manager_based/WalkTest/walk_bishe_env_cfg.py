@@ -156,7 +156,7 @@ class ObservationsCfg:
         base_ang_vel = ObsTerm(
             func=mdp.base_ang_vel,
             noise=Unoise(n_min=-0.2, n_max=0.2),
-            scale=0.25,
+            # scale=0.25,
             clip=(-100, 100))
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
@@ -175,7 +175,7 @@ class ObservationsCfg:
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel, 
             noise=Unoise(n_min=-1.5, n_max=1.5), 
-            scale=0.05,
+            # scale=0.05,
             clip=(-100, 100))
         actions = ObsTerm(
             func=mdp.last_action, 
@@ -205,7 +205,7 @@ class ObservationsCfg:
             clip=(-100, 100))
         base_ang_vel = ObsTerm(
             func=mdp.base_ang_vel,
-            scale=0.25,
+            # scale=0.25,
             clip=(-100, 100))
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
@@ -221,7 +221,7 @@ class ObservationsCfg:
             clip=(-100, 100))
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
-            scale=0.05,
+            # scale=0.05,
             clip=(-100, 100))
         actions = ObsTerm(func=mdp.last_action,clip=(-100, 100))
         height_scan = ObsTerm(
@@ -231,7 +231,7 @@ class ObservationsCfg:
         )
 
         def __post_init__(self):
-            self.history_length = 3
+            # self.history_length = 3
             self.enable_corruption = False
             self.concatenate_terms = True
     # privileged observations
@@ -542,3 +542,4 @@ class LocomotionBiShePitEnvCfg_Play(LocomotionBiShePitEnvCfg):
         self.events.reset_robot_joints = None  # 评测时不增加关节
         self.events.push_robot = None  # 评测时不增加随机推力扰动
         self.events.base_external_force_torque = None  # 评测时不增加随机推力扰动
+        self.events.physics_material = None  # 评测时不随机化摩擦等物理属性
