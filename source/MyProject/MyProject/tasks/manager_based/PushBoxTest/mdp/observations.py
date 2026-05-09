@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import isaaclab.utils.math as math_utils
 from isaaclab.assets import RigidObject
+from isaaclab.envs.utils.io_descriptors import generic_io_descriptor, record_dtype, record_shape
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils.math import subtract_frame_transforms
 
@@ -19,6 +20,11 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+@generic_io_descriptor(
+    observation_type="Action",
+    description="Processed high-level action after scaling and clipping.",
+    on_inspect=[record_shape, record_dtype],
+)
 def processed_last_action(
     env: ManagerBasedRLEnv,
     action_name: str = "pre_trained_policy_action",
@@ -144,6 +150,13 @@ def box_position_in_robot_frame(
     return box_pos_b
 
 
+@generic_io_descriptor(
+    units="m",
+    axes=["X", "Y", "Z"],
+    observation_type="BoxState",
+    description="Box position in the robot frame.",
+    on_inspect=[record_shape, record_dtype],
+)
 def box_in_robot_frame_pos(
     env: ManagerBasedRLEnv,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -153,6 +166,13 @@ def box_in_robot_frame_pos(
     return box_position_in_robot_frame(env, robot_cfg=robot_cfg, box_cfg=box_cfg)
 
 
+@generic_io_descriptor(
+    units="unit",
+    axes=["sin(yaw)", "cos(yaw)"],
+    observation_type="BoxState",
+    description="Box yaw relative to the robot frame encoded as sin and cos.",
+    on_inspect=[record_shape, record_dtype],
+)
 def box_in_robot_frame_yaw(
     env: ManagerBasedRLEnv,
     robot_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
@@ -262,6 +282,13 @@ def goal_position_in_box_frame(
     return goal_pos_b
 
 
+@generic_io_descriptor(
+    units="m",
+    axes=["X", "Y", "Z"],
+    observation_type="Command",
+    description="Goal position in the box frame.",
+    on_inspect=[record_shape, record_dtype],
+)
 def goal_in_box_frame_pos(
     env: ManagerBasedRLEnv,
     command_name: str,
@@ -271,6 +298,13 @@ def goal_in_box_frame_pos(
     return goal_position_in_box_frame(env, command_name=command_name, box_cfg=box_cfg)
 
 
+@generic_io_descriptor(
+    units="unit",
+    axes=["sin(yaw)", "cos(yaw)"],
+    observation_type="Command",
+    description="Goal yaw relative to the box frame encoded as sin and cos.",
+    on_inspect=[record_shape, record_dtype],
+)
 def goal_in_box_frame_yaw(
     env: ManagerBasedRLEnv,
     command_name: str,

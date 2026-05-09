@@ -10,11 +10,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import torch
+from isaaclab.envs.utils.io_descriptors import generic_io_descriptor, record_dtype, record_shape
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
+@generic_io_descriptor(
+    observation_type="Action",
+    description="Processed high-level action after scaling and clipping.",
+    on_inspect=[record_shape, record_dtype],
+)
 def processed_last_action(
     env: ManagerBasedRLEnv,
     action_name: str = "pre_trained_policy_action",

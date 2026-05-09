@@ -94,6 +94,18 @@ class PreTrainedPolicyAction(ActionTerm):
             processed_actions = torch.max(torch.min(processed_actions, self._action_clip_max), self._action_clip_min)
         return processed_actions
 
+    @property
+    def IO_descriptor(self):
+        """The IO descriptor for the high-level navigation action term."""
+
+        super().IO_descriptor
+        self._IO_descriptor.shape = (self.action_dim,)
+        self._IO_descriptor.dtype = str(self.raw_actions.dtype)
+        self._IO_descriptor.action_type = "PreTrainedPolicyAction"
+        self._IO_descriptor.scale = list(self.cfg.action_scale)
+        self._IO_descriptor.clip = [list(item) for item in self.cfg.action_clip] if self.cfg.action_clip else None
+        return self._IO_descriptor
+
     """
     Operations.
     """

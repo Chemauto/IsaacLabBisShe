@@ -1,0 +1,217 @@
+actions:
+- action_type: PreTrainedPolicyAction
+  clip:
+  - - -1.0
+    - 1.0
+  - - -1.0
+    - 1.0
+  - - -1.0
+    - 1.0
+  dtype: torch.float32
+  extras:
+    description: Pre-trained policy action term. This action term infers a pre-trained
+      policy and applies the corresponding low-level actions to the robot. The raw
+      actions correspond to the commands for the pre-trained policy.
+  full_path: MyProject.tasks.manager_based.NaviationTest.mdp.pre_trained_policy_action.PreTrainedPolicyAction
+  mdp_type: Action
+  name: pre_trained_policy_action
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+  shape:
+  - 3
+articulations:
+  robot:
+    default_joint_armature:
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    default_joint_damping:
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    - 0.5
+    default_joint_friction:
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    default_joint_pos:
+    - 0.10000000149011612
+    - -0.10000000149011612
+    - 0.10000000149011612
+    - -0.10000000149011612
+    - 0.800000011920929
+    - 0.800000011920929
+    - 1.0
+    - 1.0
+    - -1.5
+    - -1.5
+    - -1.5
+    - -1.5
+    default_joint_pos_limits:
+    - - -1.0471998453140259
+      - 1.0471998453140259
+    - - -1.0471998453140259
+      - 1.0471998453140259
+    - - -1.0471998453140259
+      - 1.0471998453140259
+    - - -1.0471998453140259
+      - 1.0471998453140259
+    - - -1.5707999467849731
+      - 3.4906997680664062
+    - - -1.5707999467849731
+      - 3.4906997680664062
+    - - -0.5235999226570129
+      - 4.537899494171143
+    - - -0.5235999226570129
+      - 4.537899494171143
+    - - -2.7227001190185547
+      - -0.8377599120140076
+    - - -2.7227001190185547
+      - -0.8377599120140076
+    - - -2.7227001190185547
+      - -0.8377599120140076
+    - - -2.7227001190185547
+      - -0.8377599120140076
+    default_joint_stiffness:
+    - 25.0
+    - 25.0
+    - 25.0
+    - 25.0
+    - 25.0
+    - 25.0
+    - 25.0
+    - 25.0
+    - 25.0
+    - 25.0
+    - 25.0
+    - 25.0
+    default_joint_vel:
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    joint_names:
+    - FL_hip_joint
+    - FR_hip_joint
+    - RL_hip_joint
+    - RR_hip_joint
+    - FL_thigh_joint
+    - FR_thigh_joint
+    - RL_thigh_joint
+    - RR_thigh_joint
+    - FL_calf_joint
+    - FR_calf_joint
+    - RL_calf_joint
+    - RR_calf_joint
+observations:
+  policy:
+  - dtype: torch.float32
+    extras:
+      axes:
+      - X
+      - Y
+      - Z
+      description: Gravity projection on the asset's root frame.
+      modifiers: null
+      units: m/s^2
+    full_path: isaaclab.envs.mdp.observations.projected_gravity
+    mdp_type: Observation
+    name: projected_gravity
+    observation_type: RootState
+    overloads:
+      clip: null
+      flatten_history_dim: true
+      history_length: 0
+      scale: null
+    shape:
+    - 3
+  - dtype: torch.float32
+    extras:
+      description: The generated command from command term in the command manager
+        with the given name.
+      modifiers: null
+    full_path: isaaclab.envs.mdp.observations.generated_commands
+    mdp_type: Observation
+    name: generated_commands
+    observation_type: Command
+    overloads:
+      clip: null
+      flatten_history_dim: true
+      history_length: 0
+      scale: null
+    shape:
+    - 4
+  - dtype: torch.float32
+    extras:
+      description: Height scan from heightmap around the robot.
+      modifiers: null
+    full_path: isaaclab.envs.mdp.observations.height_scan
+    mdp_type: Observation
+    name: height_scan
+    observation_type: HeightScan
+    overloads:
+      clip:
+      - -1.0
+      - 1.0
+      flatten_history_dim: true
+      history_length: 0
+      scale: null
+    params:
+      expected_dim: 187
+    shape:
+    - 187
+  - dtype: torch.float32
+    extras:
+      description: Processed high-level action after scaling and clipping.
+      modifiers: null
+    full_path: MyProject.tasks.manager_based.NaviationTest.mdp.observations.processed_last_action
+    mdp_type: Observation
+    name: processed_last_action
+    observation_type: Action
+    overloads:
+      clip: null
+      flatten_history_dim: true
+      history_length: 0
+      scale: null
+    shape:
+    - 3
+scene:
+  decimation: 40
+  dt: 0.2
+  physics_dt: 0.005
