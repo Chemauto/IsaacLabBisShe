@@ -13,6 +13,13 @@ ENABLE_ELASTIC_BAND = False # Virtual spring band, required for RL deployment
 SIMULATE_DT = 0.005  # Need to be larger than the runtime of viewer.sync()
 VIEWER_DT = 0.02  # 50 fps for viewer
 
+ENABLE_FRONT_CAMERA = True
+FRONT_CAMERA_NAME = "front_camera"
+FRONT_CAMERA_OUTPUT = "/tmp/envtest_front_camera.png"
+FRONT_CAMERA_DT = 1.0
+FRONT_CAMERA_WIDTH = 640
+FRONT_CAMERA_HEIGHT = 480
+
 
 ENABLE_HEIGHTMAP = True
 HEIGHTMAP_TOPIC = "rt/heightmap"

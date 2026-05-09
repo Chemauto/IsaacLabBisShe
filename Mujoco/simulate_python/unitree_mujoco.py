@@ -3,6 +3,7 @@ import mujoco
 import mujoco.viewer
 from threading import Thread
 import threading
+import cv2
 
 from unitree_sdk2py.core.channel import ChannelFactoryInitialize
 from unitree_sdk2py_bridge import UnitreeSdk2Bridge, ElasticBand
@@ -85,9 +86,48 @@ def PhysicsViewerThread():
         time.sleep(config.VIEWER_DT)
 
 
+def FrontCameraThread():
+    if not getattr(config, "ENABLE_FRONT_CAMERA", False):
+        return
+
+    camera_name = getattr(config, "FRONT_CAMERA_NAME", "front_camera")
+    output = getattr(config, "FRONT_CAMERA_OUTPUT", "/tmp/envtest_front_camera.png")
+    width = int(getattr(config, "FRONT_CAMERA_WIDTH", 640))
+    height = int(getattr(config, "FRONT_CAMERA_HEIGHT", 480))
+    dt = float(getattr(config, "FRONT_CAMERA_DT", 0.2))
+
+    try:
+        mj_model.camera(camera_name)
+    except KeyError:
+        print(f"Front camera '{camera_name}' not found. Disable front camera capture.")
+        return
+
+    try:
+        renderer = mujoco.Renderer(mj_model, height=height, width=width)
+    except Exception as error:
+        print(f"Front camera renderer init failed: {error}")
+        return
+
+    while viewer.is_running():
+        locker.acquire()
+        try:
+            renderer.update_scene(mj_data, camera=camera_name)
+            rgb = renderer.render()
+        finally:
+            locker.release()
+
+        bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(output, bgr)
+        time.sleep(dt)
+
+    renderer.close()
+
+
 if __name__ == "__main__":
     viewer_thread = Thread(target=PhysicsViewerThread)
     sim_thread = Thread(target=SimulationThread)
+    camera_thread = Thread(target=FrontCameraThread)
 
     viewer_thread.start()
     sim_thread.start()
+    camera_thread.start()
