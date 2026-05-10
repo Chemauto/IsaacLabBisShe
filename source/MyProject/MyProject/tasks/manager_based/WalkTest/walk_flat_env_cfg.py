@@ -178,7 +178,7 @@ class ObservationsCfg:
             clip=(-100, 100))
         base_ang_vel = ObsTerm(
             func=mdp.base_ang_vel,
-            scale=0.25,
+            # scale=0.25,
             clip=(-100, 100))
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
@@ -194,7 +194,7 @@ class ObservationsCfg:
             clip=(-100, 100))
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
-            scale=0.05,
+            # scale=0.05,
             clip=(-100, 100))
         actions = ObsTerm(func=mdp.last_action,clip=(-100, 100))
         height_scan = ObsTerm(
@@ -203,7 +203,7 @@ class ObservationsCfg:
             clip=(-1.0, 1.0),
         )
         def __post_init__(self):
-            self.history_length = 3
+            # self.history_length = 3
             self.enable_corruption = False
             self.concatenate_terms = True
     # observation groups

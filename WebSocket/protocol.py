@@ -9,6 +9,7 @@ WALK_DIRECTION_TO_VELOCITY = {
     "left": (0.0, 1.0, 0.0),
     "right": (0.0, -1.0, 0.0),
 }
+DEFAULT_WALK_SPEED = 0.5
 
 
 def normalize_skill(skill: str | None) -> str:
@@ -29,7 +30,7 @@ def walk_velocity(args: dict | None) -> tuple[float, float, float]:
     direction = str(payload.get("direction") or "").strip().lower()
     if direction not in WALK_DIRECTION_TO_VELOCITY:
         raise ValueError(f"unsupported walk direction: {direction}")
-    scale = coerce_number(payload.get("v"))
+    scale = coerce_number(payload.get("v", DEFAULT_WALK_SPEED))
     base = WALK_DIRECTION_TO_VELOCITY[direction]
     return tuple(component * scale for component in base)
 
