@@ -131,7 +131,7 @@ class ObservationsCfg:
         base_ang_vel = ObsTerm(
             func=mdp.base_ang_vel,
             noise=Unoise(n_min=-0.2, n_max=0.2),
-            scale=0.25,
+            # scale=0.25,
             clip=(-100, 100))
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
@@ -150,7 +150,7 @@ class ObservationsCfg:
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel, 
             noise=Unoise(n_min=-1.5, n_max=1.5), 
-            scale=0.05,
+            # scale=0.05,
             clip=(-100, 100))
         actions = ObsTerm(
             func=mdp.last_action, 

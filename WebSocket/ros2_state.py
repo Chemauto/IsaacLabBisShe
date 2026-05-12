@@ -6,7 +6,7 @@ import threading
 import time
 from typing import Any
 
-from WebSocket.protocol import coerce_bool, normalize_skill, position_payload, walk_velocity, world_to_body
+from WebSocket.protocol import coerce_bool, normalize_skill, position_payload, push_goal, stop_command_payload, walk_velocity, world_to_body
 
 DEFAULT_CLIMB_VELOCITY = (0.4, 0.0, 0.0)
 
@@ -74,7 +74,7 @@ class Ros2TopicState(Node):
         if skill == "push":
             self._publish_skill_command({
                 "model_use": 3,
-                "goal": [float(payload.get("x", 0.0)), float(payload.get("y", 0.0)), float(payload.get("z", 0.0))],
+                "goal": push_goal(payload, self._current_box_world()),
                 "start": True,
             })
             return
@@ -86,7 +86,7 @@ class Ros2TopicState(Node):
 
     def publish_stop(self) -> None:
         self._publish_cmd_vel((0.0, 0.0, 0.0))
-        self._publish_skill_command({"model_use": 1, "velocity": [0.0, 0.0, 0.0], "start": True})
+        self._publish_skill_command(stop_command_payload())
 
     def snapshot(self) -> dict:
         with self._lock:
@@ -140,6 +140,10 @@ class Ros2TopicState(Node):
         msg.pose.position.z = goal["z"]
         msg.pose.orientation.w = 1.0
         self.goal_pose_pub.publish(msg)
+
+    def _current_box_world(self) -> dict:
+        with self._lock:
+            return dict(self._box_world or self._box_from_scene_objects() or {})
 
     def _on_odom(self, msg: Any) -> None:
         pose = msg.pose.pose

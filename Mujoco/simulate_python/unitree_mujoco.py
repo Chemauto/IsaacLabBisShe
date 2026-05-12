@@ -94,7 +94,9 @@ def FrontCameraThread():
     output = getattr(config, "FRONT_CAMERA_OUTPUT", "/tmp/envtest_front_camera.png")
     width = int(getattr(config, "FRONT_CAMERA_WIDTH", 640))
     height = int(getattr(config, "FRONT_CAMERA_HEIGHT", 480))
-    dt = float(getattr(config, "FRONT_CAMERA_DT", 0.2))
+    dt = float(getattr(config, "FRONT_CAMERA_DT", 0.033))
+    save_dt = float(getattr(config, "FRONT_CAMERA_SAVE_DT", 1.0))
+    display = getattr(config, "FRONT_CAMERA_DISPLAY", False)
 
     try:
         mj_model.camera(camera_name)
@@ -108,7 +110,15 @@ def FrontCameraThread():
         print(f"Front camera renderer init failed: {error}")
         return
 
+    if display:
+        cv2.namedWindow("Front Camera", cv2.WINDOW_NORMAL)
+        cv2.resizeWindow("Front Camera", width, height)
+
+    last_save_time = 0.0
+
     while viewer.is_running():
+        step_start = time.perf_counter()
+
         locker.acquire()
         try:
             renderer.update_scene(mj_data, camera=camera_name)
@@ -117,9 +127,24 @@ def FrontCameraThread():
             locker.release()
 
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(output, bgr)
-        time.sleep(dt)
 
+        if display:
+            cv2.imshow("Front Camera", bgr)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+
+        if output and (step_start - last_save_time >= save_dt):
+            cv2.imwrite(output, bgr)
+            last_save_time = step_start
+
+        elapsed = time.perf_counter() - step_start
+        time_until_next = dt - elapsed
+        if time_until_next > 0:
+            time.sleep(time_until_next)
+
+    if display:
+        cv2.destroyAllWindows()
     renderer.close()
 
 

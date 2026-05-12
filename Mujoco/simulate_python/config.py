@@ -16,9 +16,11 @@ VIEWER_DT = 0.02  # 50 fps for viewer
 ENABLE_FRONT_CAMERA = True
 FRONT_CAMERA_NAME = "front_camera"
 FRONT_CAMERA_OUTPUT = "/tmp/envtest_front_camera.png"
-FRONT_CAMERA_DT = 1.0
+FRONT_CAMERA_DT = 0.033  # ~30fps for real-time display
+FRONT_CAMERA_SAVE_DT = 1.0  # 1Hz for saving image to file
 FRONT_CAMERA_WIDTH = 640
 FRONT_CAMERA_HEIGHT = 480
+FRONT_CAMERA_DISPLAY = True  # Show camera feed in real-time window
 
 
 ENABLE_HEIGHTMAP = True

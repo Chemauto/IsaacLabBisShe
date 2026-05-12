@@ -10,6 +10,7 @@ WALK_DIRECTION_TO_VELOCITY = {
     "right": (0.0, -1.0, 0.0),
 }
 DEFAULT_WALK_SPEED = 0.5
+DEFAULT_PUSH_GOAL_Z = 0.12
 
 
 def normalize_skill(skill: str | None) -> str:
@@ -50,6 +51,24 @@ def position_payload(value) -> dict:
             "z": coerce_number(values[2]),
         }
     return {"x": 0.0, "y": 0.0, "z": 0.0}
+
+
+def push_goal(args: dict | None, box_world: dict | None = None) -> list[float]:
+    payload = dict(args or {})
+    z = coerce_number(payload.get("z"))
+    if z <= 0.05:
+        box_z = coerce_number((box_world or {}).get("z"))
+        z = box_z if box_z > 0.05 else DEFAULT_PUSH_GOAL_Z
+    return [coerce_number(payload.get("x")), coerce_number(payload.get("y")), z]
+
+
+def stop_command_payload() -> dict:
+    return {
+        "model_use": 0,
+        "skill": "idle",
+        "start": False,
+        "velocity": [0.0, 0.0, 0.0],
+    }
 
 
 def world_to_body(robot: dict, world: dict) -> dict:
