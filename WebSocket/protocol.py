@@ -71,6 +71,13 @@ def stop_command_payload() -> dict:
     }
 
 
+def idle_command_payload() -> dict:
+    return {
+        "velocity": [0.0, 0.0, 0.0],
+        "start": True,
+    }
+
+
 def world_to_body(robot: dict, world: dict) -> dict:
     yaw = coerce_number(robot.get("yaw"))
     dx = coerce_number(world.get("x")) - coerce_number(robot.get("x"))

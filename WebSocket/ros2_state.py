@@ -1,3 +1,12 @@
+"""ROS2 state manager for robot_service.py.
+
+Subscribes to /go2/* ROS2 topics published by bishe_bridge (legged_ws).
+Publishes /rl_cmd_vel for go2_main_loop.
+
+Works uniformly with MuJoCo, IsaacLab, and real robot -- the underlying
+DDS-to-ROS2 conversion is handled by bishe_bridge / dds_bridge.
+"""
+
 from __future__ import annotations
 
 import json
@@ -5,11 +14,6 @@ import math
 import threading
 import time
 from typing import Any
-
-from WebSocket.protocol import coerce_bool, normalize_skill, position_payload, push_goal, stop_command_payload, walk_velocity, world_to_body
-
-DEFAULT_CLIMB_VELOCITY = (0.4, 0.0, 0.0)
-
 
 try:
     import rclpy
@@ -25,6 +29,10 @@ except Exception:
     PoseStamped = Twist = Odometry = String = None
     ROS2_AVAILABLE = False
 
+from WebSocket.protocol import coerce_bool, idle_command_payload, normalize_skill, position_payload, push_goal, stop_command_payload, walk_velocity, world_to_body
+
+DEFAULT_CLIMB_VELOCITY = (0.4, 0.0, 0.0)
+
 
 class Ros2TopicState(Node):
     def __init__(self, args):
@@ -37,10 +45,12 @@ class Ros2TopicState(Node):
         self._skill_status = {}
         self._scene_objects = []
 
+        # Publishers
         self.skill_command_pub = self.create_publisher(String, args.skill_command_topic, 10)
         self.cmd_vel_pub = self.create_publisher(Twist, args.cmd_vel_topic, 10)
         self.goal_pose_pub = self.create_publisher(PoseStamped, args.goal_pose_topic, 10)
 
+        # Subscribers
         self.create_subscription(Odometry, args.odom_topic, self._on_odom, 10)
         self.create_subscription(PoseStamped, args.box_pose_topic, self._on_box_pose, 10)
         self.create_subscription(String, args.skill_status_topic, self._on_skill_status, 10)
@@ -87,6 +97,10 @@ class Ros2TopicState(Node):
     def publish_stop(self) -> None:
         self._publish_cmd_vel((0.0, 0.0, 0.0))
         self._publish_skill_command(stop_command_payload())
+
+    def publish_idle(self) -> None:
+        self._publish_cmd_vel((0.0, 0.0, 0.0))
+        self._publish_skill_command(idle_command_payload())
 
     def snapshot(self) -> dict:
         with self._lock:

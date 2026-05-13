@@ -216,7 +216,7 @@ SKILL_REGISTRY: dict[int, SkillSpec] = {
     ),
     2: SkillSpec(
         name="climb",
-        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "BiShePolicy", "Climbdouble.pt"),
+        policy_path=os.path.join(REPO_ROOT, "ModelBackup", "BiShePolicy", "Climb.pt"),
         obs_terms=CLIMB_LOW_LEVEL_OBS_TERMS,
         obs_dim=CLIMB_LOW_LEVEL_OBS_DIM,
         checkpoint_format="rsl_rl_checkpoint",

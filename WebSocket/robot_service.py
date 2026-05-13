@@ -24,12 +24,12 @@ DEFAULT_POLL_INTERVAL_SEC = 0.1
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Bridge FinalProject WebSocket commands to ROS2 topics.")
-    parser.add_argument("--host", type=str, default=os.getenv("ROBOT_WS_HOST", DEFAULT_WS_HOST), help="WebSocket监听地址。")
-    parser.add_argument("--port", type=int, default=int(os.getenv("ROBOT_WS_PORT", DEFAULT_WS_PORT)), help="WebSocket监听端口。")
-    parser.add_argument("--poll-interval", type=float, default=float(os.getenv("ROBOT_WS_POLL_INTERVAL_SEC", DEFAULT_POLL_INTERVAL_SEC)), help="状态推送轮询间隔秒数。")
+    parser = argparse.ArgumentParser(description="Bridge WebSocket commands to ROS2 topics.")
+    parser.add_argument("--host", type=str, default=os.getenv("ROBOT_WS_HOST", DEFAULT_WS_HOST), help="WebSocket listen address.")
+    parser.add_argument("--port", type=int, default=int(os.getenv("ROBOT_WS_PORT", DEFAULT_WS_PORT)), help="WebSocket listen port.")
+    parser.add_argument("--poll-interval", type=float, default=float(os.getenv("ROBOT_WS_POLL_INTERVAL_SEC", DEFAULT_POLL_INTERVAL_SEC)), help="State push poll interval (seconds).")
     parser.add_argument("--skill-command-topic", default="/go2/skill_command")
-    parser.add_argument("--cmd-vel-topic", default="/go2/cmd_vel")
+    parser.add_argument("--cmd-vel-topic", default="/rl_cmd_vel")
     parser.add_argument("--goal-pose-topic", default="/go2/goal_pose")
     parser.add_argument("--odom-topic", default="/go2/odom")
     parser.add_argument("--box-pose-topic", default="/go2/box_pose")
@@ -79,7 +79,11 @@ async def _stream_until_feedback(
 
         feedback = feedback_tracker.evaluate(current_state, time.time() - start_time)
         if feedback is not None:
-            ros2_node.publish_stop()
+            if feedback.get("signal") == "SUCCESS":
+                ros2_node.publish_idle()
+                await asyncio.sleep(0.5)
+            else:
+                ros2_node.publish_stop()
             await ws.send(json.dumps(feedback, ensure_ascii=False))
             return
         await asyncio.sleep(interval)
@@ -127,7 +131,7 @@ async def serve(ros2_node: Ros2TopicState, host: str, port: int, poll_interval: 
     try:
         import websockets
     except ImportError as error:
-        raise RuntimeError("未安装websockets，请先执行 pip install websockets") from error
+        raise RuntimeError("websockets not installed. Run: pip install websockets") from error
 
     async def _handler(ws):
         await handle_client(ws, ros2_node, poll_interval=poll_interval)

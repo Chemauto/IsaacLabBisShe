@@ -1,98 +1,95 @@
-# MuJoCo Workspace
+# MuJoCo 目录
 
-这个目录放 IsaacLabBisShe 当前使用的 MuJoCo Python 仿真、地形生成工具和 Go2 模型资源。
+MuJoCo 仿真、DDS 状态读取和 ROS2 桥接。
 
-## 目录作用
-- `simulate_python/`：MuJoCo Python 仿真入口，发布 `rt/lowstate`、`rt/sportmodestate`、`rt/heightmap`，接收 `rt/lowcmd`。
-  - `unitree_sdk2py_bridge.py`：原始通用 bridge
-  - `push_box_sdk2py_bridge.py`：push-box 额外观测 bridge
-- `terrain_tool/`：地形生成工具，用来生成 `scene_terrain.xml` 或自定义 mine 场景。
-- `unitree_robots/`：机器人 XML、mesh、terrain scene、height field 图片等运行资源。
+## 目录结构
 
-## 常用流程
+- `simulate_python/`：仿真入口和桥接脚本
+- `terrain_tool/`：地形生成工具
+- `unitree_robots/`：Go2 XML、mesh 等资源
 
-1. 启动 MuJoCo 仿真：
-```bash
-cd Mujoco/simulate_python
-bash run_simulator.sh
+## simulate_python 文件
+
+- `unitree_mujoco.py`：MuJoCo 仿真主入口，发布 DDS 话题
+- `unitree_sdk2py_bridge.py`：DDS bridge（rt/lowstate, rt/sportmodestate, rt/heightmap）
+- `push_box_sdk2py_bridge.py`：push-box 额外观测 bridge
+- `mujoco_dds_state.py`：订阅 MuJoCo DDS → 写 JSON 状态文件
+- `mujoco_ros2_bridge.py`：读 JSON 状态文件 → 发布 ROS2 `/go2/*` 话题
+- `config.py`：仿真配置（场景路径、push-box、heightmap 等）
+
+## 数据流
+
+```
+unitree_mujoco.py → DDS rt/sportmodestate, rt/lowstate
+                      ↓
+              mujoco_dds_state.py → /tmp/mujoco_ros2_state.json
+                                      ↓
+                              mujoco_ros2_bridge.py → /go2/* ROS2 → robot_service.py
 ```
 
-2. 另一个终端看 sim2sim 数据：
+## 启动
+
+一键启动（包含 robot_service）：
+
 ```bash
-cd Mujoco/simulate_python
-export LD_LIBRARY_PATH=$HOME/cyclonedds/build/lib:$LD_LIBRARY_PATH
-python3 test/monitor_sim2sim.py
+bash run_mujoco.sh
 ```
 
-3. 再启动你的控制器，让它往 `rt/lowcmd` 发命令。
+单独启动：
 
-## Push-box 场景
-
-push-box 现在已经合并到通用 MuJoCo 入口里，不再单独维护一份仿真主脚本。
-
-1. 启动 push-box 仿真：
 ```bash
 cd Mujoco/simulate_python
-python3 unitree_mujoco.py
+
+# 终端 1: MuJoCo 仿真 (ros2_env)
+conda run -n ros2_env python unitree_mujoco.py
+
+# 终端 2: DDS 状态写入 (ros2_env)
+conda run -n ros2_env python mujoco_dds_state.py
+
+# 终端 3: ROS2 桥接 (ros2_env)
+conda run -n ros2_env python mujoco_ros2_bridge.py
+
+# 终端 4: robot_service (ros2_env)
+conda run -n ros2_env python WebSocket/robot_service.py
 ```
 
-2. 查看 push-box 高层观测：
+## 调试命令
+
 ```bash
-cd Mujoco/simulate_python
-python3 test/monitor_push_box_obs.py
+source /opt/ros/jazzy/setup.bash
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+
+# walk
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"model_use\": 1, \"velocity\": [0.6, 0.0, 0.0], \"start\": true}'}"
+
+# stop
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"start\": false}'}"
+
+# push_box
+ros2 topic pub --once /go2/skill_command std_msgs/msg/String "{data: '{\"model_use\": 3, \"goal\": \"auto\", \"start\": true}'}"
+
+# navigation
+ros2 topic pub --once /go2/goal_pose geometry_msgs/msg/PoseStamped "{pose: {position: {x: 4.5, y: 0.0, z: 0.1}, orientation: {w: 1.0}}}"
+
+# 查看状态
+ros2 topic echo /go2/odom --once
+ros2 topic echo /go2/box_pose --once
+ros2 topic echo /go2/skill_status --once
 ```
 
-需要保证 `config.py` 里这几个配置是对的：
+## config.py 配置
 
-- `ROBOT_SCENE = "../unitree_robots/go2/scene_push_box.xml"`
-- `ENABLE_PUSH_BOX_OBS = True`
+- `ROBOT_SCENE`：场景 XML 路径
+- `ENABLE_PUSH_BOX_OBS`：启用 push-box 观测
+- `ENABLE_HEIGHTMAP`：启用高度图
 
-新增 topic：
+## 地形生成
 
-- `rt/push_box_obs`
-- `rt/push_box_goal`
-
-`rt/push_box_obs` 当前发布 16 维状态：
-
-- `base_lin_vel(3)`
-- `projected_gravity(3)`
-- `box_in_robot_frame_pos(3)`
-- `box_in_robot_frame_yaw(sin, cos)`
-- `goal_in_box_frame_pos(3)`
-- `goal_in_box_frame_yaw(sin, cos)`
-
-说明：
-
-- `push_actions(3)` 不从 MuJoCo 发，因为它属于 deploy / policy 本地内部状态，更适合控制器侧自己维护。
-- `config.py` 默认把可移动箱子从 `rt/heightmap` 中剔除了，方便后续低层 walk policy 继续复用无箱子 height scan。
-- `PUSH_BOX_GOAL_POSITION / PUSH_BOX_GOAL_YAW` 现在只作为启动时默认目标；运行中可以给 `rt/push_box_goal` 发布 4 维 `[x, y, z, yaw]`，MuJoCo 会保持最后一次有效目标。
-
-## 切换地形
-
-1. 生成普通 terrain：
 ```bash
 cd Mujoco/terrain_tool
-python3 terrain_generator.py
+python3 terrain_generator.py          # 普通 terrain
+python3 mine_terrain_generator.py     # mine terrain
+python3 push_box_scene_generator.py   # push-box scene
 ```
 
-2. 生成 mine terrain：
-```bash
-cd Mujoco/terrain_tool
-python3 mine_terrain_generator.py
-```
-
-如果要重新生成 push-box scene：
-```bash
-cd Mujoco/terrain_tool
-python3 push_box_scene_generator.py
-```
-
-3. 修改 `simulate_python/config.py` 里的 `ROBOT_SCENE`，例如：
-```python
-ROBOT_SCENE = "../unitree_robots/" + ROBOT + "/mine_scene_terrain2.xml"
-```
-
-## 进一步说明
-
-- 仿真与调试流程：`simulate_python/SIM2SIM_DEBUG.md`
-- 地形工具说明：`terrain_tool/readme_zh.md`
+生成后修改 `config.py` 的 `ROBOT_SCENE` 指向新场景。

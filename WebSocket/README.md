@@ -1,49 +1,49 @@
-# WebSocket 目录说明
+# WebSocket 目录
 
-这个目录提供 FinalProject/LLM 使用的 WebSocket 服务端。服务端只和 ROS2 topic 通信，不直接读写 EnvTest 的 `/tmp` 控制文件。
+WebSocket 服务端，连接 Planner (FinalProject) 和 ROS2 话题。
 
 ## 文件
 
-- `robot_service.py`：WebSocket 服务端入口，默认监听 `ws://0.0.0.0:8765`
-- `ros2_state.py`：订阅 ROS2 状态 topic，缓存机器人、箱子和技能状态，并发布 ROS2 控制 topic
-- `protocol.py`：技能名、速度和状态字段的轻量转换
-- `feedback.py`：根据 ROS2 状态判断动作成功、失败或超时
+- `robot_service.py`：WebSocket 服务端，默认 `ws://0.0.0.0:8765`
+- `ros2_state.py`：订阅 ROS2 `/go2/*` 状态话题，发布控制话题
+- `protocol.py`：技能名、速度等转换工具
+- `feedback.py`：动作成功/失败/超时判定
 
-`climb` 的成功判定不是单帧高度达到，而是高度达到后连续稳定命中，避免机器人瞬间抬高但还没站稳就返回成功。
+## 数据流
 
-## 运行
+```
+Planner → WebSocket → robot_service.py → /go2/skill_command, /rl_cmd_vel, /go2/goal_pose (ROS2)
+/go2/odom, /go2/box_pose, /go2/scene_objects, /go2/skill_status (ROS2) → robot_service.py → WebSocket → Planner
+```
 
-先确保 ROS2 环境里已经能看到 `/go2/*` topic：
+## 启动
+
+通常由 `run_isaaclab.sh` 或 `run_mujoco.sh` 一起启动。单独启动：
 
 ```bash
-ros2 topic list
+conda run -n ros2_env python WebSocket/robot_service.py
 ```
 
-启动服务端：
+Planner 连接：`ws://127.0.0.1:8765`
 
-```bash
-cd /home/robot/work/IsaacLabBisShe
-source /opt/ros/jazzy/setup.bash
-python WebSocket/robot_service.py
+## WebSocket 协议
+
+发送命令：
+
+```json
+{"type": "command", "skill": "walk", "args": {"direction": "front", "v": 0.5}}
+{"type": "command", "skill": "push_box", "args": {"goal": "auto"}}
+{"type": "command", "skill": "navigation", "args": {"x": 4.5, "y": 0.0, "z": 0.1}}
 ```
 
-FinalProject 保持使用：
+接收状态：
 
-```env
-ROBOT_WS_URL=ws://127.0.0.1:8765
+```json
+{"type": "state", "robot": {"x": 0, "y": 0, "z": 0.3, "yaw": 0}, "box_world": {...}, "skill": "walk", ...}
 ```
 
-## 链路
+接收反馈：
 
-```text
-FinalProject
--> ws://127.0.0.1:8765
--> WebSocket/robot_service.py
--> /go2/skill_command, /go2/cmd_vel, /go2/goal_pose
--> 真实机器人或 Ros2/PublishRos2Topic.py
-
-真实机器人或 Ros2/PublishRos2Topic.py
--> /go2/odom, /go2/box_pose, /go2/scene_objects, /go2/skill_status
--> WebSocket/robot_service.py
--> FinalProject
+```json
+{"type": "feedback", "action_id": "...", "signal": "SUCCESS", "message": "walk completed"}
 ```

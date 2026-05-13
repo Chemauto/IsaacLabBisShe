@@ -1,182 +1,66 @@
 # IsaacLabBisShe
 
-这个仓库面向 Unitree Go2，当前主要覆盖三条线：
+Unitree Go2 多技能训练与统一仿真运行框架，支持 IsaacLab、MuJoCo 和实物。
 
-- IsaacLab 中的多技能训练与统一场景运行
-- `deploy/` 下的策略导出与部署控制器
-- `Mujoco/` 下的 Python 仿真、`heightmap` 联调与 sim2sim 调试
+## 架构
 
-## 当前重点能力
-
-- `walk / climb / push_box / navigation` 四类技能已经接入统一运行链路
-- `EnvTest` 提供固定结构化场景，便于技能切换和调试
-- `deploy/` 可以导出 `deploy.yaml`、`policy.onnx`、`policy.pt`
-- `Mujoco/` 已支持 `rt/lowstate`、`rt/sportmodestate`、`rt/heightmap`
-- MuJoCo viewer 中可直接显示 `height_scan` 命中点和射线
-
-## 目录概览
-
-- `source/MyProject/MyProject/tasks/manager_based/WalkTest`
-  - 行走、攀爬相关环境与任务配置
-- `source/MyProject/MyProject/tasks/manager_based/PushBoxTest`
-  - 推箱子环境
-- `source/MyProject/MyProject/tasks/manager_based/NaviationTest`
-  - 导航训练环境
-- `source/MyProject/MyProject/tasks/manager_based/EnvTest`
-  - 多技能统一测试场景
-- `NewTools`
-  - 多技能运行脚本和桥接逻辑
-- `WebSocket`
-  - FinalProject/LLM 使用的 WebSocket 到 ROS2 topic 服务端
-- `Ros2`
-  - EnvTest 仿真入口和 ROS2 topic 仿真桥
-- `ModelBackup`
-  - 运行时加载的策略模型
-- `deploy`
-  - Go2 deploy 配置导出、ONNX/JIT 导出、C++ 控制器
-- `Mujoco`
-  - MuJoCo Python 仿真、terrain 工具、Go2 资源
-
-## 安装
-
-先安装项目 Python 包：
-
-```bash
-python -m pip install -e source/MyProject
+```
+Planner (FinalProject) ──WebSocket──> robot_service.py ──ROS2──> go2_main_loop (legged_ws)
+                                        ↑ /go2/* topics
+                    ┌───────────────────┬┴──────────────────┐
+              IsaacLab (ros2_bridge)  MuJoCo (mujoco_ros2_bridge)
+                    ↑                    ↑
+            FinalSim.py JSON      mujoco_dds_state.py JSON
 ```
 
-如果要跑 MuJoCo terrain tool，还需要：
+robot_service.py 通过 ROS2 `/go2/*` 话题统一接收数据，不关心后端是哪个。
+
+## 快速启动
+
+**IsaacLab**（需要 `env_isaaclab` + `ros2_env` conda 环境）：
 
 ```bash
-pip3 install noise opencv-python numpy
+bash run_isaaclab.sh
 ```
 
-## 流程 1：多技能统一运行
-
-最常用入口：
-
-- `Ros2/FinalSim.py`
-- `Ros2/PublishRos2Topic.py`
-- `WebSocket/robot_service.py`
-
-启动 EnvTest 仿真器：
+**MuJoCo**（需要 `ros2_env` conda 环境）：
 
 ```bash
-python Ros2/FinalSim.py --scene_id 4
+bash run_mujoco.sh
 ```
 
-另一个终端启动 ROS2 仿真桥：
+Ctrl+C 停止所有进程。
 
-```bash
-source /opt/ros/jazzy/setup.bash
-python Ros2/PublishRos2Topic.py
-```
+## 目录结构
 
-再启动 LLM WebSocket 服务端：
+| 目录 | 说明 |
+|------|------|
+| `Isaaclab/` | IsaacLab 仿真入口 (`FinalSim.py`) 和 ROS2 桥接 (`ros2_bridge.py`) |
+| `Mujoco/` | MuJoCo 仿真、DDS 状态读取、ROS2 桥接 |
+| `WebSocket/` | WebSocket 服务端 (`robot_service.py`)，连接 Planner |
+| `deploy/` | 策略导出与 C++ 部署控制器 |
+| `ModelBackup/` | 运行时加载的策略模型 |
+| `source/` | IsaacLab 任务定义（WalkTest、PushBoxTest、EnvTest 等） |
 
-```bash
-source /opt/ros/jazzy/setup.bash
-python WebSocket/robot_service.py
-```
+## ROS2 话题
 
-`model_use` 对应关系：
+| 话题 | 类型 | 说明 |
+|------|------|------|
+| `/go2/odom` | Odometry | 机器人位姿和速度 |
+| `/go2/box_pose` | PoseStamped | 箱子世界坐标 |
+| `/go2/scene_objects` | String (JSON) | 场景物体列表 |
+| `/go2/skill_status` | String (JSON) | 当前技能状态 |
+| `/go2/skill_command` | String (JSON) | 技能指令 |
+| `/go2/goal_pose` | PoseStamped | 导航目标点 |
+| `/rl_cmd_vel` | Twist | 速度指令 |
 
-- `0`：idle
-- `1`：walk
-- `2`：climb
-- `3`：push_box
-- `4`：navigation
+## model_use 对应
 
-`EnvTest` 的 `scene_id=0~4` 对应不同平台和箱子组合，`scene_id=4` 是当前最常用的综合测试场景。
-
-## 流程 2：deploy 导出与运行
-
-最常用导出方式：
-
-```bash
-bash deploy/scripts/export_policy_and_deploy.sh \
-  --task Template-Velocity-Go2-Walk-BiShe-Pit-v0 \
-  --checkpoint /path/to/model_XXXX.pt
-```
-
-输出会写到：
-
-- `deploy/robots/go2/config/params/{env.yaml,agent.yaml,deploy.yaml}`
-- `deploy/robots/go2/config/exported/{policy.onnx,policy.pt}`
-
-编译 deploy 控制器：
-
-```bash
-cd deploy/robots/go2/build
-cmake ..
-make -j4
-```
-
-运行：
-
-```bash
-cd deploy/robots/go2/build
-./go2_ctrl --network lo
-```
-
-更完整说明见：
-
-- `deploy/README.md`
-
-## 流程 3：MuJoCo sim2sim 调试
-
-MuJoCo 目录分三部分：
-
-- `Mujoco/simulate_python`
-  - Python 仿真入口、DDS bridge、监控脚本
-- `Mujoco/terrain_tool`
-  - terrain 生成工具
-- `Mujoco/unitree_robots`
-  - Go2 XML、mesh、terrain scene、height field 图片
-
-启动 MuJoCo：
-
-```bash
-cd Mujoco/simulate_python
-bash run_simulator.sh
-```
-
-另一个终端看 sim2sim 数据：
-
-```bash
-cd Mujoco/simulate_python
-export LD_LIBRARY_PATH=${CYCLONEDDS_BUILD:-$HOME/cyclonedds/build}/lib:$LD_LIBRARY_PATH
-python3 test/monitor_sim2sim.py
-```
-
-当前 `monitor_sim2sim.py` 默认会打印：
-
-- `lowstate`
-- `sportmodestate`
-- `lowcmd`
-- `heightmap grid`
-- `heightmap delta grid`
-
-如果要生成 terrain：
-
-```bash
-cd Mujoco/terrain_tool
-python3 terrain_generator.py
-python3 mine_terrain_generator.py
-```
-
-然后修改 `Mujoco/simulate_python/config.py` 里的 `ROBOT_SCENE`。
-
-更完整说明见：
-
-- `Mujoco/README.md`
-- `Mujoco/simulate_python/SIM2SIM_DEBUG.md`
-- `Mujoco/terrain_tool/readme_zh.md`
-
-## 推荐先看
-
-- `source/MyProject/MyProject/tasks/manager_based/EnvTest/README.md`
-- `Ros2/README.md`
-- `WebSocket/README.md`
-- `deploy/README.md`
-- `Mujoco/README.md`
+| ID | 技能 |
+|----|------|
+| 0 | idle |
+| 1 | walk |
+| 2 | climb |
+| 3 | push_box |
+| 4 | navigation |
+| 5 | nav_climb |

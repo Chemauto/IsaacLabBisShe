@@ -19,17 +19,13 @@ DEFAULT_DISTANCE_TOL = {
     "climb": 0.05,
     "walk_skill": 0.08,
 }
-CLIMB_STABLE_HITS = 10
-CLIMB_STABLE_DELTA_M = 0.02
-CLIMB_SETTLE_SEC = 1.0
+CLIMB_HOLD_SEC = 2.0
 
 
 class FeedbackTracker:
     def __init__(self, command: dict, start_state: dict):
         self.command = command
         self.start_state = start_state
-        self._last_robot = None
-        self._stable_hits = 0
         self._reached_at = None
 
     def evaluate(self, current_state: dict, elapsed_sec: float, timeout_sec: float | None = None):
@@ -40,23 +36,16 @@ class FeedbackTracker:
 
     def _evaluate_climb(self, current_state: dict, elapsed_sec: float, timeout_sec: float | None):
         timeout = float(timeout_sec or DEFAULT_TIMEOUT_SEC["climb"])
-        robot = _position(current_state.get("robot"))
         reached = _climb_height(current_state, self.start_state) >= _target_height(self.command) - DEFAULT_DISTANCE_TOL["climb"]
-        if reached and self._reached_at is None:
-            self._reached_at = elapsed_sec
-        stable = self._last_robot is not None and _distance(robot, self._last_robot) <= CLIMB_STABLE_DELTA_M
-        settled = self._reached_at is not None and elapsed_sec - self._reached_at >= CLIMB_SETTLE_SEC
-        self._last_robot = robot
-
-        if reached and settled and stable:
-            self._stable_hits += 1
-            if self._stable_hits >= CLIMB_STABLE_HITS:
+        if reached:
+            if self._reached_at is None:
+                self._reached_at = elapsed_sec
+            if elapsed_sec - self._reached_at >= CLIMB_HOLD_SEC:
                 summary = _summary(self.command, current_state, "robot")
-                summary["stable_hits"] = self._stable_hits
-                summary["settle_sec"] = round(elapsed_sec - self._reached_at, 3)
-                return _feedback(self.command, "SUCCESS", "climb reached target height and stabilized", summary)
+                summary["hold_sec"] = round(elapsed_sec - self._reached_at, 3)
+                return _feedback(self.command, "SUCCESS", "climb reached target height and held", summary)
         else:
-            self._stable_hits = 0
+            self._reached_at = None
 
         if current_state.get("start") is False and elapsed_sec > 0.5:
             return _feedback(self.command, "FAILURE", "climb stopped before reaching target", _summary(self.command, current_state))
