@@ -19,7 +19,7 @@ DEFAULT_DISTANCE_TOL = {
     "climb": 0.05,
     "walk_skill": 0.08,
 }
-CLIMB_HOLD_SEC = 2.0
+CLIMB_HOLD_SEC = 1.0
 
 
 class FeedbackTracker:
