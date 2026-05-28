@@ -20,6 +20,8 @@ DEFAULT_DISTANCE_TOL = {
     "walk_skill": 0.08,
 }
 CLIMB_HOLD_SEC = 1.0
+COMMAND_ACTIVATION_GRACE_SEC = 5.0
+SKILL_TO_MODEL_USE = {"walk_skill": 1, "climb": 2, "push": 3, "nav": 4, "nav_climb": 5}
 
 
 class FeedbackTracker:
@@ -27,11 +29,20 @@ class FeedbackTracker:
         self.command = command
         self.start_state = start_state
         self._reached_at = None
+        self._command_started = False
 
     def evaluate(self, current_state: dict, elapsed_sec: float, timeout_sec: float | None = None):
         skill = normalize_skill(self.command.get("skill"))
+        self._command_started = self._command_started or _command_is_active(self.command, current_state)
         if skill != "climb":
-            return evaluate_feedback(self.command, self.start_state, current_state, elapsed_sec, timeout_sec)
+            return evaluate_feedback(
+                self.command,
+                self.start_state,
+                current_state,
+                elapsed_sec,
+                timeout_sec,
+                command_started=self._command_started,
+            )
         return self._evaluate_climb(current_state, elapsed_sec, timeout_sec)
 
     def _evaluate_climb(self, current_state: dict, elapsed_sec: float, timeout_sec: float | None):
@@ -48,6 +59,8 @@ class FeedbackTracker:
             self._reached_at = None
 
         if current_state.get("start") is False and elapsed_sec > 0.5:
+            if not self._command_started and elapsed_sec < COMMAND_ACTIVATION_GRACE_SEC:
+                return None
             return _feedback(self.command, "FAILURE", "climb stopped before reaching target", _summary(self.command, current_state))
         if elapsed_sec >= timeout:
             return _feedback(self.command, "FAILURE", "climb timeout", _summary(self.command, current_state))
@@ -55,7 +68,14 @@ class FeedbackTracker:
 #对climb做连续稳定判定，避免瞬间高度达到就返回成功
 
 
-def evaluate_feedback(command: dict, start_state: dict, current_state: dict, elapsed_sec: float, timeout_sec: float | None = None):
+def evaluate_feedback(
+    command: dict,
+    start_state: dict,
+    current_state: dict,
+    elapsed_sec: float,
+    timeout_sec: float | None = None,
+    command_started: bool = False,
+):
     skill = normalize_skill(command.get("skill"))
     timeout = float(timeout_sec or DEFAULT_TIMEOUT_SEC.get(skill, 60.0))
 
@@ -68,10 +88,23 @@ def evaluate_feedback(command: dict, start_state: dict, current_state: dict, ela
     if skill == "walk_skill" and _walk_progress(command, start_state, current_state) >= _walk_target(command):
         return _feedback(command, "SUCCESS", "walk reached minimum progress", _summary(command, current_state, "robot"))
     if current_state.get("start") is False and elapsed_sec > 0.5:
+        if not command_started and elapsed_sec < COMMAND_ACTIVATION_GRACE_SEC:
+            return None
         return _feedback(command, "FAILURE", f"{skill} stopped before reaching target", _summary(command, current_state))
     if elapsed_sec >= timeout:
         return _feedback(command, "FAILURE", f"{skill} timeout", _summary(command, current_state))
     return None
+
+
+def _command_is_active(command: dict, current_state: dict) -> bool:
+    if current_state.get("start") is not True:
+        return False
+    skill = normalize_skill(command.get("skill"))
+    model_use = current_state.get("model_use")
+    if model_use == SKILL_TO_MODEL_USE.get(skill):
+        return True
+    state_skill = normalize_skill(current_state.get("skill") or current_state.get("current_skill"))
+    return state_skill == skill
 
 
 def _distance(position: dict | None, goal: dict | None) -> float:
