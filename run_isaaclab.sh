@@ -27,7 +27,7 @@ export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces>
                         </Interfaces></General></Domain></CycloneDDS>'
 
 # FinalSim: env_isaaclab conda env (subshell to isolate env)
-(conda activate env_isaaclab && export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp && export CYCLONEDDS_HOME=/home/xcj/cyclonedds/install && export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo" priority="default" multicast="default" /></Interfaces></General></Domain></CycloneDDS>' && python "$BASE/Isaaclab/FinalSim.py" --scene_id 4 --enable_front_camera) &
+(conda activate env_isaaclab && export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp && export CYCLONEDDS_HOME=/home/xcj/cyclonedds/install && export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces><NetworkInterface name="lo" priority="default" multicast="default" /></Interfaces></General></Domain></CycloneDDS>' && python "$BASE/Isaaclab/FinalSim.py" --scene_id 1 --enable_front_camera) &
 PID_SIM=$!
 echo "[run_isaaclab] started FinalSim (pid=$PID_SIM)"
 sleep 2

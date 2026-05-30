@@ -13,7 +13,7 @@ DEFAULT_TIMEOUT_SEC = {
     "climb": 30.0,
 }
 DEFAULT_DISTANCE_TOL = {
-    "nav": 0.15,
+    "nav": 0.25,
     "nav_climb": 0.15,
     "push": 0.08,
     "climb": 0.05,
