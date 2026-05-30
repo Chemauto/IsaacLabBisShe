@@ -1,40 +1,34 @@
-# `scripts/rsl_rl` 用法
-## 1. 训练
+# scripts/rsl_rl
+
+该目录保存 RSL-RL 训练、回放、评测和绘图脚本。
+
+## 关键任务 ID
+
+- climb：`Template-Velocity-Go2-Walk-BiShe-Pit-Play-v0`
+- navigation：`Template-Naviation-BiShe-Go2-Play-v0`
+- push_box：`Template-Push-Box-Go2-Play-v0`
+
+## 训练示例
+
 ```bash
-./isaaclab.sh -p scripts/rsl_rl/train.py \
-  --task Template-Velocity-Go2-Walk-Rough-v0 \
-  --headless
+./isaaclab.sh -p scripts/rsl_rl/train.py --task Template-Naviation-BiShe-Go2-v0 --headless
 ```
-## 2. 评估并导出误差数据
+
+## Play 示例
+
 ```bash
-./isaaclab.sh -p scripts/rsl_rl/play.py \
-  --task Template-Velocity-Go2-Walk-Rough-Play-v0 \
-  --checkpoint /home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/WalkPolicy/WalkRoughNew0406.pt \
-  --num_envs 1 \
-  --eval_episodes 20 \
-  --headless
+./isaaclab.sh -p scripts/rsl_rl/play.py --task Template-Naviation-BiShe-Go2-Play-v0 --checkpoint /path/to/model.pt --num_envs 1
 ```
-输出目录：`<checkpoint_dir>/eval/<timestamp>/`
-生成文件：
-- `summary.json`：平均指标
-- `episodes.csv`：每次 reset 的评估数据
-## 3. 评估结果写入 TensorBoard
+
+## 评测输出
+
+使用 `--eval_episodes` 会在 checkpoint 目录下生成 `eval/<timestamp>/`，包含：
+
+- `summary.json`：平均指标。
+- `episodes.csv`：逐回合指标。
+
+## 绘图
+
 ```bash
-./isaaclab.sh -p scripts/rsl_rl/play.py \
-  --task Template-Velocity-Go2-Walk-Rough-Play-v0 \
-  --checkpoint /home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/WalkPolicy/WalkRoughNew0406.pt \
-  --num_envs 1 \
-  --eval_episodes 20 \
-  --eval_tensorboard \
-  --headless
+python scripts/rsl_rl/plot_eval.py /path/to/eval/<timestamp>
 ```
-```bash
-tensorboard --logdir /home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/WalkPolicy/eval/<timestamp>/tensorboard
-```
-## 4. 把 `episodes.csv` 画成图片
-```bash
-python scripts/rsl_rl/plot_eval.py /home/xcj/work/IsaacLab/IsaacLabBisShe/ModelBackup/WalkPolicy/eval/<timestamp>
-```
-生成：
-- `plots/overview.png`
-- `plots/metrics/*.png`

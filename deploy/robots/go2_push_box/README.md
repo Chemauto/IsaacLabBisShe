@@ -35,7 +35,7 @@
 要用这个：
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/Mujoco/simulate_python
+cd Mujoco/simulate_python
 python3 unitree_mujoco.py
 ```
 
@@ -53,7 +53,7 @@ python3 unitree_mujoco.py
 ### 2. 再启动 deploy 控制器
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2_push_box/build
+cd deploy/robots/go2_push_box/build
 ./go2_push_box_ctrl --network lo
 ```
 
@@ -144,14 +144,14 @@ Received optional topic rt/heightmap
 ### 终端 1：MuJoCo
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/Mujoco/simulate_python
+cd Mujoco/simulate_python
 python3 unitree_mujoco.py
 ```
 
 ### 终端 2：看高层观测有没有发出来
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/Mujoco/simulate_python
+cd Mujoco/simulate_python
 python3 test/monitor_push_box_obs.py
 ```
 
@@ -160,7 +160,7 @@ python3 test/monitor_push_box_obs.py
 ### 终端 3：deploy
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2_push_box/build
+cd deploy/robots/go2_push_box/build
 ./go2_push_box_ctrl --network lo
 ```
 
@@ -192,7 +192,7 @@ cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2_push_box/build
 它们现在只是启动时的默认目标。运行中更推荐直接发话题：
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2_push_box
+cd deploy/robots/go2_push_box
 python3 tools/publish_push_box_goal.py --goal 1.7 0.0 0.12 0.0
 ```
 

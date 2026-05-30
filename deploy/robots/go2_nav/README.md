@@ -31,14 +31,14 @@
 ### 1. 先准备 ONNX
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2_nav
+cd deploy/robots/go2_nav
 python3 tools/export_navigation_policies.py
 ```
 
 ### 2. 编译控制器
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2_nav
+cd deploy/robots/go2_nav
 cmake -S . -B build
 cmake --build build -j4
 ```
@@ -48,16 +48,16 @@ cmake --build build -j4
 导航这套直接复用现有 MuJoCo 入口，不需要 push-box 专用 bridge：
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/Mujoco/simulate_python
+cd Mujoco/simulate_python
 python3 unitree_mujoco.py
 ```
 
-如果你不是要跑 push-box，请先把 [config.py](/home/xcj/work/IsaacLab/IsaacLabBisShe/Mujoco/simulate_python/config.py) 里的 `ROBOT_SCENE` 切回普通地形场景，比如 `scene.xml`。
+如果你不是要跑 push-box，请先把 [config.py](../../../Mujoco/simulate_python/config.py) 里的 `ROBOT_SCENE` 切回普通地形场景，比如 `scene.xml`。
 
 ### 4. 启动 deploy
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2_nav/build
+cd deploy/robots/go2_nav/build
 ./go2_nav_ctrl --network lo
 ```
 
@@ -133,7 +133,7 @@ navigation_success_settle_steps: 3
 最直接的方式就是用这个脚本：
 
 ```bash
-cd /home/xcj/work/IsaacLab/IsaacLabBisShe/deploy/robots/go2_nav
+cd deploy/robots/go2_nav
 python3 tools/publish_navigation_goal.py --goal 4.8 0.0 0.0 0.0
 ```
 
