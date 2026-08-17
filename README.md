@@ -1,3 +1,5 @@
+
+
 # llm-legged-lab
 
 llm-legged-lab 是 LLMPlanner 使用的腿足机器人仿真、策略模型与技能服务仓库。仓库提供 IsaacLab/MuJoCo 仿真入口、训练好的 Go2 策略模型、ROS2 桥接、WebSocket 技能服务，以及导航、攀爬、推箱等底层技能执行能力。
@@ -19,7 +21,7 @@ https://github.com/user-attachments/assets/458fbd56-1e15-4b9e-84bd-57142dfc4fa4
 | 技能 | IsaacLab Play 任务 ID | 说明 |
 |---|---|---|
 | climb | `Template-Velocity-Go2-Walk-BiShe-Pit-Play-v0` | 坑洞/台阶地形上的攀爬与越障策略 |
-| navigation | `Template-Naviation-BiShe-Go2-Play-v0` | 毕设固定场景导航策略 |
+| navigation | `Template-Naviation-BiShe-Go2-Play-v0` | 毕设固定场景导航策略（任务 ID 拼写为 `Naviation`） |
 | push_box | `Template-Push-Box-Go2-Play-v0` | 推箱到目标位姿策略 |
 
 训练任务对应去掉 `-Play` 后缀，例如 `Template-Push-Box-Go2-v0`。
